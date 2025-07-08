@@ -1,0 +1,163 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-resize', {
+        category: 'Rosepetal Image',
+        color: '#DDA0DD',
+        defaults: {
+            name: { value: "" },
+            // Propiedades para la ruta de Entrada/Salida
+            inputPath: { value: "payload" },
+            inputPathType: { value: "msg" },
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" },
+            // Propiedades para la configuración del Ancho (Width)
+            widthMode: { value: "set" },
+            widthValue: { value: "" },
+            widthType: { value: "num" }, // Tipo para el TypedInput
+            // Propiedades para la configuración del Alto (Height)
+            heightMode: { value: "set" },
+            heightValue: { value: "" },
+            heightType: { value: "num" }  // Tipo para el TypedInput
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-arrows-alt",
+        label: function() {
+            if (this.name) { return this.name; }
+            return `resize`;
+        },
+        oneditprepare: function() {
+            // === Inicialización de los Widgets "TypedInput" ===
+
+            // Para las rutas de Input y Output
+            $("#node-input-inputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-inputPathType"
+            });
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
+
+            // Para los valores de Width y Height, ahora con flow y global
+            const widthTypedInput = $("#node-input-widthValue").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'], // Añadimos flow y global
+                typeField: "#node-input-widthType"
+            });
+            const heightTypedInput = $("#node-input-heightValue").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'], // Añadimos flow y global
+                typeField: "#node-input-heightType"
+            });
+
+            // === Lógica de Placeholders "Auto" ===
+            
+            function updatePlaceholders() {
+                const widthVal = widthTypedInput.typedInput('value');
+                const heightVal = heightTypedInput.typedInput('value');
+                
+                // El widget TypedInput crea su propio campo de texto, lo seleccionamos
+                const widthInputField = widthTypedInput.parent().find('.red-ui-typedInput-input');
+                const heightInputField = heightTypedInput.parent().find('.red-ui-typedInput-input');
+
+                const originalWidthPlaceholder = "e.g., 800";
+                const originalHeightPlaceholder = "e.g., 600";
+
+                // Lógica final para los placeholders
+                if (widthVal === '' && heightVal === '') {
+                    widthInputField.attr('placeholder', originalWidthPlaceholder);
+                    heightInputField.attr('placeholder', originalHeightPlaceholder);
+                } else if (widthVal !== '' && heightVal === '') {
+                    heightInputField.attr('placeholder', 'Auto');
+                    widthInputField.attr('placeholder', originalWidthPlaceholder);
+                } else if (widthVal === '' && heightVal !== '') {
+                    widthInputField.attr('placeholder', 'Auto');
+                    heightInputField.attr('placeholder', originalHeightPlaceholder);
+                } else {
+                    widthInputField.attr('placeholder', originalWidthPlaceholder);
+                    heightInputField.attr('placeholder', originalHeightPlaceholder);
+                }
+            }
+
+            // Escuchamos el evento 'change' del widget, que se dispara cuando el tipo o el valor cambian
+            widthTypedInput.on('change', updatePlaceholders);
+            heightTypedInput.on('change', updatePlaceholders);
+
+            // Llamada inicial para configurar la UI
+            updatePlaceholders();
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="rosepetal-resize">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+        <input type="text" id="node-input-inputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-inputPathType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+    
+    <hr>
+
+    <div class="form-row">
+        <label><i class="fa fa-arrows-h"></i> Width</label>
+        <div style="display: flex; align-items: center; width: 70%;">
+            <select id="node-input-widthMode" style="width: 120px; margin-right: 5px;">
+                <option value="set">Set to</option>
+                <option value="multiply">Multiply by</option>
+            </select>
+            <input type="text" id="node-input-widthValue" style="flex-grow: 1;">
+            <input type="hidden" id="node-input-widthType">
+        </div>
+    </div>
+    <div class="form-row">
+        <label><i class="fa fa-arrows-v"></i> Height</label>
+        <div style="display: flex; align-items: center; width: 70%;">
+            <select id="node-input-heightMode" style="width: 120px; margin-right: 5px;">
+                <option value="set">Set to</option>
+                <option value="multiply">Multiply by</option>
+            </select>
+            <input type="text" id="node-input-heightValue" style="flex-grow: 1;">
+            <input type="hidden" id="node-input-heightType">
+        </div>
+    </div>
+    
+    <div class="form-tips">
+        <b>Tip:</b> If a dimension value is left empty, it will be set to 'Auto' to maintain the original aspect ratio.
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="rosepetal-resize">
+  <p>Resizes a list of raw images using a high-performance C++ backend.</p>
+
+  <h3>I/O Properties</h3>
+  <p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
+
+  <h3>Dimensions</h3>
+  <p>For each dimension, you can configure:</p>
+  <ul>
+    <li><b>Operation Mode:</b>
+      <ul>
+        <li><code>Set to</code>: Resizes the dimension to a fixed pixel value.</li>
+        <li><code>Multiply by</code>: Multiplies the original dimension by a factor (e.g., 0.5 for half size).</li>
+      </ul>
+    </li>
+    <li><b>Value Source:</b>
+        <p>Use the dropdown on the left of the value field to select if the value is a fixed <code>Number</code> or comes from a <code>msg.</code>, <code>flow.</code> or <code>global.</code> property.</p>
+    </li>
+  </ul>
+  <p>If a dimension's value is left empty, its placeholder will show 'Auto', and it will be calculated to maintain the original aspect ratio.</p>
+</script>

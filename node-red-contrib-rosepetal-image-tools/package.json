@@ -1,0 +1,20 @@
+{
+    "name": "node-red-contrib-rosepetal-image-tools",
+    "version": "0.1.0",
+    "description": "C++ powered image processing nodes for Node-RED.",
+    "private": true,
+    "scripts": {
+      "postinstall": "cd node_modules/rosepetal-image-engine && npm install && npm run build"
+    },
+    "keywords": [ "node-red", "image", "opencv" ],
+    "author": "Rosepetal",
+    "license": "Apache-2.0",
+    "node-red": {
+      "nodes": {
+        "rosepetal-resize": "nodes/transform/resize.js"
+      }
+    },
+    "dependencies": {
+      "rosepetal-image-engine": "file:../rosepetal-image-engine"
+    }
+  }

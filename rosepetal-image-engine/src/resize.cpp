@@ -1,89 +1,129 @@
+// Fichero: src/resize.cpp
+
 #include <napi.h>
 #include <opencv2/opencv.hpp>
 #include <chrono>
+#include <cstring>
+#include <string>
+#include "utils.h"
 
 class ResizeWorker : public Napi::AsyncWorker {
 public:
-  ResizeWorker(Napi::Function& callback, Napi::Object& imageObject, int targetWidth, int targetHeight)
-    : Napi::AsyncWorker(callback),
-      targetWidth(targetWidth),
-      targetHeight(targetHeight) {
-    
-    this->width = imageObject.Get("width").As<Napi::Number>().Int32Value();
-    this->height = imageObject.Get("height").As<Napi::Number>().Int32Value();
-    this->channelsStr = imageObject.Get("channels").As<Napi::String>().Utf8Value();
-    Napi::Buffer<uint8_t> dataBuffer = imageObject.Get("data").As<Napi::Buffer<uint8_t>>();
-    
-    int cvType = this->getOpenCVType(this->channelsStr);
-    this->inputMat = cv::Mat(this->height, this->width, cvType, dataBuffer.Data()).clone();
+  ResizeWorker(Napi::Function& callback,
+               const Napi::Value& inputImage,
+               int targetWidth,
+               int targetHeight)
+      : Napi::AsyncWorker(callback),
+        targetWidth(targetWidth),
+        targetHeight(targetHeight) {
+
+    try {
+      // ── Tiempo ConvertToMat ──────────────────────────────────────────────
+      auto t0 = std::chrono::steady_clock::now();
+      this->inputMat = ConvertToMat(inputImage);
+      auto t1 = std::chrono::steady_clock::now();
+      convertMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+      // --------------------------------------------------------------------
+
+      if (inputImage.IsObject() && !inputImage.IsBuffer()) {
+        std::string chFull =
+            inputImage.As<Napi::Object>().Get("channels").As<Napi::String>().Utf8Value();
+        std::size_t pos = chFull.find('_');
+        channelOrder = (pos != std::string::npos) ? chFull.substr(pos + 1) : chFull;
+      } else {
+        channelOrder = (inputMat.channels() == 4) ? "BGRA"
+                     : (inputMat.channels() == 3) ? "BGR"
+                     : "GRAY";
+      }
+    } catch (const Napi::Error& e) {
+      Napi::AsyncWorker::SetError(e.Message());
+    }
   }
 
 protected:
   void Execute() override {
     try {
-        auto t_start = std::chrono::high_resolution_clock::now();
-        
-        cv::Mat resizedMat;
-        cv::resize(this->inputMat, resizedMat, cv::Size(this->targetWidth, this->targetHeight));
-        this->resultMat = resizedMat;
-
-        auto t_end = std::chrono::high_resolution_clock::now();
-        this->processingTime = std::chrono::duration<double, std::milli>(t_end - t_start).count();
-
+      auto t0 = std::chrono::steady_clock::now();  // ⏱️ inicio resize
+      cv::resize(inputMat, resultMat,
+                 cv::Size(targetWidth, targetHeight),
+                 0, 0, cv::INTER_LINEAR);
+      auto t1 = std::chrono::steady_clock::now();  // ⏱️ fin resize
+      taskMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
     } catch (const cv::Exception& e) {
-        Napi::AsyncWorker::SetError(e.what());
+      Napi::AsyncWorker::SetError(e.what());
     }
   }
 
   void OnOK() override {
     Napi::Env env = Env();
-    
-    Napi::Object outputImageObject = Napi::Object::New(env);
-    outputImageObject.Set("width", Napi::Number::New(env, this->resultMat.cols));
-    outputImageObject.Set("height", Napi::Number::New(env, this->resultMat.rows));
-    outputImageObject.Set("channels", Napi::String::New(env, this->channelsStr));
 
-    size_t bufferSize = this->resultMat.total() * this->resultMat.elemSize();
-    outputImageObject.Set("data", Napi::Buffer<uint8_t>::Copy(env, this->resultMat.data, bufferSize));
+    // Profundidad
+    std::string depth =
+        (resultMat.depth() == CV_16U)                  ? "int16" :
+        (resultMat.depth() == CV_32S || resultMat.depth() == CV_32F) ? "int32" :
+                                                                      "int8";
+    std::string chType = depth + "_" + channelOrder;
 
-    Callback().Call({Env().Null(), outputImageObject});
+    // ── image { … } --------------------------------------------------------
+    Napi::Object imageObj = Napi::Object::New(env);
+    imageObj.Set("width",  Napi::Number::New(env, resultMat.cols));
+    imageObj.Set("height", Napi::Number::New(env, resultMat.rows));
+    imageObj.Set("channels", Napi::String::New(env, chType));
+
+    size_t bytes = resultMat.total() * resultMat.elemSize();
+    uint8_t* raw = new uint8_t[bytes];
+    std::memcpy(raw, resultMat.data, bytes);
+
+    auto dataBuf = Napi::Buffer<uint8_t>::New(
+        env, raw, bytes,
+        [](Napi::Env /*e*/, uint8_t* p) { delete[] p; });
+
+    imageObj.Set("data", dataBuf);
+
+    // ── timing { … } -------------------------------------------------------
+    Napi::Object timingObj = Napi::Object::New(env);
+    timingObj.Set("convertMs", Napi::Number::New(env, convertMs));
+    timingObj.Set("taskMs",  Napi::Number::New(env, taskMs));
+
+    // ── resultado final ----------------------------------------------------
+    Napi::Object result = Napi::Object::New(env);
+    result.Set("image",  imageObj);
+    result.Set("timing", timingObj);
+
+    Callback().Call({ env.Null(), result });
   }
 
   void OnError(const Napi::Error& e) override {
-      Callback().Call({e.Value(), Env().Null()});
+    Callback().Call({ e.Value(), Env().Null() });
   }
 
 private:
-  int getOpenCVType(const std::string& channelsStr) {
-      if (channelsStr.find("RGBA") != std::string::npos || channelsStr.find("BGRA") != std::string::npos) return CV_8UC4;
-      if (channelsStr.find("RGB") != std::string::npos || channelsStr.find("BGR") != std::string::npos) return CV_8UC3;
-      if (channelsStr.find("GRAY") != std::string::npos) return CV_8UC1;
-      return CV_8UC3; 
-  }
+  cv::Mat inputMat, resultMat;
+  int     targetWidth, targetHeight;
+  std::string channelOrder;
 
-  cv::Mat inputMat;
-  cv::Mat resultMat;
-  int width, height;
-  std::string channelsStr;
-  int targetWidth, targetHeight;
-  double processingTime;
+  double  convertMs = 0.0;
+  double  taskMs  = 0.0;
 };
 
 Napi::Value Resize(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
-  
-  if (info.Length() != 4 || !info[0].IsObject() || !info[1].IsNumber() || !info[2].IsNumber() || !info[3].IsFunction()) {
-    Napi::TypeError::New(env, "Expected (imageObject, width, height, callback)").ThrowAsJavaScriptException();
+
+  if (info.Length() != 4 || !info[3].IsFunction()) {
+    Napi::TypeError::New(env,
+      "Expected (ImageObject | ImageBuffer, width, height, callback)")
+      .ThrowAsJavaScriptException();
     return env.Null();
   }
 
-  Napi::Object imageObject = info[0].As<Napi::Object>();
-  int targetWidth = info[1].As<Napi::Number>().Int32Value();
-  int targetHeight = info[2].As<Napi::Number>().Int32Value();
-  Napi::Function callback = info[3].As<Napi::Function>();
+  Napi::Function cb = info[3].As<Napi::Function>();
 
-  ResizeWorker* worker = new ResizeWorker(callback, imageObject, targetWidth, targetHeight);
+  auto* worker = new ResizeWorker(
+      cb,                         // ✅ ya no es r-value
+      info[0],
+      info[1].As<Napi::Number>().Int32Value(),
+      info[2].As<Napi::Number>().Int32Value());
+
   worker->Queue();
-  
   return env.Undefined();
 }

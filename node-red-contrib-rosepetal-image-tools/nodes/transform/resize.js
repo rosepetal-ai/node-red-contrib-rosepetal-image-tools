@@ -5,31 +5,11 @@
  */
 const { performance } = require('perf_hooks');
 const CppProcessor = require('../../lib/cpp-bridge.js');
-const NodeUtils = require('../../lib/node-utils.js');
+const sharp = require('sharp'); 
 
 module.exports = function(RED) {
-  // Enhanced dimension resolver function
-  function resolveDimension(node, config, mode, type, value, msg, originalDim) {
-    if (!value || String(value).trim() === '') return null;
-    
-    let numericValue;
-    // RED.util.evaluateNodeProperty is the most robust way to get values
-    // from msg, flow, or global context.
-    if (type === 'msg' || type === 'flow' || type === 'global') {
-      numericValue = RED.util.evaluateNodeProperty(value, type, node, msg);
-    } else { // type === 'num'
-      numericValue = parseFloat(value);
-    }
+  const NodeUtils = require('../../lib/node-utils.js')(RED);
 
-    if (numericValue === undefined || isNaN(numericValue)) {
-      throw new Error(`Value for property "${value}" could not be resolved to a valid number.`);
-    }
-
-    if (mode === 'multiply') {
-      return Math.round(originalDim * numericValue);
-    }
-    return Math.round(numericValue);
-  }
 
   function ResizeNode(config) {
     RED.nodes.createNode(this, config);
@@ -40,30 +20,36 @@ module.exports = function(RED) {
         node.status({});
         const inputPath = config.inputPath || "payload";
         const outputPath = config.outputPath || "payload";
+        const outputAsJpeg = !!config.outputAsJpeg;
         
         const originalPayload = RED.util.getMessageProperty(msg, inputPath);
-
-        // STEP 1: Normalize The Input
-        // Always treat the input as an array, even if it's a single image.
-        const imageList = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
-
-        // STEP 2: Unified Validation
-        // Use our utility function to validate the list we now always have.
-        if (!NodeUtils.validateListImage(imageList, node)) {
-            if (done) { done(); } 
-            return;
-        }
-
-        const startTime = performance.now();
+        const inputList = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
         const promises = [];
 
-        // STEP 3: Unified Processing Loop
-        // This single loop works for 1 or N images without changing the logic.
-        for (const inputImage of imageList) {
-          let targetWidth = resolveDimension(node, config, config.widthMode, config.widthType, config.widthValue, msg, inputImage.width);
-          let targetHeight = resolveDimension(node, config, config.heightMode, config.heightType, config.heightValue, msg, inputImage.height);
+        for (const inputImage of inputList) {
+
+          if (Buffer.isBuffer(inputImage)) {
+            // Es un buffer de fichero, usamos sharp.metadata() para leer las dimensiones rápidamente.
+            const metadata = await sharp(inputImage).metadata();
+            originalWidth = metadata.width;
+            originalHeight = metadata.height;
+          } else {
+            // Es nuestro objeto raw, ya tenemos las dimensiones.
+            originalWidth = inputImage.width;
+            originalHeight = inputImage.height;
+          }
+
           
-          const aspectRatio = inputImage.width / inputImage.height;
+          // Resolve dimensions based on the configuration
+          let targetWidth = NodeUtils.resolveDimension(node, config.widthType, config.widthValue, msg);
+          if (config.widthMode === 'multiply' && targetWidth !== null) {
+            targetWidth = Math.round(originalWidth * targetWidth);
+          }
+          let targetHeight = NodeUtils.resolveDimension(node, config.heightType, config.heightValue, msg);
+          if (config.heightMode === 'multiply' && targetHeight !== null) {
+            targetHeight = Math.round(originalHeight * targetHeight);
+          }
+          const aspectRatio = originalWidth / originalHeight;
           if (targetWidth && !targetHeight) {
             targetHeight = Math.round(targetWidth / aspectRatio);
           } else if (!targetWidth && targetHeight) {
@@ -71,26 +57,41 @@ module.exports = function(RED) {
           } else if (!targetWidth && !targetHeight) {
             throw new Error("Cannot resize: both width and height are unspecified.");
           }
-          
+
+          console.log(`Resizing image to ${targetWidth}x${targetHeight}`);
           promises.push(CppProcessor.resize(inputImage, targetWidth, targetHeight));
+
         }
-        
+
         const results = await Promise.all(promises);
-        const endTime = performance.now();
-        const duration = (endTime - startTime).toFixed(2);
-        
-        node.status({ fill: "green", shape: "dot", text: `OK: ${results.length} img in ${duration} ms`});
 
-        // STEP 4: De-normalize the Output
-        // If the original input was a single object, the output should also be a single object.
-        const finalOutput = Array.isArray(originalPayload) ? results : results[0];
-
-        RED.util.setMessageProperty(msg, outputPath, finalOutput);
-        msg.processingTime_ms = parseFloat(duration);
+        const { totalConvertMs, totalTaskMs, images } = results.reduce(
+          (acc, { image, timing }) => {
+            acc.totalConvertMs += timing?.convertMs ?? 0;
+            acc.totalTaskMs   += timing?.taskMs   ?? 0;
         
+            acc.images.push(image);
+            return acc;
+          },
+          { totalConvertMs: 0, totalTaskMs: 0, images: [] } 
+        );
+
+
+        node.status({ fill: "green", shape: "dot", text: `OK: ${results.length} img in ${(totalConvertMs + totalTaskMs).toFixed(2)} ms. (Conversion: ${totalConvertMs.toFixed(2)} ms. | Task: ${totalTaskMs.toFixed(2)} ms.)` });
+
+        let out = Array.isArray(originalPayload) ? images : images[0];
+
+        if (outputAsJpeg) {
+          out = Array.isArray(out)
+              ? await Promise.all(out.map(img => NodeUtils.rawToJpeg(img)))
+              : await NodeUtils.rawToJpeg(out);
+        }
+
+        RED.util.setMessageProperty(msg, outputPath, out);
+        // msg.processingTime_ms = parseFloat(duration);
+
         send(msg);
         if (done) { done(); }
-
       } catch (err) {
         NodeUtils.handleNodeError(node, err, msg, done);
       }

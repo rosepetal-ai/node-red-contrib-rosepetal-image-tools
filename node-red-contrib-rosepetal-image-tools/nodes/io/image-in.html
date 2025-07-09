@@ -1,0 +1,59 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-image-in', {
+        category: 'Rosepetal Image',
+        color: '#A6C8A6',
+        defaults: {
+            name: { value: "" },
+            filePath: { value: "", required: true },
+            // Nuevas propiedades para el destino de salida
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-file-image-o",
+        label: function() {
+            return this.name || this.filePath.split('/').pop() || "image in";
+        },
+        oneditprepare: function() {
+            // Inicializamos el widget TypedInput para el campo de salida
+            $("#node-input-outputPath").typedInput({
+                default: 'msg', // Por defecto, la salida va al 'msg'
+                types: ['msg', 'flow', 'global'], // Opciones disponibles
+                typeField: "#node-input-outputPathType" // Campo oculto para guardar el tipo
+            });
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="rosepetal-image-in">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    <div class="form-row">
+        <label for="node-input-filePath"><i class="fa fa-folder-open"></i> File Path</label>
+        <input type="text" id="node-input-filePath" placeholder="/path/to/your/image.jpg">
+    </div>
+    <hr>
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="rosepetal-image-in">
+    <p>Reads an image file from a path and outputs it as a raw image object to a specified property.</p>
+    
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>File Path <span class="property-type">string</span></dt>
+        <dd>The full path to the image file on the server.</dd>
+        <dt>Output to <span class="property-type">string</span></dt>
+        <dd>The location where the resulting image object will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <p>The node sets the property specified in 'Output to' with the processed image object, which has the standard format: <code>{ data: Buffer, width: number, height: number, channels: string }</code>.</p>
+</script>

@@ -7,6 +7,7 @@
         "src/resize.cpp"
       ],
       "include_dirs": [
+        "/usr/include/opencv4",
         "<!@(node -p \"require('node-addon-api').include\")"
       ],
       "libraries": [
@@ -18,15 +19,27 @@
       "cflags_cc": [
         "-std=c++17",
         "-O3",
+        "-ffast-math",
+        "-march=native",
         "-fexceptions",
-        "-frtti"
+        "-frtti",
+        "-fno-omit-frame-pointer",
+        "-funroll-loops",
+        "-fstrict-aliasing"
+      ],
+      "ldflags": [
+        "-O3",
+        "-march=native"
       ],
       "xcode_settings": {
         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
         "GCC_ENABLE_CPP_RTTI": "YES",
         "OTHER_CPLUSPLUSFLAGS": [
           "-std=c++17",
-          "-O3"
+          "-O3",
+          "-ffast-math",
+          "-march=native",
+          "-funroll-loops"
         ]
       }
     }

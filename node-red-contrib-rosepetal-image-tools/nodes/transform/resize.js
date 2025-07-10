@@ -20,13 +20,14 @@ module.exports = function(RED) {
         node.status({});
         const inputPath = config.inputPath || "payload";
         const outputPath = config.outputPath || "payload";
-        const outputAsJpeg = !!config.outputAsJpeg;
+        const outputAsJpg  = !!config.outputAsJpg;
         
         const originalPayload = RED.util.getMessageProperty(msg, inputPath);
         const inputList = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
         const promises = [];
 
         for (const inputImage of inputList) {
+          let originalWidth, originalHeight; 
 
           if (Buffer.isBuffer(inputImage)) {
             // Es un buffer de fichero, usamos sharp.metadata() para leer las dimensiones rápidamente.
@@ -59,36 +60,43 @@ module.exports = function(RED) {
           }
 
           console.log(`Resizing image to ${targetWidth}x${targetHeight}`);
-          promises.push(CppProcessor.resize(inputImage, targetWidth, targetHeight));
+          promises.push(CppProcessor.resize(inputImage, targetWidth, targetHeight, outputAsJpg));
 
         }
 
         const results = await Promise.all(promises);
 
-        const { totalConvertMs, totalTaskMs, images } = results.reduce(
+        
+
+        const { totalConvertMs, totalTaskMs, encodeMs, images } = results.reduce(
           (acc, { image, timing }) => {
             acc.totalConvertMs += timing?.convertMs ?? 0;
             acc.totalTaskMs   += timing?.taskMs   ?? 0;
+            acc.encodeMs  += timing?.encodeMs ?? 0;
         
             acc.images.push(image);
             return acc;
           },
-          { totalConvertMs: 0, totalTaskMs: 0, images: [] } 
+          { totalConvertMs: 0, totalTaskMs: 0, encodeMs: 0, images: [] } 
         );
 
+        
 
-        node.status({ fill: "green", shape: "dot", text: `OK: ${results.length} img in ${(totalConvertMs + totalTaskMs).toFixed(2)} ms. (Conversion: ${totalConvertMs.toFixed(2)} ms. | Task: ${totalTaskMs.toFixed(2)} ms.)` });
+        node.status({ fill: "green", shape: "dot", text: `OK: ${results.length} img in ${(totalConvertMs + totalTaskMs + encodeMs).toFixed(2)} ms. (Conversion: ${(totalConvertMs + encodeMs).toFixed(2)} ms. | Task: ${totalTaskMs.toFixed(2)} ms.)` });
 
-        let out = Array.isArray(originalPayload) ? images : images[0];
+        let out;
 
-        if (outputAsJpeg) {
-          out = Array.isArray(out)
-              ? await Promise.all(out.map(img => NodeUtils.rawToJpeg(img)))
-              : await NodeUtils.rawToJpeg(out);
+        if (outputAsJpg) {
+          out = Array.isArray(originalPayload)
+                ? images
+                : images[0];
+          console.log(`Raw output`);
+        } else {
+          // modo raw: mantenemos el objeto completo
+          out = Array.isArray(originalPayload) ? images : images[0];
+          console.log(`Raw output`);
         }
-
         RED.util.setMessageProperty(msg, outputPath, out);
-        // msg.processingTime_ms = parseFloat(duration);
 
         send(msg);
         if (done) { done(); }

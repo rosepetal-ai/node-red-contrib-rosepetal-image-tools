@@ -55,3 +55,5 @@ ehthumbs_vista.db
 *.lib
 *.dll
 *.exe
+
+package-lock.json

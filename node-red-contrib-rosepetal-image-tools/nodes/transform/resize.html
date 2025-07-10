@@ -9,7 +9,7 @@
             inputPathType: { value: "msg" },
             outputPath: { value: "payload" },
             outputPathType: { value: "msg" },
-            outputAsJpeg:    { value: false }, 
+            outputAsJpg:    { value: false }, 
             // Propiedades para la configuración del Ancho (Width)
             widthMode: { value: "set" },
             widthValue: { value: "" },
@@ -110,10 +110,13 @@
         <input type="text" id="node-input-outputPath" style="width: 70%;">
         <input type="hidden" id="node-input-outputPathType">
         <label style="margin-left:6px;white-space:nowrap;">
-            <input type="checkbox" id="node-input-outputAsJpeg"
+            <input type="checkbox" id="node-input-outputAsJpg"
                    style="vertical-align:middle;margin-right:3px;">
-            .jpeg
+            .jpg
         </label>
+        <div class="form-tips">
+            <b>Tip:</b> Just use .jpg for debugging or final transformation output for faster performance. 
+        </div>
     </div>
     
     <hr>

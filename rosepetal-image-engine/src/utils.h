@@ -34,7 +34,7 @@ inline cv::Mat ConvertToMat(const Napi::Value& input) {
       else if (ch.find("BGRA") != std::string::npos) cvType = CV_8UC4;
       else if (ch.find("GRAY") != std::string::npos) cvType = CV_8UC1;
 
-      return cv::Mat(height, width, cvType, dataBuf.Data()).clone();
+      return cv::Mat(height, width, cvType, dataBuf.Data());
     }
   }
 

@@ -6,19 +6,22 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <cmath>
+#include <utility>  
+#include <limits> 
 #include "utils.h"
 
 class ResizeWorker : public Napi::AsyncWorker {
 public:
-  ResizeWorker(Napi::Function& callback,
-               const Napi::Value& inputImage,
-               int targetWidth,
-               int targetHeight,
-               bool encodeJpg)
-      : Napi::AsyncWorker(callback),
-        targetWidth(targetWidth),
-        targetHeight(targetHeight),
-        encodeJpg(encodeJpg) {
+ResizeWorker(Napi::Function& callback,
+  const Napi::Value& inputImage,
+  std::string widthMode,  double widthValue,
+  std::string heightMode, double heightValue,
+  bool encodeJpg)
+  : Napi::AsyncWorker(callback),
+  widthMode(std::move(widthMode)),   widthValue(widthValue),
+  heightMode(std::move(heightMode)), heightValue(heightValue),
+  encodeJpg(encodeJpg){
 
     try {
       auto t0 = std::chrono::steady_clock::now();
@@ -44,21 +47,45 @@ public:
 protected:
   void Execute() override {
     try {
-      auto t0 = std::chrono::steady_clock::now();
-      cv::resize(inputMat, resultMat,
-                 cv::Size(targetWidth, targetHeight),
-                 0, 0, cv::INTER_LINEAR);
-      auto t1 = std::chrono::steady_clock::now();
-      taskMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+        // --- 4.1 Calcular ancho/alto objetivo --------------------------
+        auto calcDim = [](int orig, const std::string& mode, double val) -> int {
+          if (std::isnan(val)) return 0;  // Auto
+          return mode == "multiply"
+                 ? static_cast<int>(std::lround(orig * val))
+                 : static_cast<int>(std::lround(val));
+        };
+      
+        targetWidth  = calcDim(inputMat.cols, widthMode,  widthValue);
+        targetHeight = calcDim(inputMat.rows, heightMode, heightValue);
 
-      if (encodeJpg) {
-        cv::Mat jpgSrc = ToBgrForJpg(resultMat, channelOrder);
-        encodeMs = EncodeToJpgFast(jpgSrc, jpgBuf);
-      }
-    } catch (const cv::Exception& e) {
-      SetError(e.what());
+        if (!targetWidth && !targetHeight)
+            throw std::runtime_error("Both dimensions are Auto");
+
+        if (!targetWidth)
+            targetWidth  = std::lround(targetHeight *
+                        (double)inputMat.cols / inputMat.rows);
+        if (!targetHeight)
+            targetHeight = std::lround(targetWidth  *
+                        (double)inputMat.rows / inputMat.cols);
+
+        // --- 4.2 Redimensionar ----------------------------------------
+        auto t0 = std::chrono::steady_clock::now();
+        cv::resize(inputMat, resultMat,
+                  cv::Size(targetWidth, targetHeight),
+                  0, 0, cv::INTER_LINEAR);
+        auto t1 = std::chrono::steady_clock::now();
+        taskMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+        // --- 4.3 Codificación JPG (igual) -----------------------------
+        if (encodeJpg) {
+            cv::Mat jpgSrc = ToBgrForJpg(resultMat, channelOrder);
+            encodeMs = EncodeToJpgFast(jpgSrc, jpgBuf);
+        }
+    } catch (const std::exception& e) {
+        SetError(e.what());
     }
   }
+
 
   // Fichero: src/resize.cpp (OnOK corregido y final)
 
@@ -112,7 +139,14 @@ protected:
 
 private:
   cv::Mat inputMat, resultMat;
-  int targetWidth, targetHeight;
+  int targetWidth = 0;
+  int targetHeight = 0;
+  std::string widthMode;  
+  std::string heightMode;
+  double widthValue  = std::numeric_limits<double>::quiet_NaN();
+  double heightValue = std::numeric_limits<double>::quiet_NaN();
+
+
   std::string channelOrder;
 
   double convertMs = 0.0;
@@ -126,27 +160,29 @@ private:
 Napi::Value Resize(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 4 || info.Length() > 5 || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env,
-      "Expected (image, width, height, [encodeJpg], callback)")
-      .ThrowAsJavaScriptException();
-    return env.Null();
+    if (info.Length() < 6 || info.Length() > 7 || !info[info.Length() - 1].IsFunction()) {
+      Napi::TypeError::New(env,
+        "Expected (image, widthMode, widthVal, heightMode, heightVal, [encodeJpg], callback)")
+        .ThrowAsJavaScriptException();
+      return env.Null();
   }
 
   bool encodeJpg = false;
-  size_t cbIndex  = 3;
-  if (info.Length() == 5) {
-    encodeJpg = info[3].As<Napi::Boolean>().Value();
-    cbIndex    = 4;
+  size_t cbIndex = 5;
+  if (info.Length() == 7) {
+      encodeJpg = info[5].As<Napi::Boolean>().Value();
+      cbIndex   = 6;
   }
 
   Napi::Function cb = info[cbIndex].As<Napi::Function>();
 
   auto* worker = new ResizeWorker(
       cb,
-      info[0],
-      info[1].As<Napi::Number>().Int32Value(),
-      info[2].As<Napi::Number>().Int32Value(),
+      info[0],                                    // image
+      info[1].As<Napi::String>().Utf8Value(),     // widthMode
+      info[2].As<Napi::Number>().DoubleValue(),   // widthVal
+      info[3].As<Napi::String>().Utf8Value(),     // heightMode
+      info[4].As<Napi::Number>().DoubleValue(),   // heightVal
       encodeJpg);
 
   worker->Queue();

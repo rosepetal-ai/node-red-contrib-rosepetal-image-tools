@@ -70,9 +70,13 @@ protected:
 
       // JPEG opcional
       if (encodeJpg) {
-        cv::Mat tmp = ToBgrForJpg(resultMat, channelOrder);
-        encodeMs = EncodeToJpgFast(tmp, jpgBuf);
-      }
+        // sólo convierte si el canal NO es BGR
+        const cv::Mat& srcForJpg =
+              (channelOrder == "BGR") ? resultMat
+                                      : ToBgrForJpg(resultMat, channelOrder);
+    
+        encodeMs = EncodeToJpgFast(srcForJpg, jpgBuf, 90);  // usa nuevo helper
+    }
     } catch (const std::exception& e) { SetError(e.what()); }
   }
 

@@ -71,15 +71,19 @@ inline cv::Mat ToBgrForJpg(const cv::Mat& src, const std::string& order) {
 // utils.h  – función de compresión rápido a “.jpg”
 inline double EncodeToJpgFast(const cv::Mat& src,
   std::vector<uchar>& out,
-  int quality = 90)
+  int quality = 90)          // 90 = buen balance
 {
-auto t0 = std::chrono::steady_clock::now();
+  const int64 t0 = cv::getTickCount();
 
-std::vector<int> params{ cv::IMWRITE_JPEG_QUALITY, quality };
-cv::imencode(".jpg", src, out, params);   // ← extensión “.jpg”
+       // --- ruta OpenCV  ---------------------------
+    out.reserve(src.total() >> 1);              // evita realloc (~50 %)
+    std::vector<int> p{ cv::IMWRITE_JPEG_QUALITY, quality,
+    cv::IMWRITE_JPEG_PROGRESSIVE, 0,
+    cv::IMWRITE_JPEG_OPTIMIZE, 0 };
+    cv::imencode(".jpg", src, out, p);
 
-auto t1 = std::chrono::steady_clock::now();
-return std::chrono::duration<double, std::milli>(t1 - t0).count();
+
+  return (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 }
 
 

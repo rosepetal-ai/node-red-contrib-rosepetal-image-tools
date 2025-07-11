@@ -1,0 +1,42 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-rotate', {
+      category : 'Rosepetal Image',
+      color    : '#DDA0DD',
+      defaults : {
+        name            : { value:"" },
+        inputPath       : { value:"payload" },
+        inputPathType   : { value:"msg" },
+        outputPath      : { value:"payload" },
+        outputPathType  : { value:"msg" },
+        outputAsJpg     : { value:false },
+        angleValue      : { value:"90" },
+        angleType       : { value:"num" },
+        padColor        : { value:"#000000" }   // siempre visible
+      },
+      inputs :1, outputs:1,
+      icon:"font-awesome/fa-rotate-right",
+      label:function(){ return this.name || "rotate"; },
+    
+      oneditprepare:function(){
+        $("#node-input-inputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-inputPathType"});
+        $("#node-input-outputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-outputPathType"});
+        $("#node-input-angleValue").typedInput({default:'num',types:['num','msg','flow','global'],typeField:"#node-input-angleType"});
+      }
+    });
+    </script>
+    
+    <script type="text/x-red" data-template-name="rosepetal-rotate">
+      <div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
+      <hr>
+      <div class="form-row"><label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label><input type="text" id="node-input-inputPath" style="width:70%;"><input type="hidden" id="node-input-inputPathType"></div>
+      <div class="form-row"><label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output</label><input type="text" id="node-input-outputPath" style="width:70%;"><input type="hidden" id="node-input-outputPathType"></div>
+      <div class="form-row"><label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> JPG</label><input type="checkbox" id="node-input-outputAsJpg" style="width:20px;height:20px;"></div>
+      <hr>
+      <div class="form-row"><label for="node-input-angleValue"><i class="fa fa-refresh"></i> Angle (°)</label><input type="text" id="node-input-angleValue" style="width:70%;"><input type="hidden" id="node-input-angleType"></div>
+      <div class="form-row"><label for="node-input-padColor"><i class="fa fa-tint"></i> Pad colour</label><input type="color" id="node-input-padColor" style="width:80px;"></div>
+    </script>
+    
+    <script type="text/x-red" data-help-name="rosepetal-rotate">
+      <p>Rotates images and pads with the selected colour. Passes the colour as hexadecimal (#RRGGBB) directly to the C++ engine.</p>
+    </script>
+    

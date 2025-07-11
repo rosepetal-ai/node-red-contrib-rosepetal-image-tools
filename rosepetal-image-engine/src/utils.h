@@ -84,4 +84,76 @@ return std::chrono::duration<double, std::milli>(t1 - t0).count();
 
 
 
+// Devuelve "BGRA", "BGR" o "GRAY" a partir de "int8_BGRA", "int16_GRAY", etc.
+inline std::string ExtractChannelOrder(const std::string& chFull) {
+  auto pos = chFull.find('_');
+  return pos == std::string::npos ? chFull : chFull.substr(pos + 1);
+}
+
+
+// Convierte "#RRGGBB" o "rgb(r,g,b)" → cv::Scalar(B,G,R).  Devuelve `def` si falla.
+inline cv::Scalar ParseColor(const std::string& s,
+  const cv::Scalar& def = {0,0,0})
+{
+if (s.empty()) return def;
+
+if (s[0] == '#') {                       // forma #RRGGBB
+unsigned v = std::stoul(s.substr(1), nullptr, 16);
+return cv::Scalar(v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF);
+}
+int r, g, b;
+if (std::sscanf(s.c_str(), "rgb(%d,%d,%d)", &r, &g, &b) == 3)
+return cv::Scalar(b, g, r);
+
+return def;
+}
+
+// Cede un std::vector<uchar> al JS sin copia (zero-copy).
+inline Napi::Value VectorToBuffer(Napi::Env env, std::vector<uchar>&& v)
+{
+  auto* vec = new std::vector<uchar>(std::move(v));          // ⇢ heap
+  return Napi::Buffer<uchar>::New(
+      env, vec->data(), vec->size(),
+      [](Napi::Env, uchar*, std::vector<uchar>* p) { delete p; }, vec);
+}
+
+// Pasa un cv::Mat 8-bit/16-bit a objeto raw {width,height,channels,data}.
+inline Napi::Object MatToRawJS(Napi::Env env,
+  const cv::Mat& m,
+  const std::string& order)
+{
+Napi::Object o = Napi::Object::New(env);
+o.Set("width",  Napi::Number::New(env, m.cols));
+o.Set("height", Napi::Number::New(env, m.rows));
+
+std::string depth = (m.depth() == CV_16U) ? "int16" : "int8";
+o.Set("channels", Napi::String::New(env, depth + "_" + order));
+
+size_t bytes = m.total() * m.elemSize();
+auto* raw = new uint8_t[bytes];
+std::memcpy(raw, m.data, bytes);
+
+o.Set("data", Napi::Buffer<uint8_t>::New(
+env, raw, bytes,
+[](Napi::Env, uint8_t* p) { delete[] p; }));
+return o;
+}
+
+// Crea el objeto { convertMs, taskMs, encodeMs } para devolver a JS.
+inline Napi::Object MakeTimingJS(Napi::Env env,
+  double convertMs,
+  double taskMs,
+  double encodeMs = 0.0)
+{
+Napi::Object t = Napi::Object::New(env);
+t.Set("convertMs", Napi::Number::New(env, convertMs));
+t.Set("taskMs",    Napi::Number::New(env, taskMs));
+t.Set("encodeMs",  Napi::Number::New(env, encodeMs));
+return t;
+}
+
+
+
+
+
 #endif // UTILS_H

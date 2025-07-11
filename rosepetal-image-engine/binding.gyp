@@ -4,7 +4,8 @@
       "target_name": "addon",
       "sources": [
         "src/main.cpp",
-        "src/resize.cpp"
+        "src/resize.cpp",
+        "src/rotate.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

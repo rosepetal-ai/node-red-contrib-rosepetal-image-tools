@@ -1,9 +1,11 @@
 #include <napi.h>
 
 Napi::Value Resize(const Napi::CallbackInfo& info);
+Napi::Value Rotate(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "resize"), Napi::Function::New(env, Resize));
+  exports.Set(Napi::String::New(env, "rotate"), Napi::Function::New(env, Rotate));
   return exports;
 }
 

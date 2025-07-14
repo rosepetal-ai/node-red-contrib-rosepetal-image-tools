@@ -5,7 +5,8 @@
       "sources": [
         "src/main.cpp",
         "src/resize.cpp",
-        "src/rotate.cpp"
+        "src/rotate.cpp",
+        "src/crop.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

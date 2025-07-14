@@ -1,0 +1,154 @@
+<!-- ───────── nodes/rosepetal-crop/crop.html (revised) ────────────── -->
+
+<!-- 1 ▸ Runtime registration -->
+<script type="text/javascript">
+  RED.nodes.registerType('rosepetal-crop',{
+  
+    category:'Rosepetal Image',
+    color   :'#DDA0DD',
+    icon    :'font-awesome/fa-crop',
+  
+    defaults:{
+      name:{value:""},
+      inputPath:{value:"payload"},   inputPathType:{value:"msg"},
+      outputPath:{value:"payload"},  outputPathType:{value:"msg"},
+      outputAsJpg:{value:false},
+  
+      coordNorm:{value:true},      /* ⇄ pixels / 0–1 */
+  
+      /* coords */
+      x1:{value:"0"},   x1Type:{value:"num"},
+      y1:{value:"1"},   y1Type:{value:"num"},
+      x2:{value:"1"},   x2Type:{value:"num"},
+      y2:{value:"0"},   y2Type:{value:"num"}
+    },
+  
+    inputs:1, outputs:1,
+    label:function(){ return this.name || "crop"; },
+  
+    /* ---------------- oneditprepare ---------------- */
+    oneditprepare:function(){
+  
+      /* I/O typedInputs */
+      $("#node-input-inputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-inputPathType"
+      });
+      $("#node-input-outputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-outputPathType"
+      });
+  
+      /* coordinate typedInputs */
+      ["x1","y1","x2","y2"].forEach(id=>{
+        $("#node-input-"+id).typedInput({
+          default:'num',
+          types:['num','msg','flow','global'],
+          typeField:"#node-input-"+id+"Type"
+        });
+      });
+  
+      /* normalised toggle → show/hide help blocks */
+      function updateTips(){
+        const on = $("#node-input-coordNorm").prop("checked");
+        $("#norm-enabled").toggle( on );
+        $("#norm-disabled").toggle(!on );
+      }
+      $("#node-input-coordNorm").on("change",updateTips);
+      updateTips();          // initial state
+    }
+  });
+  </script>
+  
+  <!-- 2 ▸ Edit‑dialog template -->
+  <script type="text/x-red" data-template-name="rosepetal-crop">
+  <style>
+    .rp-tip{font-size:.85em;margin:4px 0;color:#666}
+  </style>
+  
+  <!-- Name -->
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name">
+  </div>
+  
+  <hr>
+  
+  <!-- I/O -->
+  <div class="form-row">
+    <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label>
+    <input type="text" id="node-input-inputPath" style="width:70%;">
+    <input type="hidden" id="node-input-inputPathType">
+  </div>
+  <div class="form-row">
+    <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output</label>
+    <input type="text" id="node-input-outputPath" style="width:70%;">
+    <input type="hidden" id="node-input-outputPathType">
+  </div>
+  <div class="form-row">
+    <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> JPG</label>
+    <input type="checkbox" id="node-input-outputAsJpg" style="width:20px;height:20px;">
+  </div>
+  
+  <hr>
+  
+  <!-- Normalised switch -->
+  <div class="form-row">
+    <label for="node-input-coordNorm"><i class="fa fa-percent"></i> Normalised</label>
+    <input type="checkbox" id="node-input-coordNorm" style="width:20px;height:20px;">
+  </div>
+  
+  <!-- Tips that toggle -->
+  <div id="norm-enabled"  class="form-tips rp-tip">
+    <b>Normalised ON :</b> values must be between <code>0.0</code> (bottom / left) and <code>1.0</code> (top / right).
+  </div>
+  <div id="norm-disabled" class="form-tips rp-tip">
+    <b>Normalised OFF:</b> values are absolute pixels (origin at bottom‑left).
+  </div>
+
+  <br>
+
+  
+  <!-- Coordinate inputs (single column) -->
+  <strong>Top‑left corner</strong>
+  <div class="form-row">
+    <label><i class="fa fa-long-arrow-right"></i> x1</label>
+    <input type="text" id="node-input-x1" style="width:70%;">
+    <input type="hidden" id="node-input-x1Type">
+  </div>
+  <div class="form-row">
+    <label><i class="fa fa-long-arrow-up"></i> y1</label>
+    <input type="text" id="node-input-y1" style="width:70%;">
+    <input type="hidden" id="node-input-y1Type">
+  </div>
+  
+  <strong>Bottom‑right corner</strong>
+  <div class="form-row">
+    <label><i class="fa fa-long-arrow-right"></i> x2</label>
+    <input type="text" id="node-input-x2" style="width:70%;">
+    <input type="hidden" id="node-input-x2Type">
+  </div>
+  <div class="form-row">
+    <label><i class="fa fa-long-arrow-up"></i> y2</label>
+    <input type="text" id="node-input-y2" style="width:70%;">
+    <input type="hidden" id="node-input-y2Type">
+  </div>
+  </script>
+  
+  <!-- 3 ▸ Help panel -->
+  <script type="text/x-red" data-help-name="rosepetal-crop">
+  <p><b>rosepetal‑crop</b> extracts a rectangular region from each incoming image.</p>
+  
+  <h3>Coordinates</h3>
+  <ul>
+    <li><em>Normalised</em> (0‑1) or <em>Pixels</em> &mdash; toggle with the checkbox.</li>
+    <li>Each field can also reference <code>msg</code>, <code>flow</code>, or <code>global</code> properties.</li>
+  </ul>
+  
+  <h3>Output</h3>
+  <p>Untick <em>JPG</em> for a RAW object, or tick it for a JPEG buffer.</p>
+  
+  <h3>Status</h3>
+  <p>The node status shows timing: <code>conv | task | enc</code>.</p>
+  </script>
+  

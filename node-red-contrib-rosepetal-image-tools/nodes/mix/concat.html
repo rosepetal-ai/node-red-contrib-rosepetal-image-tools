@@ -1,0 +1,75 @@
+<!-- nodes/rosepetal-concat/concat.html -->
+
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-concat',{
+      category:'Rosepetal Image',
+      color:'#DDA0DD',
+      icon:'font-awesome/fa-th-large',
+      defaults:{
+        name:{value:""},
+        inputPath:{value:"payload"}, inputPathType:{value:"msg"},
+        outputPath:{value:"payload"},outputPathType:{value:"msg"},
+        outputAsJpg:{value:false},
+        direction:{value:"right"},   // right|left|down|up
+        strategy:{value:"pad-start"}, // pad-start|pad-end|pad-both|resize
+      },
+      inputs:1,outputs:1,
+      label:function(){return this.name||"concat";},
+      oneditprepare:function(){
+        $("#node-input-inputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-inputPathType"});
+        $("#node-input-outputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-outputPathType"});
+      }
+    });
+    </script>
+    
+    <script type="text/x-red" data-template-name="rosepetal-concat">
+      <div class="form-row">
+        <label><i class="fa fa-sign-in"></i> Input</label>
+        <input type="text" id="node-input-inputPath" style="width:70%;">
+        <input type="hidden" id="node-input-inputPathType">
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-sign-out"></i> Output</label>
+        <input type="text" id="node-input-outputPath" style="width:70%;">
+        <input type="hidden" id="node-input-outputPathType">
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-file-image-o"></i> JPG</label>
+        <input type="checkbox" id="node-input-outputAsJpg">
+      </div>
+      <hr/>
+      <div class="form-row">
+        <label><i class="fa fa-arrows-h"></i> Direction</label>
+        <select id="node-input-direction">
+          <option value="right">→ Right</option>
+          <option value="left">← Left</option>
+          <option value="down">↓ Down</option>
+          <option value="up">↑ Up</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label><i class="fa fa-th"></i> Strategy</label>
+        <select id="node-input-strategy">
+          <option value="pad-start">Pad at start</option>
+          <option value="pad-end">Pad at end</option>
+          <option value="pad-both">Pad both sides</option>
+          <option value="resize">Resize to max</option>
+        </select>
+      </div>
+    </script>
+    
+    <script type="text/x-red" data-help-name="rosepetal-concat">
+      <p><b>rosepetal-concat</b> stitches multiple images into one.</p>
+      <ul>
+        <li><b>Direction</b> — choose horizontal (→/←) or vertical (↓/↑).</li>
+        <li><b>Strategy</b> — how to fill extra space:
+          <ul>
+            <li><em>Pad start/end/both</em> (black fill)</li>
+            <li><em>Resize</em> all smaller images to the max dimension.</li>
+          </ul>
+        </li>
+      </ul>
+      <p>Tick <em>JPG</em> to get a JPEG buffer, otherwise a raw object.</p>
+      <p>The status shows timings: <code>conv | task | enc</code>.</p>
+    </script>
+    

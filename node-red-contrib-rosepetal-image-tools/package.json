@@ -18,7 +18,8 @@
             "rosepetal-image-in": "nodes/io/image-in.js",
             "rosepetal-resize": "nodes/transform/resize.js",
             "rosepetal-rotate": "nodes/transform/rotate.js",
-            "rosepetal-crop": "nodes/transform/crop.js"
+            "rosepetal-crop": "nodes/transform/crop.js",
+            "rosepetal-concat": "nodes/mix/concat.js"
         }
     },
     "dependencies": {

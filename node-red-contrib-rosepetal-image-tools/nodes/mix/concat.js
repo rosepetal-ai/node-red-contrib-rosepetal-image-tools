@@ -30,10 +30,11 @@ module.exports = function (RED) {
         const direction = config.direction;   // 'right' | 'left' | 'down' | 'up'
         const strategy  = config.strategy;    // 'pad-start' | 'pad-end' | 'pad-both' | 'resize'
         const asJpg     = !!config.outputAsJpg;
+        const padColorHex = config.padColor    || '#000000';
 
         /* ▸ Single call to the C++ addon --------------------------------- */
         const { image, timing = {} } =
-              await Cpp.concat(imgs, direction, strategy, asJpg);
+              await Cpp.concat(imgs, direction, strategy, padColorHex, asJpg);
 
         /* ▸ Write the single result back to msg -------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);

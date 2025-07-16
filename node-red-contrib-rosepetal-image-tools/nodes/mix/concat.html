@@ -12,6 +12,7 @@
         outputAsJpg:{value:false},
         direction:{value:"right"},   // right|left|down|up
         strategy:{value:"pad-start"}, // pad-start|pad-end|pad-both|resize
+        padColor:{ value:"#000000" }
       },
       inputs:1,outputs:1,
       label:function(){return this.name||"concat";},
@@ -33,10 +34,7 @@
         <input type="text" id="node-input-outputPath" style="width:70%;">
         <input type="hidden" id="node-input-outputPathType">
       </div>
-      <div class="form-row">
-        <label><i class="fa fa-file-image-o"></i> JPG</label>
-        <input type="checkbox" id="node-input-outputAsJpg">
-      </div>
+      <div class="form-row"><label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> JPG</label><input type="checkbox" id="node-input-outputAsJpg" style="width:20px;height:20px;"></div>
       <hr/>
       <div class="form-row">
         <label><i class="fa fa-arrows-h"></i> Direction</label>
@@ -56,6 +54,7 @@
           <option value="resize">Resize to max</option>
         </select>
       </div>
+      <div class="form-row"><label for="node-input-padColor"><i class="fa fa-tint"></i> Pad colour</label><input type="color" id="node-input-padColor" style="width:80px;"></div>
     </script>
     
     <script type="text/x-red" data-help-name="rosepetal-concat">

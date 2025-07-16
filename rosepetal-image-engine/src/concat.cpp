@@ -55,8 +55,8 @@ protected:
       cv::hconcat(tiles,result);
       if(direction=="left") cv::flip(result,result,1);
     }else{
-      cv::vconcat(tiles,result);
-      if(direction=="up")  cv::flip(result,result,0);
+      if(direction=="up")std::reverse(tiles.begin(), tiles.end());  // invertir orden
+        cv::vconcat(tiles,result);  
     }
 
     taskMs=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;

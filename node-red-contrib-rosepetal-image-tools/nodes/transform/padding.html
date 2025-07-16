@@ -1,0 +1,123 @@
+<!-- 1 ▸ Runtime registration ------------------------------------------------>
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-padding', {
+      category : 'Rosepetal Image',
+      color    : '#DDA0DD',
+      icon     : 'font-awesome/fa-square-o',
+      defaults : {
+        name:{value:""},
+    
+        /* I/O */
+        inputPath :{value:"payload"}, inputPathType :{value:"msg"},
+        outputPath:{value:"payload"}, outputPathType:{value:"msg"},
+        outputAsJpg:{value:false},
+    
+        /* margins (pixels) */
+        top   :{value:"0"}, topType   :{value:"num"},
+        bottom:{value:"0"}, bottomType:{value:"num"},
+        left  :{value:"0"}, leftType  :{value:"num"},
+        right :{value:"0"}, rightType :{value:"num"},
+    
+        /* colour */
+        padColor:{value:"#000000"}
+      },
+      inputs:1, outputs:1,
+      label:function(){ return this.name || "padding"; },
+    
+      oneditprepare:function(){
+        /* I/O path typed‑inputs */
+        $("#node-input-inputPath").typedInput({
+          default:'msg', types:['msg','flow','global'],
+          typeField:"#node-input-inputPathType"
+        });
+        $("#node-input-outputPath").typedInput({
+          default:'msg', types:['msg','flow','global'],
+          typeField:"#node-input-outputPathType"
+        });
+    
+        /* margins typed‑inputs */
+        ["top","bottom","left","right"].forEach(id=>{
+          $("#node-input-"+id).typedInput({
+            default:'num',
+            types:['num','msg','flow','global'],
+            typeField:"#node-input-"+id+"Type"
+          });
+        });
+      }
+    });
+    </script>
+    
+    <!-- 2 ▸ Edit‑dialog template ------------------------------------------------>
+    <script type="text/x-red" data-template-name="rosepetal-padding">
+    <div class="form-row">
+      <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+      <input type="text" id="node-input-name">
+    </div>
+    
+    <hr>
+    
+    <div class="form-row">
+      <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label>
+      <input type="text" id="node-input-inputPath" style="width:70%;">
+      <input type="hidden" id="node-input-inputPathType">
+    </div>
+    <div class="form-row">
+      <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output</label>
+      <input type="text" id="node-input-outputPath" style="width:70%;">
+      <input type="hidden" id="node-input-outputPathType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> Out as JPG</label>
+        <input type="checkbox" id="node-input-outputAsJpg" style="width: 20px; height: 20px;">
+    </div>
+    
+    <hr>
+    
+    <strong>Margins (pixels)</strong>
+    <div class="form-row">
+      <label>Top</label>
+      <input type="text" id="node-input-top" style="width:65%;">
+      <input type="hidden" id="node-input-topType">
+    </div>
+    <div class="form-row">
+      <label>Bottom</label>
+      <input type="text" id="node-input-bottom" style="width:65%;">
+      <input type="hidden" id="node-input-bottomType">
+    </div>
+    <div class="form-row">
+      <label>Left</label>
+      <input type="text" id="node-input-left" style="width:65%;">
+      <input type="hidden" id="node-input-leftType">
+    </div>
+    <div class="form-row">
+      <label>Right</label>
+      <input type="text" id="node-input-right" style="width:65%;">
+      <input type="hidden" id="node-input-rightType">
+    </div>
+    
+    <div class="form-row">
+      <label for="node-input-padColor"><i class="fa fa-tint"></i> Colour</label>
+      <input type="color" id="node-input-padColor" style="width:80px;">
+    </div>
+    </script>
+    
+    <!-- 3 ▸ Help panel --------------------------------------------------------->
+    <script type="text/x-red" data-help-name="rosepetal-padding">
+    <p><b>rosepetal‑padding</b> adds a solid border around each incoming image.</p>
+    
+    <h3>Margins</h3>
+    <p>Specify the number of pixels to add on each side.  
+    Each field can also pull values from <code>msg</code>, <code>flow</code> or <code>global</code>.</p>
+    
+    <h3>Pad colour</h3>
+    <p>Choose any colour; it is passed to the C++ engine in <code>#RRGGBB</code> format and
+    automatically mapped to the image’s channel order.</p>
+    
+    <h3>Output</h3>
+    <p>Leave <em>JPG</em> unticked for a raw object; tick it to receive a compact JPEG buffer.</p>
+    
+    <h3>Status bar</h3>
+    <p>The node shows conversion, task and encoding times in the same style as
+    <em>resize</em>, <em>rotate</em> and <em>crop</em>.</p>
+    </script>
+    

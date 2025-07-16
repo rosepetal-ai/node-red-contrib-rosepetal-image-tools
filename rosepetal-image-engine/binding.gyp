@@ -7,7 +7,8 @@
         "src/resize.cpp",
         "src/rotate.cpp",
         "src/crop.cpp",
-        "src/concat.cpp"
+        "src/concat.cpp",
+        "src/padding.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

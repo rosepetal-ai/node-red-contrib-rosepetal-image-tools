@@ -1,0 +1,188 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-filter', {
+        category: 'Rosepetal Image',
+        color: '#DDA0DD',
+        defaults: {
+            name: { value: "" },
+            // Standard I/O properties (same as other nodes)
+            inputPath: { value: "payload" },
+            inputPathType: { value: "msg" },
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" },
+            outputAsJpg: { value: false },
+            // Filter-specific properties
+            filterType: { value: "blur" },
+            kernelSize: { value: "3" },
+            kernelSizeType: { value: "num" },
+            intensity: { value: "1.0" },
+            intensityType: { value: "num" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-magic",
+        label: function() {
+            if (this.name) { return this.name; }
+            return `filter`;
+        },
+        oneditprepare: function() {
+            // === Standard I/O TypedInput initialization ===
+            $("#node-input-inputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-inputPathType"
+            });
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
+
+            // === Filter-specific TypedInput initialization ===
+            $("#node-input-kernelSize").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-kernelSizeType"
+            });
+            $("#node-input-intensity").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-intensityType"
+            });
+
+            // === Dynamic parameter updates based on filter type ===
+            function updateFilterParameters() {
+                const filterType = $("#node-input-filterType").val();
+                const kernelSizeRow = $("#kernel-size-row");
+                const intensityRow = $("#intensity-row");
+                const intensityLabel = $("#intensity-label");
+                
+                // Show/hide and update labels based on filter type
+                switch (filterType) {
+                    case 'blur':
+                        kernelSizeRow.show();
+                        intensityRow.show();
+                        intensityLabel.text("Intensity");
+                        break;
+                    case 'sharpen':
+                        kernelSizeRow.show();
+                        intensityRow.show();
+                        intensityLabel.text("Sharpness");
+                        break;
+                    case 'edge':
+                        kernelSizeRow.show();
+                        intensityRow.show();
+                        intensityLabel.text("Edge Strength");
+                        break;
+                    case 'emboss':
+                        kernelSizeRow.hide();
+                        intensityRow.show();
+                        intensityLabel.text("Emboss Depth");
+                        break;
+                    case 'gaussian':
+                        kernelSizeRow.show();
+                        intensityRow.show();
+                        intensityLabel.text("Blur Radius");
+                        break;
+                    default:
+                        kernelSizeRow.show();
+                        intensityRow.show();
+                        intensityLabel.text("Intensity");
+                }
+            }
+
+            // Bind filter type change event
+            $("#node-input-filterType").on('change', updateFilterParameters);
+            
+            // Initial parameter update
+            updateFilterParameters();
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="rosepetal-filter">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <hr>
+
+    <!-- STANDARD I/O SECTION (same as all other nodes) -->
+    <div class="form-row">
+        <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+        <input type="text" id="node-input-inputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-inputPathType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> Out as JPG</label>
+        <input type="checkbox" id="node-input-outputAsJpg" style="width: 20px; height: 20px;">
+    </div>
+
+    <hr>
+
+    <!-- FILTER-SPECIFIC SECTION -->
+    <div class="form-row">
+        <label for="node-input-filterType"><i class="fa fa-magic"></i> Filter Type</label>
+        <select id="node-input-filterType" style="width: 70%;">
+            <option value="blur">Blur</option>
+            <option value="sharpen">Sharpening</option>
+            <option value="edge">Edge Detection</option>
+            <option value="emboss">Emboss</option>
+            <option value="gaussian">Gaussian Blur</option>
+        </select>
+    </div>
+
+    <div class="form-row" id="kernel-size-row">
+        <label for="node-input-kernelSize"><i class="fa fa-th"></i> Kernel Size</label>
+        <input type="text" id="node-input-kernelSize" style="width: 70%;" placeholder="3, 5, 7, 9, 11, 13, 15">
+        <input type="hidden" id="node-input-kernelSizeType">
+    </div>
+
+    <div class="form-row" id="intensity-row">
+        <label for="node-input-intensity" id="intensity-label"><i class="fa fa-sliders"></i> Intensity</label>
+        <input type="text" id="node-input-intensity" style="width: 70%;" placeholder="0.0 - 2.0">
+        <input type="hidden" id="node-input-intensityType">
+    </div>
+
+    <div class="form-tips">
+        <b>Tips:</b>
+        <ul>
+            <li><b>Kernel Size:</b> Must be odd (3, 5, 7, etc.). Larger sizes create stronger effects.</li>
+            <li><b>Intensity:</b> 0.0 = no effect, 1.0 = normal, 2.0 = maximum effect.</li>
+            <li>All parameters support dynamic values from <code>msg</code>, <code>flow</code>, or <code>global</code> context.</li>
+        </ul>
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="rosepetal-filter">
+    <p>Applies various image processing kernels to images using a high-performance C++ backend.</p>
+
+    <h3>I/O Properties</h3>
+    <p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
+
+    <h3>Filter Types</h3>
+    <ul>
+        <li><b>Blur:</b> Basic box blur filter for smoothing images</li>
+        <li><b>Sharpening:</b> Enhances edges and details in images</li>
+        <li><b>Edge Detection:</b> Sobel edge detection to highlight edges</li>
+        <li><b>Emboss:</b> Creates a 3D embossed effect</li>
+        <li><b>Gaussian Blur:</b> Smooth blur with Gaussian distribution</li>
+    </ul>
+
+    <h3>Parameters</h3>
+    <ul>
+        <li><b>Kernel Size:</b> Size of the processing kernel (3x3, 5x5, etc.). Must be odd numbers between 3 and 15.</li>
+        <li><b>Intensity:</b> Strength of the effect (0.0 to 2.0). Higher values create stronger effects.</li>
+    </ul>
+
+    <h3>Performance</h3>
+    <p>The node displays timing information in its status, showing conversion, processing, and encoding times. All operations are optimized using OpenCV's high-performance functions.</p>
+
+    <h3>Input/Output</h3>
+    <p>Supports both single images and arrays of images. Processing is performed in parallel for maximum performance.</p>
+</script>

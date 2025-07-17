@@ -31,12 +31,12 @@ module.exports = function (RED) {
 
         /* lanzar recortes en paralelo */
         const jobs = imgs.map(img => {
-          const x1 = Number(NodeUtils.resolveDimension(node, config.x1Type, config.x1, msg));
-          const y1 = Number(NodeUtils.resolveDimension(node, config.y1Type, config.y1, msg));
-          const x2 = Number(NodeUtils.resolveDimension(node, config.x2Type, config.x2, msg));
-          const y2 = Number(NodeUtils.resolveDimension(node, config.y2Type, config.y2, msg));
+          const x = Number(NodeUtils.resolveDimension(node, config.cropXType, config.cropX, msg));
+          const y = Number(NodeUtils.resolveDimension(node, config.cropYType, config.cropY, msg));
+          const width = Number(NodeUtils.resolveDimension(node, config.widthType, config.width, msg));
+          const height = Number(NodeUtils.resolveDimension(node, config.heightType, config.height, msg));
 
-          return CppProcessor.crop(img, x1, y1, x2, y2, normalized, jpg);
+          return CppProcessor.crop(img, x, y, width, height, normalized, jpg);
         });
 
         const results = await Promise.all(jobs);

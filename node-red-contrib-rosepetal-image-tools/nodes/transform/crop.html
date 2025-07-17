@@ -1,6 +1,6 @@
 <!-- ───────── nodes/rosepetal-crop/crop.html (revised) ────────────── -->
 
-<!-- 1 ▸ Runtime registration -->
+<!-- 1 ▸ Runtime registration -->
 <script type="text/javascript">
   RED.nodes.registerType('rosepetal-crop',{
   
@@ -17,10 +17,10 @@
       coordNorm:{value:true},      /* ⇄ pixels / 0–1 */
   
       /* coords */
-      x1:{value:"0"},   x1Type:{value:"num"},
-      y1:{value:"1"},   y1Type:{value:"num"},
-      x2:{value:"1"},   x2Type:{value:"num"},
-      y2:{value:"0"},   y2Type:{value:"num"}
+      cropX:{value:"0"},   cropXType:{value:"num"},
+      cropY:{value:"0"},   cropYType:{value:"num"},
+      width:{value:"1"},   widthType:{value:"num"},
+      height:{value:"1"},   heightType:{value:"num"}
     },
   
     inputs:1, outputs:1,
@@ -40,7 +40,7 @@
       });
   
       /* coordinate typedInputs */
-      ["x1","y1","x2","y2"].forEach(id=>{
+      ["cropX","cropY","width","height"].forEach(id=>{
         $("#node-input-"+id).typedInput({
           default:'num',
           types:['num','msg','flow','global'],
@@ -60,95 +60,99 @@
   });
   </script>
   
-  <!-- 2 ▸ Edit‑dialog template -->
+  <!-- 2 ▸ Edit‑dialog template -->
   <script type="text/x-red" data-template-name="rosepetal-crop">
-  <style>
-    .rp-tip{font-size:.85em;margin:4px 0;color:#666}
-  </style>
   
   <!-- Name -->
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
-    <input type="text" id="node-input-name">
+    <input type="text" id="node-input-name" placeholder="Name">
   </div>
   
   <hr>
   
-  <!-- I/O -->
+  <!-- STANDARD I/O SECTION (same as all other nodes) -->
   <div class="form-row">
-    <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label>
-    <input type="text" id="node-input-inputPath" style="width:70%;">
+    <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+    <input type="text" id="node-input-inputPath" style="width: 70%;">
     <input type="hidden" id="node-input-inputPathType">
   </div>
   <div class="form-row">
-    <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output</label>
-    <input type="text" id="node-input-outputPath" style="width:70%;">
+    <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+    <input type="text" id="node-input-outputPath" style="width: 70%;">
     <input type="hidden" id="node-input-outputPathType">
   </div>
   <div class="form-row">
-    <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> JPG</label>
-    <input type="checkbox" id="node-input-outputAsJpg" style="width:20px;height:20px;">
+    <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> Out as JPG</label>
+    <input type="checkbox" id="node-input-outputAsJpg" style="width: 20px; height: 20px;">
   </div>
   
   <hr>
   
-  <!-- Normalised switch -->
+  <!-- CROP-SPECIFIC SECTION -->
   <div class="form-row">
     <label for="node-input-coordNorm"><i class="fa fa-percent"></i> Normalised</label>
-    <input type="checkbox" id="node-input-coordNorm" style="width:20px;height:20px;">
+    <input type="checkbox" id="node-input-coordNorm" style="width: 20px; height: 20px;">
   </div>
   
   <!-- Tips that toggle -->
-  <div id="norm-enabled"  class="form-tips rp-tip">
-    <b>Normalised ON :</b> values must be between <code>0.0</code> (bottom / left) and <code>1.0</code> (top / right).
+  <div id="norm-enabled" class="form-tips" style="font-size: 0.85em; margin: 4px 0; color: #666;">
+    <b>Normalised ON:</b> values must be between <code>0.0</code> and <code>1.0</code> (fractions of image dimensions).
   </div>
-  <div id="norm-disabled" class="form-tips rp-tip">
-    <b>Normalised OFF:</b> values are absolute pixels (origin at bottom‑left).
+  <div id="norm-disabled" class="form-tips" style="font-size: 0.85em; margin: 4px 0; color: #666;">
+    <b>Normalised OFF:</b> values are absolute pixels from top-left corner.
   </div>
 
-  <br>
+  <div class="form-row">
+    <label for="node-input-cropX"><i class="fa fa-arrows-h"></i> X Position</label>
+    <input type="text" id="node-input-cropX" style="width: 70%;" placeholder="0">
+    <input type="hidden" id="node-input-cropXType">
+  </div>
+  <div class="form-row">
+    <label for="node-input-cropY"><i class="fa fa-arrows-v"></i> Y Position</label>
+    <input type="text" id="node-input-cropY" style="width: 70%;" placeholder="0">
+    <input type="hidden" id="node-input-cropYType">
+  </div>
+  <div class="form-row">
+    <label for="node-input-width"><i class="fa fa-arrows-h"></i> Width</label>
+    <input type="text" id="node-input-width" style="width: 70%;" placeholder="100">
+    <input type="hidden" id="node-input-widthType">
+  </div>
+  <div class="form-row">
+    <label for="node-input-height"><i class="fa fa-arrows-v"></i> Height</label>
+    <input type="text" id="node-input-height" style="width: 70%;" placeholder="100">
+    <input type="hidden" id="node-input-heightType">
+  </div>
 
-  
-  <!-- Coordinate inputs (single column) -->
-  <strong>Top‑left corner</strong>
-  <div class="form-row">
-    <label><i class="fa fa-long-arrow-right"></i> x1</label>
-    <input type="text" id="node-input-x1" style="width:70%;">
-    <input type="hidden" id="node-input-x1Type">
-  </div>
-  <div class="form-row">
-    <label><i class="fa fa-long-arrow-up"></i> y1</label>
-    <input type="text" id="node-input-y1" style="width:70%;">
-    <input type="hidden" id="node-input-y1Type">
-  </div>
-  
-  <strong>Bottom‑right corner</strong>
-  <div class="form-row">
-    <label><i class="fa fa-long-arrow-right"></i> x2</label>
-    <input type="text" id="node-input-x2" style="width:70%;">
-    <input type="hidden" id="node-input-x2Type">
-  </div>
-  <div class="form-row">
-    <label><i class="fa fa-long-arrow-up"></i> y2</label>
-    <input type="text" id="node-input-y2" style="width:70%;">
-    <input type="hidden" id="node-input-y2Type">
+  <div class="form-tips">
+    <b>Tips:</b>
+    <ul>
+      <li><b>X, Y:</b> Position of the top-left corner of the crop area.</li>
+      <li><b>Width, Height:</b> Dimensions of the crop area.</li>
+      <li>All parameters support dynamic values from <code>msg</code>, <code>flow</code>, or <code>global</code> context.</li>
+    </ul>
   </div>
   </script>
   
-  <!-- 3 ▸ Help panel -->
+  <!-- 3 ▸ Help panel -->
   <script type="text/x-red" data-help-name="rosepetal-crop">
-  <p><b>rosepetal‑crop</b> extracts a rectangular region from each incoming image.</p>
+  <p><b>rosepetal‑crop</b> extracts a rectangular region from each incoming image using x,y,width,height coordinates.</p>
+  
+  <h3>I/O Properties</h3>
+  <p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
   
   <h3>Coordinates</h3>
   <ul>
-    <li><em>Normalised</em> (0‑1) or <em>Pixels</em> &mdash; toggle with the checkbox.</li>
-    <li>Each field can also reference <code>msg</code>, <code>flow</code>, or <code>global</code> properties.</li>
+    <li><b>X, Y Position:</b> Top-left corner of the crop area</li>
+    <li><b>Width, Height:</b> Dimensions of the crop area</li>
+    <li><b>Normalised:</b> Toggle between normalized (0-1) and pixel coordinates</li>
+    <li>All coordinate fields support <code>msg</code>, <code>flow</code>, and <code>global</code> property references</li>
   </ul>
   
   <h3>Output</h3>
-  <p>Untick <em>JPG</em> for a RAW object, or tick it for a JPEG buffer.</p>
+  <p>Untick <em>Out as JPG</em> for a RAW object, or tick it for a JPEG buffer.</p>
   
-  <h3>Status</h3>
-  <p>The node status shows timing: <code>conv | task | enc</code>.</p>
+  <h3>Performance</h3>
+  <p>The node displays timing information showing conversion, processing, and encoding times. All operations are optimized using OpenCV's high-performance functions.</p>
   </script>
   

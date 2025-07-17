@@ -29,7 +29,7 @@ This is a Node-RED contribution package that provides C++ powered image processi
 - **Node Utilities**: `lib/node-utils.js` - Common utilities for Node-RED nodes
 - **Node Types**: 
   - IO: `nodes/io/image-in.js` - Image input using Sharp.js
-  - Transform: `nodes/transform/` - resize, rotate, crop, padding, filter
+  - Transform: `nodes/transform/` - resize, rotate, crop (x,y,width,height), padding, filter
   - Mix: `nodes/mix/concat.js` - Image concatenation
 
 ### Image Data Flow

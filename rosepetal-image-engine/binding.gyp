@@ -9,7 +9,8 @@
         "src/crop.cpp",
         "src/concat.cpp",
         "src/padding.cpp",
-        "src/filter.cpp"
+        "src/filter.cpp",
+        "src/mosaic.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

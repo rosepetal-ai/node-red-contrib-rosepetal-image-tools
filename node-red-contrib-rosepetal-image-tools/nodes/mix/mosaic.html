@@ -1,0 +1,239 @@
+<!-- ───────── nodes/mix/mosaic.html ────────────── -->
+
+<!-- 1 ▸ Runtime registration -->
+<script type="text/javascript">
+  RED.nodes.registerType('rosepetal-mosaic',{
+  
+    category:'Rosepetal Image',
+    color   :'#DDA0DD',
+    icon    :'font-awesome/fa-th',
+  
+    defaults:{
+      name:{value:""},
+      inputPath:{value:"payload"},   inputPathType:{value:"msg"},
+      outputPath:{value:"payload"},  outputPathType:{value:"msg"},
+      outputAsJpg:{value:false},
+  
+      canvasWidth:{value:"800"},   canvasWidthType:{value:"num"},
+      canvasHeight:{value:"600"},  canvasHeightType:{value:"num"},
+      backgroundColor:{value:"#000000"},
+      coordNorm:{value:false},
+      
+      positions:{value:[]}  // Array of {arrayIndex, x, y} objects
+    },
+  
+    inputs:1, outputs:1,
+    label:function(){ return this.name || "mosaic"; },
+  
+    /* ---------------- oneditprepare ---------------- */
+    oneditprepare:function(){
+      const node = this;
+  
+      /* Standard I/O typedInputs */
+      $("#node-input-inputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-inputPathType"
+      });
+      $("#node-input-outputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-outputPathType"
+      });
+  
+      /* Canvas dimension typedInputs */
+      $("#node-input-canvasWidth").typedInput({
+        default:'num',
+        types:['num','msg','flow','global'],
+        typeField:"#node-input-canvasWidthType"
+      });
+      $("#node-input-canvasHeight").typedInput({
+        default:'num',
+        types:['num','msg','flow','global'],
+        typeField:"#node-input-canvasHeightType"
+      });
+  
+      /* Coordinate normalization toggle */
+      function updateCoordTips(){
+        const on = $("#node-input-coordNorm").prop("checked");
+        $("#norm-enabled").toggle( on );
+        $("#norm-disabled").toggle(!on );
+      }
+      $("#node-input-coordNorm").on("change", updateCoordTips);
+      updateCoordTips();
+  
+      /* Dynamic position mapping table */
+      function renderPositionTable() {
+        const container = $("#position-container");
+        container.empty();
+        
+        const table = $('<table id="position-table" style="width:100%; border-collapse: collapse; margin: 10px 0;">');
+        const header = $('<tr style="background-color: #f0f0f0; font-weight: bold;">');
+        header.append('<td style="padding: 8px; border: 1px solid #ddd;">Array Index</td>');
+        header.append('<td style="padding: 8px; border: 1px solid #ddd;">X Position</td>');
+        header.append('<td style="padding: 8px; border: 1px solid #ddd;">Y Position</td>');
+        header.append('<td style="padding: 8px; border: 1px solid #ddd;">Actions</td>');
+        table.append(header);
+        
+        node.positions.forEach((pos, index) => {
+          const row = $('<tr>');
+          row.append(`<td style="padding: 8px; border: 1px solid #ddd;"><input type="number" value="${pos.arrayIndex}" min="0" class="array-index" style="width: 100%;" /></td>`);
+          row.append(`<td style="padding: 8px; border: 1px solid #ddd;"><input type="number" value="${pos.x}" class="pos-x" style="width: 100%;" step="any" /></td>`);
+          row.append(`<td style="padding: 8px; border: 1px solid #ddd;"><input type="number" value="${pos.y}" class="pos-y" style="width: 100%;" step="any" /></td>`);
+          row.append(`<td style="padding: 8px; border: 1px solid #ddd;"><button type="button" class="remove-position" data-index="${index}" style="background: #ff4444; color: white; border: none; padding: 4px 8px; cursor: pointer;">Remove</button></td>`);
+          table.append(row);
+        });
+        
+        container.append(table);
+        
+        // Add new position button
+        const addButton = $('<button type="button" id="add-position" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; margin-top: 10px; cursor: pointer;">Add Position</button>');
+        container.append(addButton);
+      }
+      
+      // Initialize positions if empty
+      if (!node.positions || node.positions.length === 0) {
+        node.positions = [{arrayIndex: 0, x: 0, y: 0}];
+      }
+      
+      renderPositionTable();
+      
+      // Add position handler
+      $("#position-container").on("click", "#add-position", function() {
+        node.positions.push({arrayIndex: 0, x: 0, y: 0});
+        renderPositionTable();
+        RED.nodes.dirty(true); // Mark node as dirty
+      });
+      
+      // Remove position handler
+      $("#position-container").on("click", ".remove-position", function() {
+        const index = $(this).data("index");
+        node.positions.splice(index, 1);
+        renderPositionTable();
+        RED.nodes.dirty(true); // Mark node as dirty
+      });
+      
+      // Update positions when values change and mark node as dirty
+      $("#position-container").on("input", "input", function() {
+        const row = $(this).closest("tr");
+        const index = row.index() - 1; // Subtract 1 for header row
+        
+        if (index >= 0 && index < node.positions.length) {
+          node.positions[index].arrayIndex = parseInt(row.find(".array-index").val()) || 0;
+          node.positions[index].x = parseFloat(row.find(".pos-x").val()) || 0;
+          node.positions[index].y = parseFloat(row.find(".pos-y").val()) || 0;
+          
+          // Mark the node as dirty so Node-RED enables deploy
+          RED.nodes.dirty(true);
+        }
+      });
+    }
+  });
+</script>
+
+<!-- 2 ▸ Edit‑dialog template -->
+<script type="text/x-red" data-template-name="rosepetal-mosaic">
+
+<!-- Name -->
+<div class="form-row">
+  <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+  <input type="text" id="node-input-name" placeholder="Name">
+</div>
+
+<hr>
+
+<!-- STANDARD I/O SECTION (copied from crop.html) -->
+<div class="form-row">
+  <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+  <input type="text" id="node-input-inputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-inputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+  <input type="text" id="node-input-outputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-outputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> Out as JPG</label>
+  <input type="checkbox" id="node-input-outputAsJpg" style="width: 20px; height: 20px;">
+</div>
+
+<hr>
+
+<!-- CANVAS CONFIGURATION -->
+<div class="form-row">
+  <label for="node-input-canvasWidth"><i class="fa fa-arrows-h"></i> Canvas Width</label>
+  <input type="text" id="node-input-canvasWidth" style="width: 70%;" placeholder="800">
+  <input type="hidden" id="node-input-canvasWidthType">
+</div>
+<div class="form-row">
+  <label for="node-input-canvasHeight"><i class="fa fa-arrows-v"></i> Canvas Height</label>
+  <input type="text" id="node-input-canvasHeight" style="width: 70%;" placeholder="600">
+  <input type="hidden" id="node-input-canvasHeightType">
+</div>
+<div class="form-row">
+  <label for="node-input-backgroundColor"><i class="fa fa-paint-brush"></i> Background Color</label>
+  <input type="color" id="node-input-backgroundColor" style="width: 70px; height: 30px;">
+</div>
+
+<div class="form-row">
+  <label for="node-input-coordNorm"><i class="fa fa-percent"></i> Normalized Coords</label>
+  <input type="checkbox" id="node-input-coordNorm" style="width: 20px; height: 20px;">
+</div>
+
+<!-- Tips that toggle -->
+<div id="norm-enabled" class="form-tips" style="font-size: 0.85em; margin: 4px 0; color: #666;">
+  <b>Normalized ON:</b> position values must be between <code>0.0</code> and <code>1.0</code> (fractions of canvas dimensions).
+</div>
+<div id="norm-disabled" class="form-tips" style="font-size: 0.85em; margin: 4px 0; color: #666;">
+  <b>Normalized OFF:</b> position values are absolute pixels from top-left corner.
+</div>
+
+<hr>
+
+<!-- POSITION MAPPING TABLE -->
+<div class="form-row">
+  <label style="width: 100%; margin-bottom: 10px;"><i class="fa fa-th"></i> Image Positions</label>
+  <div id="position-container" style="width: 100%;"></div>
+</div>
+
+<div class="form-tips">
+  <b>Instructions:</b>
+  <ul>
+    <li><b>Array Index:</b> Which image from the input array to place (0 = first image, 1 = second, etc.)</li>
+    <li><b>X, Y Position:</b> Top-left corner coordinates on the canvas</li>
+    <li><b>Multiple Positions:</b> Same image can be placed multiple times at different positions</li>
+    <li><b>Dynamic Configuration:</b> Use Add/Remove buttons to manage position mappings</li>
+  </ul>
+</div>
+</script>
+
+<!-- 3 ▸ Help panel -->
+<script type="text/x-red" data-help-name="rosepetal-mosaic">
+<p><b>rosepetal‑mosaic</b> creates a composite image by placing multiple images from an input array onto a canvas at specified positions.</p>
+
+<h3>I/O Properties</h3>
+<p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
+
+<h3>Canvas Configuration</h3>
+<ul>
+  <li><b>Canvas Width/Height:</b> Dimensions of the output canvas in pixels</li>
+  <li><b>Background Color:</b> Canvas background color (hex format)</li>
+  <li><b>Normalized Coords:</b> Toggle between normalized (0-1) and pixel coordinates</li>
+</ul>
+
+<h3>Position Mapping</h3>
+<ul>
+  <li><b>Array Index:</b> Which image from the input array to place (0-based indexing)</li>
+  <li><b>X, Y Position:</b> Top-left corner coordinates for image placement</li>
+  <li><b>Multiple Instances:</b> The same image can be placed multiple times</li>
+  <li><b>Dynamic Configuration:</b> Add or remove position mappings as needed</li>
+</ul>
+
+<h3>Input Format</h3>
+<p>Expects an array of image objects (raw format or image buffers). Each image will be placed according to the position mappings configured in the node.</p>
+
+<h3>Output</h3>
+<p>Produces a single composite image. Uncheck <em>Out as JPG</em> for a RAW object, or check it for a JPEG buffer.</p>
+
+<h3>Performance</h3>
+<p>Ultra-optimized with zero-copy operations, parallel processing, and efficient memory management for maximum speed.</p>
+</script>

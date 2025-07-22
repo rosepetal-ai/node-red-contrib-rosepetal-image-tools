@@ -1,0 +1,75 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-array-in', {
+        category: 'Rosepetal Image',
+        color: '#A6E6A6',
+        defaults: {
+            name: { value: "" },
+            inputPath: { value: "payload" },
+            inputPathType: { value: "msg" },
+            arrayPosition: { value: 0 }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-list",
+        label: function() {
+            return this.name || `array in [${this.arrayPosition}]`;
+        },
+        oneditprepare: function() {
+            // Set up TypedInput for input path
+            $("#node-input-inputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-inputPathType"
+            });
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="rosepetal-array-in">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    
+    <hr>
+    
+    <div class="form-row">
+        <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+        <input type="text" id="node-input-inputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-inputPathType">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-arrayPosition"><i class="fa fa-sort-numeric-asc"></i> Array Position</label>
+        <input type="number" id="node-input-arrayPosition" min="0" step="1" style="width: 70%;" placeholder="0">
+    </div>
+    
+    <div class="form-tips">
+        <b>Tip:</b> Set array position starting from 0. This determines where this data will be placed in the output array.
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="rosepetal-array-in">
+    <p>Collects data from a specified input path and tags it for array assembly with a position index.</p>
+    
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Input from <span class="property-type">string</span></dt>
+        <dd>The location to read data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</dd>
+        <dt>Array Position <span class="property-type">number</span></dt>
+        <dd>The index position (0, 1, 2...) where this data should be placed in the final array.</dd>
+    </dl>
+
+    <h3>Usage</h3>
+    <p>Connect multiple array-in nodes to a single array-out node. Each array-in node should have a unique array position starting from 0.</p>
+    
+    <h3>Outputs</h3>
+    <p>The node passes through the original message with added metadata:</p>
+    <ul>
+        <li><code>msg.meta.arrayPosition</code> - The configured array position</li>
+        <li><code>msg.meta.arrayData</code> - The data extracted from the input path</li>
+    </ul>
+
+    <h3>Example</h3>
+    <p>Three array-in nodes with positions 0, 1, 2 feeding into an array-out will create: <code>[data0, data1, data2]</code></p>
+</script>

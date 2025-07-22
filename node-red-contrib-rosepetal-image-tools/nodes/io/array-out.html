@@ -1,0 +1,91 @@
+<script type="text/javascript">
+    RED.nodes.registerType('rosepetal-array-out', {
+        category: 'Rosepetal Image',
+        color: '#FFB6C1',
+        defaults: {
+            name: { value: "" },
+            timeout: { value: 5000 },
+            expectedCount: { value: 2, required: true, validate: RED.validators.number() },
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-th-list",
+        label: function() {
+            return this.name || "array out";
+        },
+        oneditprepare: function() {
+            // Set up TypedInput for output path
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="rosepetal-array-out">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    
+    <hr>
+    
+    <div class="form-row">
+        <label for="node-input-timeout"><i class="fa fa-clock-o"></i> Timeout (ms)</label>
+        <input type="number" id="node-input-timeout" min="100" step="100" style="width: 70%;" placeholder="5000">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-expectedCount"><i class="fa fa-hashtag"></i> Expected Count</label>
+        <input type="number" id="node-input-expectedCount" min="1" step="1" style="width: 70%;" placeholder="2" required>
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+    
+    <div class="form-tips">
+        <b>Timeout:</b> Maximum time to wait for all array elements after the first message arrives. If timeout occurs, no message is sent.<br>
+        <b>Expected Count:</b> Number of array elements required before outputting the assembled array.
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="rosepetal-array-out">
+    <p>Collects messages from array-in nodes and assembles them into a sorted array.</p>
+    
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Timeout <span class="property-type">number</span></dt>
+        <dd>Maximum time in milliseconds to wait for all array elements after the first message arrives. Default: 5000ms</dd>
+        <dt>Expected Count <span class="property-type">number</span></dt>
+        <dd>Number of array elements required before outputting the assembled array. Required field.</dd>
+        <dt>Output to <span class="property-type">string</span></dt>
+        <dd>The location where the assembled array will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</dd>
+    </dl>
+
+    <h3>Behavior</h3>
+    <ol>
+        <li><strong>First Message:</strong> Starts timeout timer, collection timer, and begins collection</li>
+        <li><strong>Collection:</strong> Gathers messages from array-in nodes, tracks timing</li>
+        <li><strong>Assembly:</strong> Places data at specified array positions (0, 1, 2...)</li>
+        <li><strong>Success:</strong> Outputs assembled array when all expected elements received</li>
+        <li><strong>Timeout:</strong> Resets collection, NO message sent</li>
+        <li><strong>Reset:</strong> Ready for next collection cycle</li>
+    </ol>
+
+    <h3>Completion Conditions</h3>
+    <ul>
+        <li><strong>Success:</strong> All expected array positions are filled → array output with timing</li>
+        <li><strong>Timeout:</strong> Time limit exceeded → collection reset, no output</li>
+    </ul>
+
+    <h3>Example</h3>
+    <p>With Expected Count = 3, array-in nodes at positions 0, 1, 2 will produce: <code>["data0", "data1", "data2"]</code></p>
+    <p>Node status shows collection timing when successful.</p>
+</script>

@@ -16,6 +16,8 @@
     "node-red": {
         "nodes": {
             "rosepetal-image-in": "nodes/io/image-in.js",
+            "rosepetal-array-in": "nodes/io/array-in.js",
+            "rosepetal-array-out": "nodes/io/array-out.js",
             "rosepetal-resize": "nodes/transform/resize.js",
             "rosepetal-rotate": "nodes/transform/rotate.js",
             "rosepetal-crop": "nodes/transform/crop.js",

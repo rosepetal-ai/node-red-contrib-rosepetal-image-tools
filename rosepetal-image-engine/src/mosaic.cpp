@@ -8,6 +8,27 @@
 #include <cmath>
 #include "utils.h"
 
+// Helper function to determine the best canvas format from multiple input formats
+std::string DetermineBestCanvasFormat(const std::vector<std::string>& channels) {
+  if (channels.empty()) return "BGR";
+  
+  bool hasRGBA = false, hasBGRA = false, hasRGB = false, hasBGR = false;
+  
+  for (const auto& ch : channels) {
+    if (ch == "RGBA") hasRGBA = true;
+    else if (ch == "BGRA") hasBGRA = true;
+    else if (ch == "RGB") hasRGB = true;
+    else if (ch == "BGR") hasBGR = true;
+  }
+  
+  // Priority: RGBA > BGRA > RGB > BGR > GRAY
+  if (hasRGBA) return "RGBA";
+  if (hasBGRA) return "BGRA";
+  if (hasRGB) return "RGB";
+  if (hasBGR) return "BGR";
+  return "GRAY";
+}
+
 /*────────────────────────── ULTRA-FAST MosaicWorker ───────────────────────────────────*/
 class MosaicWorker : public Napi::AsyncWorker {
 public:
@@ -52,8 +73,8 @@ public:
       positions_.emplace_back(p);
     }
     
-    // Use the channel format of the first image for canvas output format
-    canvasChannel_ = imageChannels_.empty() ? "BGR" : imageChannels_[0];
+    // Determine the best canvas format from all input images (priority: RGBA > BGRA > RGB > BGR > GRAY)
+    canvasChannel_ = DetermineBestCanvasFormat(imageChannels_);
     
     convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
   }

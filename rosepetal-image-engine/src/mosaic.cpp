@@ -56,9 +56,30 @@ public:
       images_.emplace_back(ConvertToMat(imagesArray[i]));
       
       // Extract and store channel format for each image (like other nodes do)
-      std::string channel = (imagesArray[i].IsObject() && !imagesArray[i].IsBuffer())
-        ? ExtractChannelOrder(imagesArray[i].As<Napi::Object>().Get("channels").As<Napi::String>())
-        : (images_[i].channels() == 4 ? "BGRA" : images_[i].channels() == 3 ? "BGR" : "GRAY");
+      std::string channel;
+      if (imagesArray[i].IsObject() && !imagesArray[i].IsBuffer()) {
+        Napi::Object obj = imagesArray[i].As<Napi::Object>();
+        
+        // Check for new colorSpace field first
+        if (obj.Has("colorSpace")) {
+          channel = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+        }
+        // Handle legacy string format
+        else if (obj.Has("channels") && obj.Get("channels").IsString()) {
+          channel = ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
+        }
+        // Default based on channel count for new numeric format
+        else {
+          channel = (images_[i].channels() == 4) ? "BGRA"
+                  : (images_[i].channels() == 3) ? "BGR" 
+                  : "GRAY";
+        }
+      } else {
+        // Buffer input - determine from OpenCV Mat
+        channel = (images_[i].channels() == 4) ? "BGRA"
+                : (images_[i].channels() == 3) ? "BGR"
+                : "GRAY";
+      }
       
       imageChannels_.emplace_back(channel);
     }

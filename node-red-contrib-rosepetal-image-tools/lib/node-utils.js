@@ -10,23 +10,127 @@ const sharp = require('sharp'); // Ensure sharp is installed in your project
 module.exports = function(RED) {
   const utils = {};
 
-  utils.validateSingleImage = function(image, node) {
-    if (!image || !Buffer.isBuffer(image.data) || !image.width || !image.height || !image.channels) {
-        node.error("Input could not be normalized to a valid image object.", { payload: image });
-        return false;
+  /**
+   * Validates and normalizes an image structure
+   * Supports both new structure {data, width, height, channels, colorSpace, dtype}
+   * and legacy structure {data, width, height, channels: "int8_RGB"}
+   */
+  utils.validateImageStructure = function(image, node) {
+    if (!image) {
+      node.warn("Input is null or undefined");
+      return null;
     }
-    return true;
+
+    switch (true) {
+      // New Rosepetal bitmap structure
+      case (image.hasOwnProperty('width') &&
+            image.hasOwnProperty('height') &&
+            image.hasOwnProperty('data')):
+
+        // Validate dtype (only uint8 supported for now)
+        if (image.dtype && image.dtype !== 'uint8') {
+          node.warn(`Unsupported dtype: ${image.dtype}. Only 'uint8' is currently supported.`);
+          return null;
+        }
+
+        // Infer channels if not provided
+        let channels = image.channels;
+        if (!channels) {
+          const calculatedChannels = image.data.length / (image.width * image.height);
+          if (!Number.isInteger(calculatedChannels)) {
+            node.warn(`Cannot infer channels: data.length (${image.data.length}) is not divisible by width*height (${image.width * image.height})`);
+            return null;
+          }
+          channels = calculatedChannels;
+        }
+
+        // Handle legacy string format ("int8_RGB")
+        if (typeof channels === 'string') {
+          const [, chanStr] = channels.split('_');
+          const channelMap = { 'GRAY': 1, 'RGB': 3, 'RGBA': 4, 'BGR': 3, 'BGRA': 4 };
+          if (channelMap[chanStr]) {
+            channels = channelMap[chanStr];
+          } else {
+            node.warn(`Unknown legacy channel format: ${channels}`);
+            return null;
+          }
+        }
+
+        // Validate data length matches dimensions
+        if (image.width * image.height * channels !== image.data.length) {
+          node.warn(`Data length mismatch: expected ${image.width * image.height * channels} bytes (${image.width}x${image.height}x${channels}), got ${image.data.length} bytes`);
+          return null;
+        }
+
+        // Handle colorSpace with defaults
+        let colorSpace = image.colorSpace;
+        if (!colorSpace) {
+          // For legacy format, extract from string
+          if (typeof image.channels === 'string') {
+            const [, chanStr] = image.channels.split('_');
+            colorSpace = chanStr || 'RGB';
+          } else {
+            // Default based on channel count
+            switch (channels) {
+              case 1: colorSpace = "GRAY"; break;
+              case 3: colorSpace = "RGB"; break;
+              case 4: colorSpace = "RGBA"; break;
+              default:
+                node.warn(`Cannot determine default colorSpace for ${channels} channels`);
+                return null;
+            }
+          }
+        }
+
+        // Validate colorSpace matches channel count
+        const expectedChannels = {
+          "GRAY": 1,
+          "RGB": 3,
+          "RGBA": 4,
+          "BGR": 3,
+          "BGRA": 4
+        };
+
+        if (!expectedChannels.hasOwnProperty(colorSpace)) {
+          node.warn(`Unsupported colorSpace: ${colorSpace}. Supported values: ${Object.keys(expectedChannels).join(', ')}`);
+          return null;
+        }
+
+        if (expectedChannels[colorSpace] !== channels) {
+          node.warn(`ColorSpace mismatch: ${colorSpace} expects ${expectedChannels[colorSpace]} channels, got ${channels} channels`);
+          return null;
+        }
+
+        // Return normalized structure
+        return {
+          data: image.data,
+          width: image.width,
+          height: image.height,
+          channels: channels,
+          colorSpace: colorSpace,
+          dtype: image.dtype || 'uint8'
+        };
+
+      default:
+        // Not our format? Pass to C++ and let OpenCV handle it
+        return image;
+    }
+  }
+
+  utils.validateSingleImage = function(image, node) {
+    const normalized = utils.validateImageStructure(image, node);
+    return normalized !== null;
   }
 
   utils.validateListImage = function(list, node) {
     if (!list || !Array.isArray(list) || list.length === 0) {
-      node.error("Input is not a valid image list. Expected a non-empty Array.", { payload: list });
+      node.warn("Input is not a valid image list. Expected a non-empty Array.");
       return false;
     }
     // Validate each item in the list
     for (const image of list) {
       if (!utils.validateSingleImage(image, node)) {
-        // The error message is already sent by validateSingleImage
+        // The warning message is already sent by validateSingleImage
         return false;
       }
     }
@@ -49,18 +153,17 @@ module.exports = function(RED) {
   }
 
   utils.rawToJpeg = async function (image, quality = 90) {
-    if (!utils.validateSingleImage(image, { error: () => {} }))
+    const normalized = utils.validateImageStructure(image, { warn: () => {} });
+    if (!normalized)
       throw new Error('Invalid raw image object supplied to rawToJpeg');
 
-    const [, chanStr] = image.channels.split('_'); // "RGB", "BGRA", …
-    const channels =
-      chanStr === 'GRAY' ? 1 : chanStr.endsWith('A') ? 4 : 3;
+    const colorSpace = normalized.colorSpace;
+    const channels = normalized.channels;
+    let data = normalized.data;
 
-    let data = image.data;
-
-    // BGR/BGRA → RGB/RGBA
-    if (chanStr === 'BGR' || chanStr === 'BGRA') {
-      data = Buffer.from(data); // copy so we don’t mutate shared memory
+    // BGR/BGRA → RGB/RGBA for Sharp
+    if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
+      data = Buffer.from(data); // copy so we don't mutate shared memory
       for (let i = 0; i < data.length; i += channels) {
         const t = data[i];
         data[i] = data[i + 2];
@@ -69,10 +172,10 @@ module.exports = function(RED) {
     }
 
     const sh = sharp(data, {
-      raw: { width: image.width, height: image.height, channels }
+      raw: { width: normalized.width, height: normalized.height, channels }
     });
 
-    if (chanStr === 'GRAY') sh.toColourspace('b-w');
+    if (colorSpace === 'GRAY') sh.toColourspace('b-w');
 
     return sh.jpeg({ quality }).toBuffer();
   }

@@ -10,48 +10,120 @@
 #include <chrono>
 
 /**
- * Convierte cualquier entrada JS (Buffer de imagen codificada
- * o imagen cruda { data, width, height, channels }) a cv::Mat.
- * NO altera el orden BGR/RGB ni la profundidad.
+ * Converts JS input to cv::Mat supporting both new and legacy formats:
+ * - New: {data, width, height, channels, colorSpace, dtype}
+ * - Legacy: {data, width, height, channels: "int8_RGB"}
+ * - Buffer: Raw image file data (JPEG/PNG/WebP)
  */
 inline cv::Mat ConvertToMat(const Napi::Value& input) {
   Napi::Env env = input.Env();
 
-  // --- 1. Objeto crudo -----------------------------------------------------
+  // --- 1. Raw image object (new or legacy format) -------------------------
   if (input.IsObject() && !input.IsBuffer()) {
     Napi::Object obj = input.As<Napi::Object>();
-    if (obj.Has("data") && obj.Has("width") && obj.Has("height")
-        && obj.Has("channels")) {
+    if (obj.Has("data") && obj.Has("width") && obj.Has("height")) {
 
-      auto dataBuf  = obj.Get("data").As<Napi::Buffer<uint8_t>>();
-      int  width    = obj.Get("width").As<Napi::Number>().Int32Value();
-      int  height   = obj.Get("height").As<Napi::Number>().Int32Value();
-      std::string ch = obj.Get("channels").As<Napi::String>().Utf8Value();
+      auto dataBuf = obj.Get("data").As<Napi::Buffer<uint8_t>>();
+      
+      int width = obj.Get("width").As<Napi::Number>().Int32Value();
+      int height = obj.Get("height").As<Napi::Number>().Int32Value();
 
-      // Determinar tipo OpenCV por canales (profundidad siempre 8 bits aquí)
-      int cvType = CV_8UC3;
-      if (ch.find("RGBA") != std::string::npos)      cvType = CV_8UC4;
-      else if (ch.find("BGRA") != std::string::npos) cvType = CV_8UC4;
-      else if (ch.find("GRAY") != std::string::npos) cvType = CV_8UC1;
+      // Determine channel count and color space
+      int channels = 3;  // default
+      std::string colorSpace = "RGB";  // default
+      
+      if (obj.Has("channels")) {
+        auto channelsVal = obj.Get("channels");
+        
+        // Handle new numeric format
+        if (channelsVal.IsNumber()) {
+          channels = channelsVal.As<Napi::Number>().Int32Value();
+          
+          // Get colorSpace if available
+          if (obj.Has("colorSpace")) {
+            colorSpace = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+          } else {
+            // Default colorSpace based on channels
+            switch (channels) {
+              case 1: colorSpace = "GRAY"; break;
+              case 3: colorSpace = "RGB"; break;
+              case 4: colorSpace = "RGBA"; break;
+              default: 
+                throw Napi::Error::New(env, "Unsupported channel count: " + std::to_string(channels));
+            }
+          }
+        }
+        // Handle legacy string format ("int8_RGB")
+        else if (channelsVal.IsString()) {
+          std::string ch = channelsVal.As<Napi::String>().Utf8Value();
+          auto pos = ch.find('_');
+          colorSpace = (pos != std::string::npos) ? ch.substr(pos + 1) : ch;
+          
+          // Map colorSpace to channels
+          if (colorSpace == "GRAY") channels = 1;
+          else if (colorSpace == "RGB" || colorSpace == "BGR") channels = 3;
+          else if (colorSpace == "RGBA" || colorSpace == "BGRA") channels = 4;
+          else throw Napi::Error::New(env, "Unknown legacy channel format: " + ch);
+        }
+      }
+
+      // Determine OpenCV type based on dtype and channels
+      int cvType = CV_8UC3;  // default
+      
+      if (obj.Has("dtype")) {
+        std::string dtype = obj.Get("dtype").As<Napi::String>().Utf8Value();
+        if (dtype == "uint8") {
+          switch (channels) {
+            case 1: cvType = CV_8UC1; break;
+            case 3: cvType = CV_8UC3; break;
+            case 4: cvType = CV_8UC4; break;
+            default: throw Napi::Error::New(env, "Unsupported channel count for uint8: " + std::to_string(channels));
+          }
+        } else if (dtype == "uint16") {
+          switch (channels) {
+            case 1: cvType = CV_16UC1; break;
+            case 3: cvType = CV_16UC3; break;
+            case 4: cvType = CV_16UC4; break;
+            default: throw Napi::Error::New(env, "Unsupported channel count for uint16: " + std::to_string(channels));
+          }
+        } else if (dtype == "float32") {
+          switch (channels) {
+            case 1: cvType = CV_32FC1; break;
+            case 3: cvType = CV_32FC3; break;
+            case 4: cvType = CV_32FC4; break;
+            default: throw Napi::Error::New(env, "Unsupported channel count for float32: " + std::to_string(channels));
+          }
+        } else {
+          throw Napi::Error::New(env, "Unsupported dtype: " + dtype);
+        }
+      } else {
+        // Default uint8 handling
+        switch (channels) {
+          case 1: cvType = CV_8UC1; break;
+          case 3: cvType = CV_8UC3; break;
+          case 4: cvType = CV_8UC4; break;
+          default: throw Napi::Error::New(env, "Unsupported channel count: " + std::to_string(channels));
+        }
+      }
 
       return cv::Mat(height, width, cvType, dataBuf.Data());
     }
   }
 
-  // --- 2. Buffer de fichero (JPEG/PNG/WebP…) -------------------------------
+  // --- 2. Direct Buffer (JPEG/PNG/WebP file data) -------------------------
   if (input.IsBuffer()) {
-    auto buf  = input.As<Napi::Buffer<uint8_t>>();
+    auto buf = input.As<Napi::Buffer<uint8_t>>();
     cv::Mat tmp(1, buf.Length(), CV_8UC1, buf.Data());
     cv::Mat img = cv::imdecode(tmp, cv::IMREAD_UNCHANGED);
 
     if (img.empty()) {
       throw Napi::Error::New(env, "Failed to decode image buffer.");
     }
-    return img;  // BGR/BGRA/GRAY según fichero; no se altera
+    return img;  // BGR/BGRA/GRAY according to file format
   }
 
   throw Napi::Error::New(env,
-      "Invalid input: Expected Buffer or raw image object.");
+      "Invalid input: Expected Buffer or image object with {data, width, height}.");
 }
 
 
@@ -121,26 +193,37 @@ inline Napi::Value VectorToBuffer(Napi::Env env, std::vector<uchar>&& v)
       [](Napi::Env, uchar*, std::vector<uchar>* p) { delete p; }, vec);
 }
 
-// Pasa un cv::Mat 8-bit/16-bit a objeto raw {width,height,channels,data}.
+// Converts cv::Mat to new JS format {width, height, channels, colorSpace, dtype, data}
 inline Napi::Object MatToRawJS(Napi::Env env,
   const cv::Mat& m,
-  const std::string& order)
+  const std::string& colorSpace)
 {
-Napi::Object o = Napi::Object::New(env);
-o.Set("width",  Napi::Number::New(env, m.cols));
-o.Set("height", Napi::Number::New(env, m.rows));
+  Napi::Object o = Napi::Object::New(env);
+  o.Set("width",  Napi::Number::New(env, m.cols));
+  o.Set("height", Napi::Number::New(env, m.rows));
+  o.Set("channels", Napi::Number::New(env, m.channels()));
+  o.Set("colorSpace", Napi::String::New(env, colorSpace));
 
-std::string depth = (m.depth() == CV_16U) ? "int16" : "int8";
-o.Set("channels", Napi::String::New(env, depth + "_" + order));
+  // Determine dtype from OpenCV depth
+  std::string dtype;
+  switch (m.depth()) {
+    case CV_8U:  dtype = "uint8"; break;
+    case CV_16U: dtype = "uint16"; break;
+    case CV_32F: dtype = "float32"; break;
+    default:     dtype = "uint8"; break;  // fallback
+  }
+  o.Set("dtype", Napi::String::New(env, dtype));
 
-size_t bytes = m.total() * m.elemSize();
-auto* raw = new uint8_t[bytes];
-std::memcpy(raw, m.data, bytes);
+  // Copy data
+  size_t bytes = m.total() * m.elemSize();
+  auto* raw = new uint8_t[bytes];
+  std::memcpy(raw, m.data, bytes);
 
-o.Set("data", Napi::Buffer<uint8_t>::New(
-env, raw, bytes,
-[](Napi::Env, uint8_t* p) { delete[] p; }));
-return o;
+  o.Set("data", Napi::Buffer<uint8_t>::New(
+    env, raw, bytes,
+    [](Napi::Env, uint8_t* p) { delete[] p; }));
+  
+  return o;
 }
 
 // Crea el objeto { convertMs, taskMs, encodeMs } para devolver a JS.

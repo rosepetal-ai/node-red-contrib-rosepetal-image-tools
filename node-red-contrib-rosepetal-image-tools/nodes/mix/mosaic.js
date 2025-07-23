@@ -36,6 +36,12 @@ module.exports = function (RED) {
         const inputImages = RED.util.getMessageProperty(msg, inputPath);
         const imageArray = Array.isArray(inputImages) ? inputImages : [inputImages];
 
+        // Validate input images - mosaic expects array input
+        if (!NodeUtils.validateListImage(imageArray, node)) {
+          // Warning already sent, don't send message
+          return;
+        }
+
         /* Validate positions - allow empty positions to show just background canvas */
         const validPositions = positions.filter(pos => {
           const arrayIndex = parseInt(pos.arrayIndex);
@@ -82,7 +88,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during mosaic processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

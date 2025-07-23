@@ -26,6 +26,19 @@ module.exports = function (RED) {
           ? originalPayload
           : [originalPayload];
 
+        // Validate input images
+        if (Array.isArray(originalPayload)) {
+          if (!NodeUtils.validateListImage(originalPayload, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        } else {
+          if (!NodeUtils.validateSingleImage(originalPayload, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        }
+
         const promises = inputList.map((inputImage) => {
           // Resolvemos los valores tal cual (pueden venir de msg/flow/global)
           let wVal = NodeUtils.resolveDimension(
@@ -86,7 +99,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during resize processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

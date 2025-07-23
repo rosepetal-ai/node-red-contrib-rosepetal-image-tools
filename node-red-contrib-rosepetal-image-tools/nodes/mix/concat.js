@@ -26,6 +26,12 @@ module.exports = function (RED) {
         const list = RED.util.getMessageProperty(msg, config.inputPath || 'payload');
         const imgs = Array.isArray(list) ? list : [ list ];   // always an array
 
+        // Validate input images - concat expects array input
+        if (!NodeUtils.validateListImage(imgs, node)) {
+          // Warning already sent, don't send message
+          return;
+        }
+
         /* ▸ Options from the editor -------------------------------------- */
         const direction = config.direction;   // 'right' | 'left' | 'down' | 'up'
         const strategy  = config.strategy;    // 'pad-start' | 'pad-end' | 'pad-both' | 'resize'
@@ -54,7 +60,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during concat processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

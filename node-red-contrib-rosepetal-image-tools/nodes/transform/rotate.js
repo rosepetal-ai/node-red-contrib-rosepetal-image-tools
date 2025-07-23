@@ -22,6 +22,20 @@ module.exports = function (RED) {
         const padColorHex = config.padColor    || '#000000';
 
         const original = RED.util.getMessageProperty(msg, inputPath);
+        
+        // Validate input images
+        if (Array.isArray(original)) {
+          if (!NodeUtils.validateListImage(original, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        } else {
+          if (!NodeUtils.validateSingleImage(original, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        }
+        
         const imgs     = Array.isArray(original) ? original : [original];
 
         /* ——— lanzar rotaciones en paralelo ——— */
@@ -62,7 +76,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during rotate processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

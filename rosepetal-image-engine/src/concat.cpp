@@ -10,9 +10,23 @@ enum class Strategy { RESIZE, PAD_START, PAD_END, PAD_BOTH };
 // Helper function to detect channel format for individual images
 std::string DetectChannelFormat(const Napi::Value& jsImg, const cv::Mat& mat) {
   if (jsImg.IsObject() && !jsImg.IsBuffer()) {
-    return ExtractChannelOrder(jsImg.As<Napi::Object>()
-                             .Get("channels").As<Napi::String>());
+    Napi::Object obj = jsImg.As<Napi::Object>();
+    
+    // Check for new colorSpace field first
+    if (obj.Has("colorSpace")) {
+      return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+    }
+    // Handle legacy string format
+    else if (obj.Has("channels") && obj.Get("channels").IsString()) {
+      return ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
+    }
+    // Default based on channel count for new numeric format
+    else {
+      const int channels = mat.channels();
+      return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
+    }
   } else {
+    // Buffer input - determine from OpenCV Mat
     const int channels = mat.channels();
     return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
   }

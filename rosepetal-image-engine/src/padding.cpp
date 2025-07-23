@@ -21,10 +21,29 @@ public:
     src_=ConvertToMat(imgVal);
     convertMs_=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
 
-    channel_= (imgVal.IsObject()&&!imgVal.IsBuffer())
-        ? ExtractChannelOrder(imgVal.As<Napi::Object>()
-                               .Get("channels").As<Napi::String>())
-        : (src_.channels()==4?"BGRA":src_.channels()==3?"BGR":"GRAY");
+    if (imgVal.IsObject() && !imgVal.IsBuffer()) {
+      Napi::Object obj = imgVal.As<Napi::Object>();
+      
+      // Check for new colorSpace field first
+      if (obj.Has("colorSpace")) {
+        channel_ = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+      }
+      // Handle legacy string format
+      else if (obj.Has("channels") && obj.Get("channels").IsString()) {
+        channel_ = ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
+      }
+      // Default based on channel count for new numeric format
+      else {
+        channel_ = (src_.channels() == 4) ? "BGRA"
+                 : (src_.channels() == 3) ? "BGR" 
+                 : "GRAY";
+      }
+    } else {
+      // Buffer input - determine from OpenCV Mat
+      channel_ = (src_.channels() == 4) ? "BGRA"
+               : (src_.channels() == 3) ? "BGR"
+               : "GRAY";
+    }
 
     padClrImg=padColorRGB;
     if(channel_=="RGB"||channel_=="RGBA") std::swap(padClrImg[0],padClrImg[2]);

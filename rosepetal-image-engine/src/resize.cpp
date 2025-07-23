@@ -30,11 +30,26 @@ ResizeWorker(Napi::Function& callback,
       convertMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
       if (inputImage.IsObject() && !inputImage.IsBuffer()) {
-        std::string chFull =
-            inputImage.As<Napi::Object>().Get("channels").As<Napi::String>().Utf8Value();
-        std::size_t pos = chFull.find('_');
-        channelOrder = (pos != std::string::npos) ? chFull.substr(pos + 1) : chFull;
+        Napi::Object obj = inputImage.As<Napi::Object>();
+        
+        // Check for new colorSpace field first
+        if (obj.Has("colorSpace")) {
+          channelOrder = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+        }
+        // Handle legacy string format
+        else if (obj.Has("channels") && obj.Get("channels").IsString()) {
+          std::string chFull = obj.Get("channels").As<Napi::String>().Utf8Value();
+          std::size_t pos = chFull.find('_');
+          channelOrder = (pos != std::string::npos) ? chFull.substr(pos + 1) : chFull;
+        }
+        // Default based on channel count for new numeric format
+        else {
+          channelOrder = (inputMat.channels() == 4) ? "BGRA"
+                       : (inputMat.channels() == 3) ? "BGR"
+                       : "GRAY";
+        }
       } else {
+        // Buffer input - determine from OpenCV Mat
         channelOrder = (inputMat.channels() == 4) ? "BGRA"
                      : (inputMat.channels() == 3) ? "BGR"
                      : "GRAY";

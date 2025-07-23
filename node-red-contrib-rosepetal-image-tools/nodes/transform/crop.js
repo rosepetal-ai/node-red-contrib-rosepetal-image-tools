@@ -29,6 +29,19 @@ module.exports = function (RED) {
         const original = RED.util.getMessageProperty(msg, inPath);
         const imgs     = Array.isArray(original) ? original : [original];
 
+        // Validate input images
+        if (Array.isArray(original)) {
+          if (!NodeUtils.validateListImage(original, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        } else {
+          if (!NodeUtils.validateSingleImage(original, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        }
+
         /* lanzar recortes en paralelo */
         const jobs = imgs.map(img => {
           const x = Number(NodeUtils.resolveDimension(node, config.cropXType, config.cropX, msg));
@@ -68,7 +81,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during crop processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

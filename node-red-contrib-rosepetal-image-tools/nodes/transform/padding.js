@@ -23,6 +23,20 @@ module.exports = function (RED) {
 
         /* image / array */
         const rawIn = RED.util.getMessageProperty(msg, inPath);
+        
+        // Validate input images
+        if (Array.isArray(rawIn)) {
+          if (!NodeUtils.validateListImage(rawIn, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        } else {
+          if (!NodeUtils.validateSingleImage(rawIn, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        }
+        
         const imgs  = Array.isArray(rawIn) ? rawIn : [rawIn];
 
         /* static options from editor */
@@ -61,7 +75,10 @@ module.exports = function (RED) {
 
         send(msg); done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during padding processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

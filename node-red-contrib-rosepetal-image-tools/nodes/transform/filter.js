@@ -48,6 +48,20 @@ module.exports = function (RED) {
 
         // Get input image(s)
         const originalPayload = RED.util.getMessageProperty(msg, inputPath);
+        
+        // Validate input images
+        if (Array.isArray(originalPayload)) {
+          if (!NodeUtils.validateListImage(originalPayload, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        } else {
+          if (!NodeUtils.validateSingleImage(originalPayload, node)) {
+            // Warning already sent, don't send message
+            return;
+          }
+        }
+        
         const inputList = Array.isArray(originalPayload)
           ? originalPayload
           : [originalPayload];
@@ -95,7 +109,10 @@ module.exports = function (RED) {
         done && done();
 
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done);
+        node.status({ fill: "red", shape: "ring", text: "Error" });
+        node.warn(`Error during filter processing: ${err.message}`);
+        // Don't send message on error
+        if (done) { done(); }
       }
     });
   }

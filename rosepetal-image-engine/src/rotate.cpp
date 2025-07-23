@@ -20,12 +20,30 @@ public:
   {
     try {
       inputMat = ConvertToMat(imgVal);            // zero-copy RAW
-      channelOrder = (imgVal.IsObject() && !imgVal.IsBuffer())
-        ? ExtractChannelOrder(
-            imgVal.As<Napi::Object>().Get("channels")
-                  .As<Napi::String>().Utf8Value())
-        : (inputMat.channels()==4 ? "BGRA" :
-           inputMat.channels()==3 ? "BGR"  : "GRAY");
+      
+      if (imgVal.IsObject() && !imgVal.IsBuffer()) {
+        Napi::Object obj = imgVal.As<Napi::Object>();
+        
+        // Check for new colorSpace field first
+        if (obj.Has("colorSpace")) {
+          channelOrder = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+        }
+        // Handle legacy string format
+        else if (obj.Has("channels") && obj.Get("channels").IsString()) {
+          channelOrder = ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
+        }
+        // Default based on channel count for new numeric format
+        else {
+          channelOrder = (inputMat.channels() == 4) ? "BGRA"
+                       : (inputMat.channels() == 3) ? "BGR" 
+                       : "GRAY";
+        }
+      } else {
+        // Buffer input - determine from OpenCV Mat
+        channelOrder = (inputMat.channels() == 4) ? "BGRA"
+                     : (inputMat.channels() == 3) ? "BGR"
+                     : "GRAY";
+      }
     } catch (const Napi::Error& e) { SetError(e.Message()); }
   }
 

@@ -7,6 +7,90 @@
 enum class Direction { RIGHT, LEFT, UP, DOWN };
 enum class Strategy { RESIZE, PAD_START, PAD_END, PAD_BOTH };
 
+// Helper function to detect channel format for individual images
+std::string DetectChannelFormat(const Napi::Value& jsImg, const cv::Mat& mat) {
+  if (jsImg.IsObject() && !jsImg.IsBuffer()) {
+    return ExtractChannelOrder(jsImg.As<Napi::Object>()
+                             .Get("channels").As<Napi::String>());
+  } else {
+    const int channels = mat.channels();
+    return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
+  }
+}
+
+// Helper function to determine the best output channel format from a list
+std::string DetermineOutputFormat(const std::vector<std::string>& channels) {
+  bool hasRGBA = false, hasBGRA = false, hasRGB = false, hasBGR = false;
+  
+  for (const auto& ch : channels) {
+    if (ch == "RGBA") hasRGBA = true;
+    else if (ch == "BGRA") hasBGRA = true;
+    else if (ch == "RGB") hasRGB = true;
+    else if (ch == "BGR") hasBGR = true;
+  }
+  
+  // Priority: RGBA > BGRA > RGB > BGR > GRAY
+  if (hasRGBA) return "RGBA";
+  if (hasBGRA) return "BGRA";
+  if (hasRGB) return "RGB";
+  if (hasBGR) return "BGR";
+  return "GRAY";
+}
+
+// Helper function to prepare pad color for specific channel format
+cv::Scalar PreparePadColor(const cv::Scalar& originalColor, const std::string& channelFormat) {
+  cv::Scalar padColor = originalColor;
+  if (channelFormat == "RGB" || channelFormat == "RGBA") {
+    std::swap(padColor[0], padColor[2]); // Swap R and B
+  }
+  return padColor;
+}
+
+// Helper function to convert image to target channel format
+cv::Mat ConvertToTargetFormat(const cv::Mat& src, const std::string& srcFormat, const std::string& targetFormat) {
+  if (srcFormat == targetFormat) {
+    return src; // No conversion needed
+  }
+  
+  cv::Mat dst;
+  
+  // Convert to target format
+  if (srcFormat == "GRAY" && targetFormat == "BGR") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2BGR);
+  } else if (srcFormat == "GRAY" && targetFormat == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2RGB);
+  } else if (srcFormat == "GRAY" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2BGRA);
+  } else if (srcFormat == "GRAY" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2RGBA);
+  } else if (srcFormat == "BGR" && targetFormat == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_BGR2RGB);
+  } else if (srcFormat == "RGB" && targetFormat == "BGR") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2BGR);
+  } else if (srcFormat == "BGR" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_BGR2BGRA);
+  } else if (srcFormat == "BGR" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_BGR2RGBA);
+  } else if (srcFormat == "RGB" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2RGBA);
+  } else if (srcFormat == "RGB" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2BGRA);
+  } else if (srcFormat == "BGRA" && targetFormat == "BGR") {
+    cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR);
+  } else if (srcFormat == "RGBA" && targetFormat == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_RGBA2RGB);
+  } else if (srcFormat == "BGRA" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_BGRA2RGBA);
+  } else if (srcFormat == "RGBA" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGBA2BGRA);
+  } else {
+    // Fallback: return source if no conversion available
+    dst = src;
+  }
+  
+  return dst;
+}
+
 /*------------------------------------------------------------------------*/
 class ConcatWorker final : public Napi::AsyncWorker {
 public:
@@ -35,35 +119,24 @@ public:
     const int64 t0 = cv::getTickCount();
     const size_t imgCount = jsImgs.size();
     mats.reserve(imgCount);
+    channels.reserve(imgCount);
     
-    // Process first image to determine channel format
-    if (imgCount > 0) {
-      mats.emplace_back(ConvertToMat(jsImgs[0]));
-      
-      // Determine channel format once
-      if (jsImgs[0].IsObject() && !jsImgs[0].IsBuffer()) {
-        channel = ExtractChannelOrder(jsImgs[0].As<Napi::Object>()
-                                    .Get("channels").As<Napi::String>());
-      } else {
-        const int channels = mats[0].channels();
-        channel = (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
-      }
-      
-      // Process remaining images
-      for (size_t i = 1; i < imgCount; ++i) {
-        mats.emplace_back(ConvertToMat(jsImgs[i]));
-      }
+    // Process all images and detect their channel formats
+    for (size_t i = 0; i < imgCount; ++i) {
+      mats.emplace_back(ConvertToMat(jsImgs[i]));
+      channels.push_back(DetectChannelFormat(jsImgs[i], mats[i]));
     }
+    
+    // Determine output channel format
+    outputChannel = DetermineOutputFormat(channels);
     
     convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 
-    // Prepare pad color - swap R and B if needed (do this once)
+    // Store original pad color (channel-specific preparation will be done per image)
     padClrImg = padColorRGB;
-    if (channel == "RGB" || channel == "RGBA") {
-      std::swap(padClrImg[0], padClrImg[2]);
-    }
     
-    // Pre-calculate max dimensions to avoid redundant calculations
+    // Pre-calculate max dimensions after channel format detection
+    // (dimensions shouldn't change with channel conversion)
     for (const auto& m : mats) {
       maxW = std::max(maxW, m.cols);
       maxH = std::max(maxH, m.rows);
@@ -81,23 +154,36 @@ protected:
     std::vector<cv::Mat> tiles;
     tiles.reserve(mats.size());
     
-    for (auto& m : mats) {
+    for (size_t i = 0; i < mats.size(); ++i) {
+      auto& m = mats[i];
+      const std::string& imgChannel = channels[i];
+      
+      // Convert image to target output format first
+      cv::Mat convertedMat = ConvertToTargetFormat(m, imgChannel, outputChannel);
       cv::Mat processed;
+      
+      // Debug: log the converted image properties
+      // std::cout << "Image " << i << ": " << imgChannel << " -> " << outputChannel
+      //           << " size: " << convertedMat.cols << "x" << convertedMat.rows 
+      //           << " channels: " << convertedMat.channels() << " type: " << convertedMat.type() << std::endl;
+      
+      // Prepare pad color for the target output format
+      cv::Scalar imgPadColor = PreparePadColor(padColorRGB, outputChannel);
       
       // Directly handle resize case without branches
       if (strategy == Strategy::RESIZE) {
         if (isHorizontal) {
-          double scale = static_cast<double>(baseSize) / m.rows;
-          cv::resize(m, processed, cv::Size(static_cast<int>(m.cols * scale), baseSize));
+          double scale = static_cast<double>(baseSize) / convertedMat.rows;
+          cv::resize(convertedMat, processed, cv::Size(static_cast<int>(convertedMat.cols * scale), baseSize));
         } else {
-          double scale = static_cast<double>(baseSize) / m.cols;
-          cv::resize(m, processed, cv::Size(baseSize, static_cast<int>(m.rows * scale)));
+          double scale = static_cast<double>(baseSize) / convertedMat.cols;
+          cv::resize(convertedMat, processed, cv::Size(baseSize, static_cast<int>(convertedMat.rows * scale)));
         }
       } else {
         // Handle padding cases
-        const int delta = isHorizontal ? (baseSize - m.rows) : (baseSize - m.cols);
+        const int delta = isHorizontal ? (baseSize - convertedMat.rows) : (baseSize - convertedMat.cols);
         if (delta <= 0) {
-          processed = m; // No padding needed
+          processed = convertedMat; // No padding needed
         } else {
           int before = 0, after = 0;
           
@@ -116,9 +202,9 @@ protected:
           }
           
           if (isHorizontal) {
-            cv::copyMakeBorder(m, processed, before, after, 0, 0, cv::BORDER_CONSTANT, padClrImg);
+            cv::copyMakeBorder(convertedMat, processed, before, after, 0, 0, cv::BORDER_CONSTANT, imgPadColor);
           } else {
-            cv::copyMakeBorder(m, processed, 0, 0, before, after, cv::BORDER_CONSTANT, padClrImg);
+            cv::copyMakeBorder(convertedMat, processed, 0, 0, before, after, cv::BORDER_CONSTANT, imgPadColor);
           }
         }
       }
@@ -143,7 +229,7 @@ protected:
 
     // Fast JPG encoding if needed
     if (encodeJpg) {
-      cv::Mat tmp = ToBgrForJpg(result, channel);
+      cv::Mat tmp = ToBgrForJpg(result, outputChannel);
       encodeMs = EncodeToJpgFast(tmp, jpgBuf);
     }
   }
@@ -151,7 +237,7 @@ protected:
   void OnOK() override {
     Napi::Env env = Env();
     Napi::Value jsImg = encodeJpg ? VectorToBuffer(env, std::move(jpgBuf))
-                                  : MatToRawJS(env, result, channel);
+                                  : MatToRawJS(env, result, outputChannel);
 
     Napi::Object out = Napi::Object::New(env);
     out.Set("image", jsImg);
@@ -161,10 +247,11 @@ protected:
 
 private:
   std::vector<cv::Mat> mats;
+  std::vector<std::string> channels;
   cv::Mat result;
   Direction direction;
   Strategy strategy;
-  std::string channel;
+  std::string outputChannel;
   cv::Scalar padColorRGB, padClrImg;
   bool encodeJpg;
   double convertMs = 0, taskMs = 0, encodeMs = 0;

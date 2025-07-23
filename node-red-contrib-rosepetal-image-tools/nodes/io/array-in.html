@@ -1,7 +1,7 @@
 <script type="text/javascript">
     RED.nodes.registerType('rosepetal-array-in', {
         category: 'Rosepetal Image',
-        color: '#A6E6A6',
+        color: '#87CEEB',
         defaults: {
             name: { value: "" },
             inputPath: { value: "payload" },
@@ -10,9 +10,9 @@
         },
         inputs: 1,
         outputs: 1,
-        icon: "font-awesome/fa-list",
+        icon: "font-awesome/fa-sign-in",
         label: function() {
-            return this.name || `array in [${this.arrayPosition}]`;
+            return this.name || `Array In [${this.arrayPosition}]`;
         },
         oneditprepare: function() {
             // Set up TypedInput for input path

@@ -1,7 +1,7 @@
 <script type="text/javascript">
     RED.nodes.registerType('rosepetal-array-out', {
         category: 'Rosepetal Image',
-        color: '#FFB6C1',
+        color: '#DDA0DD',
         defaults: {
             name: { value: "" },
             timeout: { value: 5000 },
@@ -11,9 +11,9 @@
         },
         inputs: 1,
         outputs: 1,
-        icon: "font-awesome/fa-th-list",
+        icon: "font-awesome/fa-sign-out",
         label: function() {
-            return this.name || "array out";
+            return this.name || `Array Out (${this.expectedCount} items)`;
         },
         oneditprepare: function() {
             // Set up TypedInput for output path

@@ -1,6 +1,6 @@
 <script type="text/javascript">
-    RED.nodes.registerType('rosepetal-rotate', {
-      category : 'Rosepetal Image',
+    RED.nodes.registerType('rotate', {
+      category : 'RP Image',
       color    : '#DDA0DD',
       defaults : {
         name            : { value:"" },
@@ -25,7 +25,7 @@
     });
     </script>
     
-    <script type="text/x-red" data-template-name="rosepetal-rotate">
+    <script type="text/x-red" data-template-name="rotate">
       <div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
       <hr>
       <div class="form-row"><label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label><input type="text" id="node-input-inputPath" style="width:70%;"><input type="hidden" id="node-input-inputPathType"></div>
@@ -36,7 +36,7 @@
       <div class="form-row"><label for="node-input-padColor"><i class="fa fa-tint"></i> Pad colour</label><input type="color" id="node-input-padColor" style="width:80px;"></div>
     </script>
     
-    <script type="text/x-red" data-help-name="rosepetal-rotate">
+    <script type="text/x-red" data-help-name="rotate">
       <p>Rotates images and pads with the selected colour. Passes the colour as hexadecimal (#RRGGBB) directly to the C++ engine.</p>
     </script>
     

@@ -66,5 +66,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-padding', PaddingNode);
+  RED.nodes.registerType('padding', PaddingNode);
 };

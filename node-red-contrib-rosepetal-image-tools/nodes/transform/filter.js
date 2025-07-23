@@ -100,5 +100,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-filter', FilterNode);
+  RED.nodes.registerType('filter', FilterNode);
 };

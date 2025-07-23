@@ -91,5 +91,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-resize', ResizeNode);
+  RED.nodes.registerType('resize', ResizeNode);
 };

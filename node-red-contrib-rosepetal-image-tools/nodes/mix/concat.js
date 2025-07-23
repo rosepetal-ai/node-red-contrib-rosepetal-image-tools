@@ -59,5 +59,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-concat', ConcatNode);
+  RED.nodes.registerType('concat', ConcatNode);
 };

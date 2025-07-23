@@ -1,6 +1,6 @@
 <script type="text/javascript">
-    RED.nodes.registerType('rosepetal-filter', {
-        category: 'Rosepetal Image',
+    RED.nodes.registerType('filter', {
+        category: 'RP Image',
         color: '#DDA0DD',
         defaults: {
             name: { value: "" },
@@ -99,7 +99,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="rosepetal-filter">
+<script type="text/x-red" data-template-name="filter">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -159,7 +159,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="rosepetal-filter">
+<script type="text/x-red" data-help-name="filter">
     <p>Applies various image processing kernels to images using a high-performance C++ backend.</p>
 
     <h3>I/O Properties</h3>

@@ -1,6 +1,6 @@
 <script type="text/javascript">
-    RED.nodes.registerType('rosepetal-resize', {
-        category: 'Rosepetal Image',
+    RED.nodes.registerType('resize', {
+        category: 'RP Image',
         color: '#DDA0DD',
         defaults: {
             name: { value: "" },
@@ -92,7 +92,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="rosepetal-resize">
+<script type="text/x-red" data-template-name="resize">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -146,7 +146,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="rosepetal-resize">
+<script type="text/x-red" data-help-name="resize">
   <p>Resizes a list of raw images using a high-performance C++ backend.</p>
 
   <h3>I/O Properties</h3>

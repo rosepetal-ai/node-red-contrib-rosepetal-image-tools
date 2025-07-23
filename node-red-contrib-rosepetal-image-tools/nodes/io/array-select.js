@@ -174,5 +174,5 @@ module.exports = function(RED) {
     });
   }
 
-  RED.nodes.registerType("rosepetal-array-select", ArraySelectNode);
+  RED.nodes.registerType("array-select", ArraySelectNode);
 };

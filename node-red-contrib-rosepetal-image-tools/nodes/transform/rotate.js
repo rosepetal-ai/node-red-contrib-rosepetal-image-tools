@@ -67,5 +67,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-rotate', RotateNode);
+  RED.nodes.registerType('rotate', RotateNode);
 };

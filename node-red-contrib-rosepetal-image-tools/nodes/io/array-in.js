@@ -76,5 +76,5 @@ module.exports = function(RED) {
     });
   }
 
-  RED.nodes.registerType("rosepetal-array-in", ArrayInNode);
+  RED.nodes.registerType("array-in", ArrayInNode);
 };

@@ -169,5 +169,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-array-out', ArrayOutNode);
+  RED.nodes.registerType('array-out', ArrayOutNode);
 };

@@ -15,17 +15,17 @@
     "license": "Apache-2.0",
     "node-red": {
         "nodes": {
-            "rosepetal-image-in": "nodes/io/image-in.js",
-            "rosepetal-array-in": "nodes/io/array-in.js",
-            "rosepetal-array-out": "nodes/io/array-out.js",
-            "rosepetal-array-select": "nodes/io/array-select.js",
-            "rosepetal-resize": "nodes/transform/resize.js",
-            "rosepetal-rotate": "nodes/transform/rotate.js",
-            "rosepetal-crop": "nodes/transform/crop.js",
-            "rosepetal-concat": "nodes/mix/concat.js",
-            "rosepetal-padding": "nodes/transform/padding.js",
-            "rosepetal-filter": "nodes/transform/filter.js",
-            "rosepetal-mosaic": "nodes/mix/mosaic.js"
+            "image-in": "nodes/io/image-in.js",
+            "array-in": "nodes/io/array-in.js",
+            "array-out": "nodes/io/array-out.js",
+            "array-select": "nodes/io/array-select.js",
+            "resize": "nodes/transform/resize.js",
+            "rotate": "nodes/transform/rotate.js",
+            "crop": "nodes/transform/crop.js",
+            "concat": "nodes/mix/concat.js",
+            "padding": "nodes/transform/padding.js",
+            "filter": "nodes/transform/filter.js",
+            "mosaic": "nodes/mix/mosaic.js"
         }
     },
     "dependencies": {

@@ -1,6 +1,6 @@
 <script type="text/javascript">
-    RED.nodes.registerType('rosepetal-image-in', {
-        category: 'Rosepetal Image',
+    RED.nodes.registerType('image-in', {
+        category: 'RP Image',
         color: '#A6C8A6',
         defaults: {
             name: { value: "" },
@@ -26,7 +26,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="rosepetal-image-in">
+<script type="text/x-red" data-template-name="image-in">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -43,7 +43,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="rosepetal-image-in">
+<script type="text/x-red" data-help-name="image-in">
     <p>Reads an image file from a path and outputs it as a raw image object to a specified property.</p>
     
     <h3>Properties</h3>

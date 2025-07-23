@@ -66,5 +66,5 @@ module.exports = function(RED) {
       }
     });
   }
-  RED.nodes.registerType("rosepetal-image-in", ImageInNode);
+  RED.nodes.registerType("image-in", ImageInNode);
 };

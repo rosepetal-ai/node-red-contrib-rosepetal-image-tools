@@ -1,8 +1,8 @@
 <!-- nodes/rosepetal-concat/concat.html -->
 
 <script type="text/javascript">
-    RED.nodes.registerType('rosepetal-concat',{
-      category:'Rosepetal Image',
+    RED.nodes.registerType('concat',{
+      category:'RP Image',
       color:'#DDA0DD',
       icon:'font-awesome/fa-th-large',
       defaults:{
@@ -35,7 +35,7 @@
     });
   </script>
 
-  <script type="text/x-red" data-template-name="rosepetal-concat">
+  <script type="text/x-red" data-template-name="concat">
     <div class="form-row">
       <label><i class="fa fa-sign-in"></i> Input</label>
       <input type="text" id="node-input-inputPath" style="width:70%;">
@@ -76,7 +76,7 @@
     </div>
   </script>
 
-  <script type="text/x-red" data-help-name="rosepetal-concat">
+  <script type="text/x-red" data-help-name="concat">
     <p><b>rosepetal-concat</b> stitches multiple images into one.</p>
     <ul>
       <li><b>Direction</b> — choose horizontal (→/←) or vertical (↓/↑).</li>

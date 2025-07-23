@@ -73,5 +73,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-crop', CropNode);
+  RED.nodes.registerType('crop', CropNode);
 };

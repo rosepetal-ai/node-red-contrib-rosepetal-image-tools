@@ -1,7 +1,7 @@
 <script type="text/javascript">
-    RED.nodes.registerType('rosepetal-array-select', {
-        category: 'Rosepetal Image',
-        color: '#FFA500',
+    RED.nodes.registerType('array-select', {
+        category: 'RP Image',
+        color: '#7b8dff',
         defaults: {
             name: { value: "" },
             inputPath: { value: "payload" },
@@ -11,7 +11,7 @@
         },
         inputs: 1,
         outputs: 1,
-        icon: "font-awesome/fa-filter",
+        icon: "font-awesome/fa-columns",
         label: function() {
             if (this.name) return this.name;
             return `Array Select [${this.selection}]`;
@@ -27,7 +27,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="rosepetal-array-select">
+<script type="text/x-red" data-template-name="array-select">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -63,7 +63,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="rosepetal-array-select">
+<script type="text/x-red" data-help-name="array-select">
     <p>Selects elements from an input array using flexible selection syntax.</p>
     
     <h3>Properties</h3>

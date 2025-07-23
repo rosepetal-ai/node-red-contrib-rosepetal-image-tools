@@ -87,5 +87,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rosepetal-mosaic', MosaicNode);
+  RED.nodes.registerType('mosaic', MosaicNode);
 };

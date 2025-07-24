@@ -45,25 +45,14 @@ module.exports = function (RED) {
         /* ▸ Write the single result back to msg -------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);
 
-        /* ▸ Status: same format as resize / rotate ----------------------- */
-        const { convertMs = 0, taskMs = 0, encodeMs = 0 } = timing;
+        /* ▸ Status: standardized success formatting ----------------------- */
         const total = performance.now() - t0;
-
-        node.status({
-          fill  : 'green',
-          shape : 'dot',
-          text  : `OK: 1 img in ${total.toFixed(2)} ms `
-                + `(conv ${(convertMs + encodeMs).toFixed(2)} ms | `
-                + `task ${taskMs.toFixed(2)} ms)`
-        });
+        NodeUtils.setSuccessStatus(node, 1, total, timing);
 
         send(msg);
         done && done();
       } catch (err) {
-        node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.warn(`Error during concat processing: ${err.message}`);
-        // Don't send message on error
-        if (done) { done(); }
+        NodeUtils.handleNodeError(node, err, msg, done, 'concat processing');
       }
     });
   }

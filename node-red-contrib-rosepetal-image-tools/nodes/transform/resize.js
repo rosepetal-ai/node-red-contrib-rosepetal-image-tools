@@ -40,7 +40,7 @@ module.exports = function (RED) {
         }
 
         const promises = inputList.map((inputImage) => {
-          // Resolvemos los valores tal cual (pueden venir de msg/flow/global)
+          // Resolve dimension values (can come from msg/flow/global)
           let wVal = NodeUtils.resolveDimension(
             node,
             config.widthType,
@@ -54,11 +54,11 @@ module.exports = function (RED) {
             msg
           );
 
-          // Convertir a Number o NaN (C++ interpreta NaN como “Auto”)
+          // Convert to Number or NaN (C++ interprets NaN as "Auto")
           wVal = wVal === null || wVal === '' ? NaN : Number(wVal);
           hVal = hVal === null || hVal === '' ? NaN : Number(hVal);
 
-          // Llamada directa al addon: (image, wMode, wVal, hMode, hVal, encodeJpg)
+          // Direct call to addon: (image, wMode, wVal, hMode, hVal, encodeJpg)
           return CppProcessor.resize(
             inputImage,
             config.widthMode,  wVal,
@@ -68,7 +68,7 @@ module.exports = function (RED) {
         });
         const results = await Promise.all(promises);
 
-        // --- Agregar timings y preparar la salida --------------------
+        // Aggregate timings and prepare output
         const { totalConvertMs, totalTaskMs, encodeMs, images } =
           results.reduce(
             (acc, { image, timing }) => {
@@ -82,16 +82,12 @@ module.exports = function (RED) {
           );
 
         const out = Array.isArray(originalPayload) ? images : images[0];
-
         const elapsedTime = performance.now() - startTime;
-        node.status({
-          fill: 'green',
-          shape: 'dot',
-          text: `OK: ${results.length} img in ${elapsedTime.toFixed(
-            2
-          )} ms (conv. ${(totalConvertMs + encodeMs).toFixed(
-            2
-          )} ms | task ${totalTaskMs.toFixed(2)} ms)`,
+        
+        NodeUtils.setSuccessStatus(node, results.length, elapsedTime, {
+          convertMs: totalConvertMs,
+          taskMs: totalTaskMs,
+          encodeMs: encodeMs
         });
 
         RED.util.setMessageProperty(msg, outputPath, out);
@@ -99,10 +95,7 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.warn(`Error during resize processing: ${err.message}`);
-        // Don't send message on error
-        if (done) { done(); }
+        NodeUtils.handleNodeError(node, err, msg, done, 'resize processing');
       }
     });
   }

@@ -4,14 +4,17 @@
  */
 
 module.exports = function(RED) {
+  const NodeUtils = require('../../lib/node-utils.js')(RED);
+  
   function ArrayInNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
     
-    // Store configuration
+    // Store configuration with validation
     node.inputPath = config.inputPath || 'payload';
     node.inputPathType = config.inputPathType || 'msg';
-    node.arrayPosition = parseInt(config.arrayPosition) || 0;
+    const parsedPosition = parseInt(config.arrayPosition);
+    node.arrayPosition = !isNaN(parsedPosition) ? parsedPosition : 0;
 
     // Set initial status
     node.status({ 

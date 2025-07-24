@@ -10,6 +10,15 @@ const sharp = require('sharp'); // Ensure sharp is installed in your project
 module.exports = function(RED) {
   const utils = {};
 
+  // Configuration constants
+  const CONSTANTS = {
+    DEFAULT_JPEG_QUALITY: 90,
+    DEFAULT_ARRAY_POSITION: 0,
+    SUPPORTED_DTYPES: ['uint8'],
+    SUPPORTED_COLOR_SPACES: ['GRAY', 'RGB', 'RGBA', 'BGR', 'BGRA'],
+    CHANNEL_MAP: { 'GRAY': 1, 'RGB': 3, 'RGBA': 4, 'BGR': 3, 'BGRA': 4 }
+  };
+
   /**
    * Validates and normalizes an image structure
    * Supports both new structure {data, width, height, channels, colorSpace, dtype}
@@ -28,8 +37,8 @@ module.exports = function(RED) {
             image.hasOwnProperty('data')):
 
         // Validate dtype (only uint8 supported for now)
-        if (image.dtype && image.dtype !== 'uint8') {
-          node.warn(`Unsupported dtype: ${image.dtype}. Only 'uint8' is currently supported.`);
+        if (image.dtype && !CONSTANTS.SUPPORTED_DTYPES.includes(image.dtype)) {
+          node.warn(`Unsupported dtype: ${image.dtype}. Supported values: ${CONSTANTS.SUPPORTED_DTYPES.join(', ')}`);
           return null;
         }
 
@@ -47,9 +56,8 @@ module.exports = function(RED) {
         // Handle legacy string format ("int8_RGB")
         if (typeof channels === 'string') {
           const [, chanStr] = channels.split('_');
-          const channelMap = { 'GRAY': 1, 'RGB': 3, 'RGBA': 4, 'BGR': 3, 'BGRA': 4 };
-          if (channelMap[chanStr]) {
-            channels = channelMap[chanStr];
+          if (CONSTANTS.CHANNEL_MAP[chanStr]) {
+            channels = CONSTANTS.CHANNEL_MAP[chanStr];
           } else {
             node.warn(`Unknown legacy channel format: ${channels}`);
             return null;
@@ -83,21 +91,13 @@ module.exports = function(RED) {
         }
 
         // Validate colorSpace matches channel count
-        const expectedChannels = {
-          "GRAY": 1,
-          "RGB": 3,
-          "RGBA": 4,
-          "BGR": 3,
-          "BGRA": 4
-        };
-
-        if (!expectedChannels.hasOwnProperty(colorSpace)) {
-          node.warn(`Unsupported colorSpace: ${colorSpace}. Supported values: ${Object.keys(expectedChannels).join(', ')}`);
+        if (!CONSTANTS.CHANNEL_MAP.hasOwnProperty(colorSpace)) {
+          node.warn(`Unsupported colorSpace: ${colorSpace}. Supported values: ${CONSTANTS.SUPPORTED_COLOR_SPACES.join(', ')}`);
           return null;
         }
 
-        if (expectedChannels[colorSpace] !== channels) {
-          node.warn(`ColorSpace mismatch: ${colorSpace} expects ${expectedChannels[colorSpace]} channels, got ${channels} channels`);
+        if (CONSTANTS.CHANNEL_MAP[colorSpace] !== channels) {
+          node.warn(`ColorSpace mismatch: ${colorSpace} expects ${CONSTANTS.CHANNEL_MAP[colorSpace]} channels, got ${channels} channels`);
           return null;
         }
 
@@ -152,7 +152,7 @@ module.exports = function(RED) {
     return numericValue;
   }
 
-  utils.rawToJpeg = async function (image, quality = 90) {
+  utils.rawToJpeg = async function (image, quality = CONSTANTS.DEFAULT_JPEG_QUALITY) {
     const normalized = utils.validateImageStructure(image, { warn: () => {} });
     if (!normalized)
       throw new Error('Invalid raw image object supplied to rawToJpeg');
@@ -180,13 +180,39 @@ module.exports = function(RED) {
     return sh.jpeg({ quality }).toBuffer();
   }
 
-  utils.handleNodeError = function(node, error, msg, done) {
-    const errorMessage = error.message || "Unknown error during processing.";
+  /**
+   * Standardized error handling for all nodes
+   * @param {object} node - Node-RED node instance
+   * @param {Error} error - The error that occurred
+   * @param {object} msg - The message object
+   * @param {function} done - The done callback
+   * @param {string} operation - Optional operation name for context
+   */
+  utils.handleNodeError = function(node, error, msg, done, operation = 'processing') {
+    const errorMessage = error.message || `Unknown error during ${operation}.`;
     node.error(errorMessage, msg);
     node.status({ fill: "red", shape: "ring", text: "Error" });
     if (done) {
       done(error);
     }
+  }
+
+  /**
+   * Standardized success status formatting
+   * @param {object} node - Node-RED node instance  
+   * @param {number} count - Number of items processed
+   * @param {number} totalTime - Total processing time in ms
+   * @param {object} timing - Timing breakdown object
+   */
+  utils.setSuccessStatus = function(node, count, totalTime, timing = {}) {
+    const { convertMs = 0, taskMs = 0, encodeMs = 0 } = timing;
+    node.status({
+      fill: 'green',
+      shape: 'dot',
+      text: `OK: ${count} img in ${totalTime.toFixed(2)} ms ` +
+            `(conv ${(convertMs + encodeMs).toFixed(2)} ms | ` +
+            `task ${taskMs.toFixed(2)} ms)`
+    });
   }
 
   return utils;

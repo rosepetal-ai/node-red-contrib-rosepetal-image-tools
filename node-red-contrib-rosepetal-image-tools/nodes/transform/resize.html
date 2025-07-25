@@ -171,23 +171,76 @@
 </script>
 
 <script type="text/x-red" data-help-name="resize">
-  <p>Resizes a list of raw images using a high-performance C++ backend.</p>
+  <p>Resizes images to specified dimensions using high-performance C++ processing with OpenCV backend.</p>
 
-  <h3>I/O Properties</h3>
-  <p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
+  <h3>Details</h3>
+  <p>This node provides flexible image resizing capabilities with multiple operation modes and dynamic value sources. It supports both single images and arrays, with automatic aspect ratio preservation when one dimension is omitted. All processing is performed asynchronously using the optimized C++ backend.</p>
 
-  <h3>Dimensions</h3>
-  <p>For each dimension, you can configure:</p>
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Input from <span class="property-type">string</span></dt>
+    <dd>The location to read image data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>The location where the resized image will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+    <dt>Output Format <span class="property-type">string</span></dt>
+    <dd>Choose output format: <code>raw</code> (fastest, standard image object), <code>jpg</code>, <code>png</code>, or <code>webp</code> (encoded file buffers).</dd>
+    <dt>Quality <span class="property-type">number</span></dt>
+    <dd>Compression quality for JPEG and WebP formats (1-100). Only visible when jpg or webp format is selected. Default: 90.</dd>
+    <dt>Width Mode <span class="property-type">string</span></dt>
+    <dd>Width operation: <code>Set to</code> (fixed pixel value) or <code>Multiply by</code> (scale factor).</dd>
+    <dt>Width Value <span class="property-type">number|string</span></dt>
+    <dd>Width value from number, msg property, flow, or global context. Leave empty for automatic aspect ratio preservation.</dd>
+    <dt>Height Mode <span class="property-type">string</span></dt>
+    <dd>Height operation: <code>Set to</code> (fixed pixel value) or <code>Multiply by</code> (scale factor).</dd>
+    <dt>Height Value <span class="property-type">number|string</span></dt>
+    <dd>Height value from number, msg property, flow, or global context. Leave empty for automatic aspect ratio preservation.</dd>
+  </dl>
+
+  <h3>Inputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object | array</span></dt>
+    <dd>Single image object or array of image objects in standard format: <code>{ data: Buffer, width: number, height: number, channels: number, colorSpace: string, dtype: string }</code></dd>
+  </dl>
+
+  <h3>Outputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object | array | Buffer</span></dt>
+    <dd>Resized image(s). Format depends on Output Format setting: raw image object(s) or encoded file buffer(s).</dd>
+  </dl>
+
+  <h3>Dimension Configuration</h3>
+  <p><strong>Operation Modes:</strong></p>
   <ul>
-    <li><b>Operation Mode:</b>
-      <ul>
-        <li><code>Set to</code>: Resizes the dimension to a fixed pixel value.</li>
-        <li><code>Multiply by</code>: Multiplies the original dimension by a factor (e.g., 0.5 for half size).</li>
-      </ul>
-    </li>
-    <li><b>Value Source:</b>
-        <p>Use the dropdown on the left of the value field to select if the value is a fixed <code>Number</code> or comes from a <code>msg.</code>, <code>flow.</code> or <code>global.</code> property.</p>
-    </li>
+    <li><strong>Set to:</strong> Resizes the dimension to a fixed pixel value (e.g., 800 pixels)</li>
+    <li><strong>Multiply by:</strong> Multiplies the original dimension by a factor (e.g., 0.5 for half size, 2.0 for double size)</li>
   </ul>
-  <p>If a dimension's value is left empty, its placeholder will show 'Auto', and it will be calculated to maintain the original aspect ratio.</p>
+  <p><strong>Value Sources:</strong> Values can come from fixed numbers, message properties, flow context, or global context using the TypedInput dropdowns.</p>
+  <p><strong>Aspect Ratio:</strong> If either width or height is left empty, it will be calculated automatically to maintain the original aspect ratio.</p>
+
+  <h3>Examples</h3>
+  <ul>
+    <li><strong>Fixed Size:</strong> Width: Set to 800, Height: Set to 600 → All images resized to 800x600</li>
+    <li><strong>Proportional:</strong> Width: Set to 800, Height: (empty) → Width set to 800, height calculated proportionally</li>
+    <li><strong>Scale Factor:</strong> Width: Multiply by 0.5, Height: Multiply by 0.5 → Images scaled to half size</li>
+    <li><strong>Dynamic Values:</strong> Width: Set to msg.targetWidth → Use width value from message property</li>
+  </ul>
+
+  <h3>Node Interactions</h3>
+  <p><strong>Input Sources:</strong> Image-in, Array-out, other transform nodes</p>
+  <p><strong>Output Destinations:</strong> Other transform nodes, Mix nodes (concat, mosaic), Array-in for collections</p>
+  <p><strong>Common Workflows:</strong> Image-in → Resize → other transforms, Array processing → Resize → Array-select</p>
+
+  <h3>Output Formats</h3>
+  <ul>
+    <li><strong>Raw:</strong> Standard image object (fastest, for further processing)</li>
+    <li><strong>JPEG:</strong> Compressed file buffer with quality setting</li>
+    <li><strong>PNG:</strong> Lossless compressed file buffer</li>
+    <li><strong>WebP:</strong> Modern compressed format with quality setting</li>
+  </ul>
+
+  <h3>Error Handling</h3>
+  <p>The node validates input data and dimensions, displaying warnings for invalid inputs. Processing errors are logged and the message is not propagated.</p>
+
+  <h3>Performance</h3>
+  <p>Uses optimized C++ backend with OpenCV for high-performance processing. Node status displays processing time. Array inputs are processed in parallel for optimal performance.</p>
 </script>

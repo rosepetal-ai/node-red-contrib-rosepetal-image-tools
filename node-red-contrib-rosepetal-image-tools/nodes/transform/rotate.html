@@ -58,6 +58,77 @@
     </script>
     
     <script type="text/x-red" data-help-name="rotate">
-      <p>Rotates images and pads with the selected colour. Passes the colour as hexadecimal (#RRGGBB) directly to the C++ engine.</p>
+      <p>Rotates images by a specified angle with customizable padding color using high-performance C++ processing.</p>
+
+      <h3>Details</h3>
+      <p>This node rotates images clockwise by a specified angle in degrees. When rotation creates areas outside the original image bounds, these areas are filled with the specified padding color. The rotation operation supports both single images and arrays, with dynamic angle values from various sources.</p>
+
+      <h3>Properties</h3>
+      <dl class="message-properties">
+        <dt>Input from <span class="property-type">string</span></dt>
+        <dd>The location to read image data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+        <dt>Output to <span class="property-type">string</span></dt>
+        <dd>The location where the rotated image will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+        <dt>Output Format <span class="property-type">string</span></dt>
+        <dd>Choose output format: <code>raw</code> (fastest, standard image object), <code>jpg</code>, <code>png</code>, or <code>webp</code> (encoded file buffers).</dd>
+        <dt>Quality <span class="property-type">number</span></dt>
+        <dd>Compression quality for JPEG and WebP formats (1-100). Only visible when jpg or webp format is selected. Default: 90.</dd>
+        <dt>Angle <span class="property-type">number|string</span></dt>
+        <dd>Rotation angle in degrees (clockwise). Can be a fixed number or dynamic value from msg property, flow, or global context. Supports decimal values.</dd>
+        <dt>Pad Color <span class="property-type">string</span></dt>
+        <dd>Color to fill areas created by rotation, specified as hexadecimal color (#RRGGBB). Default: #000000 (black).</dd>
+      </dl>
+
+      <h3>Inputs</h3>
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object | array</span></dt>
+        <dd>Single image object or array of image objects in standard format: <code>{ data: Buffer, width: number, height: number, channels: number, colorSpace: string, dtype: string }</code></dd>
+      </dl>
+
+      <h3>Outputs</h3>
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object | array | Buffer</span></dt>
+        <dd>Rotated image(s). Format depends on Output Format setting: raw image object(s) or encoded file buffer(s).</dd>
+      </dl>
+
+      <h3>Rotation Behavior</h3>
+      <ul>
+        <li><strong>Direction:</strong> Clockwise rotation (positive angles)</li>
+        <li><strong>Angle Range:</strong> Any angle supported (0-360° and beyond)</li>
+        <li><strong>Padding:</strong> Areas outside original bounds filled with specified color</li>
+        <li><strong>Precision:</strong> Decimal angles supported (e.g., 45.5°, 30.25°)</li>
+        <li><strong>Canvas Size:</strong> Output canvas automatically sized to contain rotated image</li>
+      </ul>
+
+      <h3>Examples</h3>
+      <ul>
+        <li><strong>90° Rotation:</strong> Angle: 90 → Image rotated 90° clockwise</li>
+        <li><strong>Custom Angle:</strong> Angle: 45.5 → Image rotated 45.5° clockwise</li>
+        <li><strong>Dynamic Angle:</strong> Angle: msg.rotationAngle → Use angle from message property</li>
+        <li><strong>White Padding:</strong> Pad Color: #FFFFFF → White background for rotated areas</li>
+        <li><strong>Transparent Padding:</strong> For RGBA images, use appropriate color with alpha channel</li>
+      </ul>
+
+      <h3>Node Interactions</h3>
+      <p><strong>Input Sources:</strong> Image-in, Array-out, other transform nodes</p>
+      <p><strong>Output Destinations:</strong> Other transform nodes, Mix nodes (concat, mosaic), Array-in for collections</p>
+      <p><strong>Common Workflows:</strong> Image correction, artistic effects, batch rotation for image alignment</p>
+
+      <h3>Output Formats</h3>
+      <ul>
+        <li><strong>Raw:</strong> Standard image object (fastest, for further processing)</li>
+        <li><strong>JPEG:</strong> Compressed file buffer with quality setting</li>
+        <li><strong>PNG:</strong> Lossless compressed file buffer</li>
+        <li><strong>WebP:</strong> Modern compressed format with quality setting</li>
+      </ul>
+
+      <h3>Color Format</h3>
+      <p>Pad color is specified as hexadecimal (#RRGGBB) and passed directly to the C++ engine. The color picker provides an easy way to select colors visually.</p>
+
+      <h3>Error Handling</h3>
+      <p>The node validates input data and angle values, displaying warnings for invalid inputs. Invalid angles default to 0°. Processing errors are logged and the message is not propagated.</p>
+
+      <h3>Performance</h3>
+      <p>Uses optimized C++ backend with OpenCV for high-performance rotation processing. Node status displays processing time. Array inputs are processed in parallel for optimal performance.</p>
     </script>
     

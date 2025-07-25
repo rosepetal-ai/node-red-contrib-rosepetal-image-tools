@@ -226,32 +226,161 @@
 
 <!-- 3 ▸ Help panel -->
 <script type="text/x-red" data-help-name="mosaic">
-<p><b>rosepetal‑mosaic</b> creates a composite image by placing multiple images from an input array onto a canvas at specified positions.</p>
+<p><b>rosepetal-mosaic</b> creates a composite image by placing multiple images from an input array onto a canvas at specified positions. This node enables precise control over image positioning, supports normalized coordinates, and offers flexible canvas configuration for creating complex image layouts.</p>
 
-<h3>I/O Properties</h3>
-<p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
+<h3>Details</h3>
+<p>This node processes arrays of images and places them onto a customizable canvas using high-performance C++ operations. It supports both absolute pixel coordinates and normalized coordinates (0.0-1.0), dynamic canvas sizing, and flexible positioning controls. The node handles both raw pixel data and encoded image files transparently, making it ideal for creating collages, dashboards, and composite layouts.</p>
 
-<h3>Canvas Configuration</h3>
+<h3>Properties</h3>
+<dl class="message-properties">
+  <dt>Input from <span class="property-type">string</span></dt>
+  <dd>Message property path containing the input image array. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+  
+  <dt>Output to <span class="property-type">string</span></dt>
+  <dd>Message property path where the mosaic image will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+  
+  <dt>Output Format <span class="property-type">string</span></dt>
+  <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+  
+  <dt>Quality <span class="property-type">number</span></dt>
+  <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
+  
+  <dt>Canvas Width <span class="property-type">number|string</span></dt>
+  <dd>Width of the output canvas in pixels. Supports dynamic values from <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+  
+  <dt>Canvas Height <span class="property-type">number|string</span></dt>
+  <dd>Height of the output canvas in pixels. Supports dynamic values from <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+  
+  <dt>Background Color <span class="property-type">color</span></dt>
+  <dd>Canvas background color in hex format (e.g., #000000). Images are placed on top of this background.</dd>
+  
+  <dt>Normalized Coords <span class="property-type">boolean</span></dt>
+  <dd>When enabled, position coordinates use normalized values (0.0-1.0) as fractions of canvas dimensions. When disabled, coordinates are absolute pixels.</dd>
+  
+  <dt>Image Positions <span class="property-type">array</span></dt>
+  <dd>Dynamic table of position mappings. Each row specifies: Array Index (which input image), X Position, Y Position. Same image can be placed multiple times.</dd>
+</dl>
+
+<h3>Inputs</h3>
+<p>The input should be an array of image objects in the standard format:</p>
+<pre>{
+  data: Buffer,        // Raw pixel data or encoded file buffer
+  width: number,       // Image width in pixels
+  height: number,      // Image height in pixels
+  channels: number,    // Channel count (1=grayscale, 3=RGB, 4=RGBA)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
+  dtype: string        // "uint8", "uint16", "float32"
+}</pre>
+<p>Also supports legacy format with <code>channels</code> as string (e.g., "int8_RGB"). File buffers (JPEG, PNG, WebP, BMP) are automatically detected and decoded.</p>
+
+<h3>Outputs</h3>
+<p>Produces a single composite mosaic image in the specified format:</p>
 <ul>
-  <li><b>Canvas Width/Height:</b> Dimensions of the output canvas in pixels</li>
-  <li><b>Background Color:</b> Canvas background color (hex format)</li>
-  <li><b>Normalized Coords:</b> Toggle between normalized (0-1) and pixel coordinates</li>
+  <li><b>Raw format:</b> Complete image object with pixel data and metadata</li>
+  <li><b>Encoded formats (JPG/PNG/WebP):</b> File buffer ready for storage or transmission</li>
+</ul>
+<p>Output dimensions match the configured canvas size. Images are placed at their specified positions, potentially overlapping if coordinates overlap.</p>
+
+<h3>Position Mapping System</h3>
+<h4>Array Index</h4>
+<ul>
+  <li><b>Zero-based indexing:</b> 0 = first image, 1 = second image, etc.</li>
+  <li><b>Multiple placement:</b> Same image can be referenced multiple times for duplication</li>
+  <li><b>Out-of-bounds handling:</b> Invalid indices are gracefully ignored with warnings</li>
 </ul>
 
-<h3>Position Mapping</h3>
+<h4>Coordinate Systems</h4>
 <ul>
-  <li><b>Array Index:</b> Which image from the input array to place (0-based indexing)</li>
-  <li><b>X, Y Position:</b> Top-left corner coordinates for image placement</li>
-  <li><b>Multiple Instances:</b> The same image can be placed multiple times</li>
-  <li><b>Dynamic Configuration:</b> Add or remove position mappings as needed</li>
+  <li><b>Absolute pixels (Normalized OFF):</b> Direct pixel coordinates from top-left corner (0,0)</li>
+  <li><b>Normalized coordinates (Normalized ON):</b> Values 0.0-1.0 as fractions of canvas dimensions</li>
+  <li><b>Position reference:</b> All coordinates specify the top-left corner of placed images</li>
 </ul>
 
-<h3>Input Format</h3>
-<p>Expects an array of image objects (raw format or image buffers). Each image will be placed according to the position mappings configured in the node.</p>
+<h4>Dynamic Configuration</h4>
+<ul>
+  <li><b>Add/Remove buttons:</b> Dynamically manage position mappings in the editor</li>
+  <li><b>Real-time validation:</b> Invalid values are automatically corrected</li>
+  <li><b>Persistent configuration:</b> Position mappings are saved with the flow</li>
+</ul>
 
-<h3>Output</h3>
-<p>Produces a single composite image. Uncheck <em>Out as JPG</em> for a RAW object, or check it for a JPEG buffer.</p>
+<h3>Examples</h3>
+<h4>Photo Collage</h4>
+<p>Create a photo collage with normalized positioning:</p>
+<ul>
+  <li>Canvas: 1200x800 pixels</li>
+  <li>Normalized Coords: ON</li>
+  <li>Positions: (0, 0.1, 0.1), (1, 0.6, 0.1), (2, 0.1, 0.6), (3, 0.6, 0.6)</li>
+  <li>Background: White (#FFFFFF)</li>
+</ul>
+
+<h4>Dashboard Layout</h4>
+<p>Create a dashboard with absolute positioning:</p>
+<ul>
+  <li>Canvas: 1920x1080 pixels</li>
+  <li>Normalized Coords: OFF</li>
+  <li>Header image at (0, 0), sidebar at (0, 100), main content at (300, 100)</li>
+  <li>Background: Dark gray (#333333)</li>
+</ul>
+
+<h4>Dynamic Canvas from Context</h4>
+<p>Use flow context for dynamic sizing:</p>
+<ul>
+  <li>Canvas Width: flow.screenWidth</li>
+  <li>Canvas Height: flow.screenHeight</li>
+  <li>Input from: flow.thumbnails</li>
+  <li>Responsive positioning based on screen dimensions</li>
+</ul>
+
+<h3>Mosaic Patterns</h3>
+<h4>Grid Layouts</h4>
+<ul>
+  <li><b>Regular Grid:</b> Use normalized coordinates with calculated spacing (e.g., 0.25, 0.5, 0.75)</li>
+  <li><b>Asymmetric Grid:</b> Mix different image sizes with custom positioning</li>
+  <li><b>Overlapping Grid:</b> Create layered effects with overlapping positions</li>
+</ul>
+
+<h4>Artistic Arrangements</h4>
+<ul>
+  <li><b>Scattered Layout:</b> Random positioning for organic arrangements</li>
+  <li><b>Circular Pattern:</b> Calculate positions around a center point</li>
+  <li><b>Layered Composition:</b> Z-order determined by position mapping sequence</li>
+</ul>
+
+<h3>Node Interactions</h3>
+<ul>
+  <li><b>Upstream:</b> Works with <code>array-in</code>, <code>image-in</code>, or any nodes producing image arrays</li>
+  <li><b>Downstream:</b> Connect to <code>array-out</code>, file writers, or display nodes</li>
+  <li><b>Chaining:</b> Can be combined with <code>concat</code> and other processing nodes</li>
+  <li><b>Context Integration:</b> Supports dynamic canvas sizing and positioning via context</li>
+  <li><b>Flow Coordination:</b> Use with inject nodes for automated mosaic generation</li>
+</ul>
+
+<h3>Output Formats</h3>
+<ul>
+  <li><b>Raw (fastest):</b> Uncompressed pixel data, ideal for further processing or chaining</li>
+  <li><b>JPEG:</b> Lossy compression with quality control, smaller files for web display</li>
+  <li><b>PNG:</b> Lossless compression, preserves transparency, larger files</li>
+  <li><b>WebP:</b> Modern format with superior compression and quality control</li>
+</ul>
+
+<h3>Error Handling</h3>
+<ul>
+  <li><b>Input Validation:</b> Comprehensive validation of image array structure and position mappings</li>
+  <li><b>Bounds Checking:</b> Automatic handling of out-of-bounds coordinates and array indices</li>
+  <li><b>Canvas Validation:</b> Ensures valid canvas dimensions with minimum size constraints</li>
+  <li><b>Memory Management:</b> Efficient memory usage with automatic cleanup and garbage collection</li>
+  <li><b>Position Validation:</b> Validates coordinate ranges for both absolute and normalized modes</li>
+  <li><b>Warning System:</b> Uses <code>node.warn()</code> for non-fatal issues without stopping flow execution</li>
+</ul>
 
 <h3>Performance</h3>
-<p>Ultra-optimized with zero-copy operations, parallel processing, and efficient memory management for maximum speed.</p>
+<ul>
+  <li><b>C++ Backend:</b> High-performance OpenCV-based processing with optimized build flags</li>
+  <li><b>Zero-Copy Operations:</b> Minimal memory allocation and copying for maximum efficiency</li>
+  <li><b>Parallel Processing:</b> Image placement operations processed in parallel using Promise.all()</li>
+  <li><b>Canvas Optimization:</b> Efficient canvas initialization and background rendering</li>
+  <li><b>Memory Pooling:</b> Reuses memory buffers across operations to reduce allocation overhead</li>
+  <li><b>Build Optimization:</b> Compiled with <code>-O3</code>, <code>-march=native</code>, <code>-ffast-math</code> flags</li>
+  <li><b>Position Caching:</b> Optimized coordinate calculations for repeated positioning operations</li>
+</ul>
 </script>

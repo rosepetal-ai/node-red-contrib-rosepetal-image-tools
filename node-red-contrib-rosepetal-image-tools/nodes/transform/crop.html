@@ -155,23 +155,92 @@
   
   <!-- 3 ▸ Help panel -->
   <script type="text/x-red" data-help-name="crop">
-  <p><b>rosepetal‑crop</b> extracts a rectangular region from each incoming image using x,y,width,height coordinates.</p>
+  <p>Extracts a rectangular region from images using flexible coordinate systems and dynamic value sources.</p>
   
-  <h3>I/O Properties</h3>
-  <p>Use the <b>Input from</b> and <b>Output to</b> fields to specify which message properties to use. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</p>
+  <h3>Details</h3>
+  <p>This node crops images by extracting a rectangular region defined by X, Y position and width, height dimensions. It supports both normalized coordinates (0-1 relative to image dimensions) and absolute pixel coordinates. All coordinate values can be dynamically sourced from message properties, flow, or global context.</p>
   
-  <h3>Coordinates</h3>
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Input from <span class="property-type">string</span></dt>
+    <dd>The location to read image data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>The location where the cropped image will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+    <dt>Output Format <span class="property-type">string</span></dt>
+    <dd>Choose output format: <code>raw</code> (fastest, standard image object), <code>jpg</code>, <code>png</code>, or <code>webp</code> (encoded file buffers).</dd>
+    <dt>Quality <span class="property-type">number</span></dt>
+    <dd>Compression quality for JPEG and WebP formats (1-100). Only visible when jpg or webp format is selected. Default: 90.</dd>
+    <dt>Normalised <span class="property-type">boolean</span></dt>
+    <dd>When enabled, coordinates are normalized (0.0-1.0 as fractions of image dimensions). When disabled, coordinates are absolute pixels.</dd>
+    <dt>X Position <span class="property-type">number|string</span></dt>
+    <dd>X coordinate of the top-left corner of the crop area. Can be fixed number or dynamic value from msg property, flow, or global context.</dd>
+    <dt>Y Position <span class="property-type">number|string</span></dt>
+    <dd>Y coordinate of the top-left corner of the crop area. Can be fixed number or dynamic value from msg property, flow, or global context.</dd>
+    <dt>Width <span class="property-type">number|string</span></dt>
+    <dd>Width of the crop area. Can be fixed number or dynamic value from msg property, flow, or global context.</dd>
+    <dt>Height <span class="property-type">number|string</span></dt>
+    <dd>Height of the crop area. Can be fixed number or dynamic value from msg property, flow, or global context.</dd>
+  </dl>
+
+  <h3>Inputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object | array</span></dt>
+    <dd>Single image object or array of image objects in standard format: <code>{ data: Buffer, width: number, height: number, channels: number, colorSpace: string, dtype: string }</code></dd>
+  </dl>
+
+  <h3>Outputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object | array | Buffer</span></dt>
+    <dd>Cropped image(s). Format depends on Output Format setting: raw image object(s) or encoded file buffer(s).</dd>
+  </dl>
+
+  <h3>Coordinate Systems</h3>
+  <p><strong>Normalized Coordinates (0.0-1.0):</strong></p>
   <ul>
-    <li><b>X, Y Position:</b> Top-left corner of the crop area</li>
-    <li><b>Width, Height:</b> Dimensions of the crop area</li>
-    <li><b>Normalised:</b> Toggle between normalized (0-1) and pixel coordinates</li>
-    <li>All coordinate fields support <code>msg</code>, <code>flow</code>, and <code>global</code> property references</li>
+    <li><strong>Advantages:</strong> Resolution-independent, easy to work with percentages</li>
+    <li><strong>Example:</strong> X=0.25, Y=0.25, Width=0.5, Height=0.5 crops the center quarter of any image</li>
+    <li><strong>Range:</strong> All values must be between 0.0 and 1.0</li>
   </ul>
-  
-  <h3>Output</h3>
-  <p>Untick <em>Out as JPG</em> for a RAW object, or tick it for a JPEG buffer.</p>
-  
+  <p><strong>Absolute Pixel Coordinates:</strong></p>
+  <ul>
+    <li><strong>Advantages:</strong> Precise pixel-level control</li>
+    <li><strong>Example:</strong> X=100, Y=50, Width=200, Height=150 crops a 200x150 region starting at pixel (100,50)</li>
+    <li><strong>Range:</strong> Values are in pixels from top-left corner</li>
+  </ul>
+
+  <h3>Examples</h3>
+  <ul>
+    <li><strong>Center Crop (Normalized):</strong> X=0.25, Y=0.25, Width=0.5, Height=0.5 → Center quarter of image</li>
+    <li><strong>Top-Left Corner (Pixels):</strong> X=0, Y=0, Width=100, Height=100 → 100x100 pixel square from top-left</li>
+    <li><strong>Dynamic Crop:</strong> X=msg.cropX, Y=msg.cropY → Use coordinates from message properties</li>
+    <li><strong>Face Detection Crop:</strong> Coordinates calculated by face detection → dynamic cropping based on detected faces</li>
+  </ul>
+
+  <h3>Node Interactions</h3>
+  <p><strong>Input Sources:</strong> Image-in, Array-out, other transform nodes</p>
+  <p><strong>Output Destinations:</strong> Other transform nodes, Mix nodes (concat, mosaic), Array-in for collections</p>
+  <p><strong>Common Workflows:</strong> Face detection → Crop, Image preprocessing → Crop → Resize, Batch cropping for thumbnails</p>
+
+  <h3>Output Formats</h3>
+  <ul>
+    <li><strong>Raw:</strong> Standard image object (fastest, for further processing)</li>
+    <li><strong>JPEG:</strong> Compressed file buffer with quality setting</li>
+    <li><strong>PNG:</strong> Lossless compressed file buffer</li>
+    <li><strong>WebP:</strong> Modern compressed format with quality setting</li>
+  </ul>
+
+  <h3>Boundary Handling</h3>
+  <p>The node automatically handles boundary conditions:</p>
+  <ul>
+    <li><strong>Out-of-bounds:</strong> Crop area is clipped to image boundaries</li>
+    <li><strong>Invalid coordinates:</strong> Negative positions are clamped to 0</li>
+    <li><strong>Oversized dimensions:</strong> Width/height automatically limited to available space</li>
+  </ul>
+
+  <h3>Error Handling</h3>
+  <p>The node validates input data and coordinates, displaying warnings for invalid inputs. Invalid coordinates are clamped to valid ranges. Processing errors are logged and the message is not propagated.</p>
+
   <h3>Performance</h3>
-  <p>The node displays timing information showing conversion, processing, and encoding times. All operations are optimized using OpenCV's high-performance functions.</p>
+  <p>Uses optimized C++ backend with OpenCV for high-performance cropping. Node status displays processing time including conversion, processing, and encoding phases. Array inputs are processed in parallel for optimal performance.</p>
   </script>
   

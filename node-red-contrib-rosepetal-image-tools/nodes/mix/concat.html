@@ -95,16 +95,131 @@
   </script>
 
   <script type="text/x-red" data-help-name="concat">
-    <p><b>rosepetal-concat</b> stitches multiple images into one.</p>
+    <p><b>rosepetal-concat</b> combines multiple images into a single composite image through concatenation. Images can be joined horizontally or vertically with intelligent handling of size differences using padding or scaling strategies.</p>
+
+    <h3>Details</h3>
+    <p>This node processes arrays of images and combines them into a seamless composite using high-performance C++ operations. It supports flexible concatenation directions, intelligent sizing strategies, and maintains image quality throughout the process. The node handles both raw pixel data and encoded image files transparently.</p>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+      <dt>Input from <span class="property-type">string</span></dt>
+      <dd>Message property path containing the input image array. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+      
+      <dt>Output to <span class="property-type">string</span></dt>
+      <dd>Message property path where the concatenated image will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+      
+      <dt>Output Format <span class="property-type">string</span></dt>
+      <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+      
+      <dt>Quality <span class="property-type">number</span></dt>
+      <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
+      
+      <dt>Direction <span class="property-type">string</span></dt>
+      <dd>Concatenation direction: <code>right</code> (→), <code>left</code> (←), <code>down</code> (↓), or <code>up</code> (↑).</dd>
+      
+      <dt>Strategy <span class="property-type">string</span></dt>
+      <dd>Size handling strategy: <code>pad-start</code>, <code>pad-end</code>, <code>pad-both</code>, or <code>resize</code>.</dd>
+      
+      <dt>Pad Colour <span class="property-type">color</span></dt>
+      <dd>Background color for padding areas when using pad strategies. Hidden when resize strategy is selected.</dd>
+    </dl>
+
+    <h3>Inputs</h3>
+    <p>The input should be an array of image objects in the standard format:</p>
+    <pre>{
+  data: Buffer,        // Raw pixel data or encoded file buffer
+  width: number,       // Image width in pixels
+  height: number,      // Image height in pixels
+  channels: number,    // Channel count (1=grayscale, 3=RGB, 4=RGBA)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
+  dtype: string        // "uint8", "uint16", "float32"
+}</pre>
+    <p>Also supports legacy format with <code>channels</code> as string (e.g., "int8_RGB"). File buffers (JPEG, PNG, WebP, BMP) are automatically detected and decoded.</p>
+
+    <h3>Outputs</h3>
+    <p>Produces a single concatenated image in the specified format:</p>
     <ul>
-      <li><b>Direction</b> — choose horizontal (→/←) or vertical (↓/↑).</li>
-      <li><b>Strategy</b> — how to fill extra space:
-        <ul>
-          <li><em>Pad start/end/both</em> (uses the selected colour).</li>
-          <li><em>Resize</em> — scale smaller images up so no gaps remain.</li>
-        </ul>
-      </li>
+      <li><b>Raw format:</b> Complete image object with pixel data and metadata</li>
+      <li><b>Encoded formats (JPG/PNG/WebP):</b> File buffer ready for storage or transmission</li>
     </ul>
-    <p>Tick <em>JPG</em> to get a JPEG buffer, otherwise a raw object.</p>
-    <p>The status shows timings: <code>conv | task | enc</code>.</p>
+    <p>Output dimensions depend on input images and concatenation direction. Width/height are calculated automatically based on the combined images.</p>
+
+    <h3>Concatenation Strategies</h3>
+    <h4>Padding Strategies</h4>
+    <ul>
+      <li><b>Pad Start:</b> Adds padding before smaller images (top for horizontal, left for vertical)</li>
+      <li><b>Pad End:</b> Adds padding after smaller images (bottom for horizontal, right for vertical)</li>
+      <li><b>Pad Both:</b> Centers smaller images with equal padding on both sides</li>
+    </ul>
+    <h4>Resize Strategy</h4>
+    <ul>
+      <li><b>Resize:</b> Scales all images to match the largest dimension, eliminating gaps entirely</li>
+    </ul>
+
+    <h3>Direction Behavior</h3>
+    <ul>
+      <li><b>Right (→):</b> Images placed left-to-right, heights normalized</li>
+      <li><b>Left (←):</b> Images placed right-to-left, heights normalized</li>
+      <li><b>Down (↓):</b> Images stacked top-to-bottom, widths normalized</li>
+      <li><b>Up (↑):</b> Images stacked bottom-to-top, widths normalized</li>
+    </ul>
+
+    <h3>Examples</h3>
+    <h4>Horizontal Photo Strip</h4>
+    <p>Create a horizontal photo strip from portrait images:</p>
+    <ul>
+      <li>Direction: Right (→)</li>
+      <li>Strategy: Pad Both</li>
+      <li>Pad Color: White (#FFFFFF)</li>
+    </ul>
+
+    <h4>Vertical Timeline</h4>
+    <p>Stack images vertically for a timeline view:</p>
+    <ul>
+      <li>Direction: Down (↓)</li>
+      <li>Strategy: Resize</li>
+      <li>Output: PNG for high quality</li>
+    </ul>
+
+    <h4>Dynamic Context Usage</h4>
+    <p>Use flow context for batch processing multiple image sets:</p>
+    <ul>
+      <li>Input from: flow.imageArray</li>
+      <li>Output to: flow.concatenated</li>
+    </ul>
+
+    <h3>Node Interactions</h3>
+    <ul>
+      <li><b>Upstream:</b> Works with <code>array-in</code>, <code>image-in</code>, or any nodes producing image arrays</li>
+      <li><b>Downstream:</b> Connect to <code>array-out</code>, file writers, or further processing nodes</li>
+      <li><b>Chaining:</b> Can be chained with other mix nodes for complex compositions</li>
+      <li><b>Flow Integration:</b> Supports flow and global context for cross-node data sharing</li>
+    </ul>
+
+    <h3>Output Formats</h3>
+    <ul>
+      <li><b>Raw (fastest):</b> Uncompressed pixel data, ideal for further processing</li>
+      <li><b>JPEG:</b> Lossy compression, smaller files, quality parameter controls compression level</li>
+      <li><b>PNG:</b> Lossless compression, preserves transparency, larger files</li>
+      <li><b>WebP:</b> Modern format with superior compression, quality parameter available</li>
+    </ul>
+
+    <h3>Error Handling</h3>
+    <ul>
+      <li><b>Input Validation:</b> Comprehensive validation of image structure and array format</li>
+      <li><b>Size Compatibility:</b> Automatic handling of different image dimensions</li>
+      <li><b>Memory Management:</b> Efficient memory usage with automatic cleanup</li>
+      <li><b>Format Support:</b> Graceful handling of mixed input formats</li>
+      <li><b>Warning System:</b> Uses <code>node.warn()</code> for non-fatal issues without stopping flow</li>
+    </ul>
+
+    <h3>Performance</h3>
+    <ul>
+      <li><b>C++ Backend:</b> High-performance OpenCV-based processing with optimized build flags</li>
+      <li><b>Zero-Copy Operations:</b> Minimal memory allocation and copying for maximum efficiency</li>
+      <li><b>Parallel Processing:</b> Array operations processed in parallel using Promise.all()</li>
+      <li><b>Status Timing:</b> Real-time performance metrics displayed as <code>conv | task | enc</code> (conversion, processing, encoding)</li>
+      <li><b>Memory Optimization:</b> Automatic memory management and garbage collection</li>
+      <li><b>Build Optimization:</b> Compiled with <code>-O3</code>, <code>-march=native</code>, <code>-ffast-math</code> flags</li>
+    </ul>
   </script>

@@ -57,35 +57,67 @@
 </script>
 
 <script type="text/x-red" data-help-name="array-out">
-    <p>Collects messages from array-in nodes and assembles them into a sorted array.</p>
+    <p>Collects messages from multiple array-in nodes and assembles them into an ordered array based on position indices.</p>
+    
+    <h3>Details</h3>
+    <p>This node works as the collection point for multiple array-in nodes. It waits for messages containing array metadata, collects them based on their position indices, and outputs a complete array when all expected elements are received. The node includes timeout protection and performance monitoring.</p>
     
     <h3>Properties</h3>
     <dl class="message-properties">
         <dt>Timeout <span class="property-type">number</span></dt>
-        <dd>Maximum time in milliseconds to wait for all array elements after the first message arrives. Default: 5000ms</dd>
+        <dd>Maximum time in milliseconds to wait for all array elements after the first message arrives. Default: 5000ms. If timeout occurs, no message is sent and collection resets.</dd>
         <dt>Expected Count <span class="property-type">number</span></dt>
-        <dd>Number of array elements required before outputting the assembled array. Required field.</dd>
+        <dd>Number of array elements required before outputting the assembled array. Must match the number of array-in nodes connected. Required field, minimum value: 1.</dd>
         <dt>Output to <span class="property-type">string</span></dt>
-        <dd>The location where the assembled array will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</dd>
+        <dd>The location where the assembled array will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
     </dl>
 
-    <h3>Behavior</h3>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>Messages from array-in nodes containing array metadata.</dd>
+        <dt>meta.arrayPosition <span class="property-type">number</span></dt>
+        <dd>The array position index (0, 1, 2...) provided by array-in nodes.</dd>
+        <dt>meta.arrayData <span class="property-type">any</span></dt>
+        <dd>The actual data to be placed in the array at the specified position.</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">array</span></dt>
+        <dd>The assembled array containing data from all array-in nodes, ordered by position indices [data0, data1, data2...]</dd>
+    </dl>
+
+    <h3>Operation Flow</h3>
     <ol>
-        <li><strong>First Message:</strong> Starts timeout timer, collection timer, and begins collection</li>
-        <li><strong>Collection:</strong> Gathers messages from array-in nodes, tracks timing</li>
-        <li><strong>Assembly:</strong> Places data at specified array positions (0, 1, 2...)</li>
+        <li><strong>First Message:</strong> Starts timeout timer and begins collection</li>
+        <li><strong>Collection:</strong> Gathers messages from array-in nodes, validates positions</li>
+        <li><strong>Assembly:</strong> Places data at specified array positions based on meta.arrayPosition</li>
         <li><strong>Success:</strong> Outputs assembled array when all expected elements received</li>
-        <li><strong>Timeout:</strong> Resets collection, NO message sent</li>
+        <li><strong>Timeout:</strong> Resets collection, no message sent</li>
         <li><strong>Reset:</strong> Ready for next collection cycle</li>
     </ol>
 
-    <h3>Completion Conditions</h3>
+    <h3>Examples</h3>
     <ul>
-        <li><strong>Success:</strong> All expected array positions are filled → array output with timing</li>
-        <li><strong>Timeout:</strong> Time limit exceeded → collection reset, no output</li>
+        <li><strong>Basic Array Assembly:</strong> With Expected Count = 3, array-in nodes at positions 0, 1, 2 will produce: <code>["data0", "data1", "data2"]</code></li>
+        <li><strong>Image Array:</strong> Three image-in → array-in (positions 0,1,2) → array-out → creates array of image objects for batch processing</li>
+        <li><strong>Mixed Data:</strong> Combine different data types from various sources into a single ordered array</li>
     </ul>
 
-    <h3>Example</h3>
-    <p>With Expected Count = 3, array-in nodes at positions 0, 1, 2 will produce: <code>["data0", "data1", "data2"]</code></p>
-    <p>Node status shows collection timing when successful.</p>
+    <h3>Node Interactions</h3>
+    <p><strong>Requires:</strong> Multiple array-in nodes, each with unique position indices (0, 1, 2...)</p>
+    <p><strong>Works with:</strong> Transform nodes that support array inputs (resize, rotate, etc.), array-select for element extraction</p>
+    <p><strong>Best Practice:</strong> Set Expected Count to match the number of array-in nodes. Use reasonable timeout values based on your processing requirements.</p>
+
+    <h3>Error Handling</h3>
+    <p>The node handles various error conditions:</p>
+    <ul>
+        <li><strong>Missing metadata:</strong> Messages without proper array metadata are ignored</li>
+        <li><strong>Duplicate positions:</strong> Later messages overwrite earlier ones at the same position</li>
+        <li><strong>Timeout:</strong> Collection resets, node status shows timeout, no output sent</li>
+    </ul>
+
+    <h3>Performance</h3>
+    <p>Node status displays collection timing when successful. The timeout mechanism prevents indefinite waiting for missing array elements.</p>
 </script>

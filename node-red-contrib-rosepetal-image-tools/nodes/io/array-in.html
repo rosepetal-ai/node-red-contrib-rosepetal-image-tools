@@ -50,26 +50,45 @@
 </script>
 
 <script type="text/x-red" data-help-name="array-in">
-    <p>Collects data from a specified input path and tags it for array assembly with a position index.</p>
+    <p>Collects data from a specified input path and tags it for ordered array assembly with a position index.</p>
+    
+    <h3>Details</h3>
+    <p>This node is designed to work with the array-out node to create ordered arrays from multiple data sources. It extracts data from the specified input path and tags it with a position index, allowing multiple array-in nodes to feed into a single array-out node for ordered collection.</p>
     
     <h3>Properties</h3>
     <dl class="message-properties">
         <dt>Input from <span class="property-type">string</span></dt>
-        <dd>The location to read data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</dd>
+        <dd>The location to read data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
         <dt>Array Position <span class="property-type">number</span></dt>
-        <dd>The index position (0, 1, 2...) where this data should be placed in the final array.</dd>
+        <dd>The index position (0, 1, 2...) where this data should be placed in the final array. Must be a non-negative integer.</dd>
     </dl>
 
-    <h3>Usage</h3>
-    <p>Connect multiple array-in nodes to a single array-out node. Each array-in node should have a unique array position starting from 0.</p>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>Input message containing the data to be extracted. The actual data location is determined by the "Input from" property.</dd>
+    </dl>
     
     <h3>Outputs</h3>
-    <p>The node passes through the original message with added metadata:</p>
+    <p>The node passes through the original message with added metadata for array assembly:</p>
+    <dl class="message-properties">
+        <dt>meta.arrayPosition <span class="property-type">number</span></dt>
+        <dd>The configured array position index.</dd>
+        <dt>meta.arrayData <span class="property-type">any</span></dt>
+        <dd>The data extracted from the specified input path.</dd>
+    </dl>
+
+    <h3>Examples</h3>
     <ul>
-        <li><code>msg.meta.arrayPosition</code> - The configured array position</li>
-        <li><code>msg.meta.arrayData</code> - The data extracted from the input path</li>
+        <li><strong>Basic Array Assembly:</strong> Three array-in nodes with positions 0, 1, 2 feeding into an array-out will create: <code>[data0, data1, data2]</code></li>
+        <li><strong>Image Collection:</strong> Multiple image-in nodes → array-in nodes (positions 0, 1, 2...) → array-out → transform nodes that support arrays</li>
+        <li><strong>Mixed Data Sources:</strong> Combine data from different context levels (msg, flow, global) into a single ordered array</li>
     </ul>
 
-    <h3>Example</h3>
-    <p>Three array-in nodes with positions 0, 1, 2 feeding into an array-out will create: <code>[data0, data1, data2]</code></p>
+    <h3>Node Interactions</h3>
+    <p><strong>Works with:</strong> Must be used with array-out node for array assembly. Can receive data from any node that outputs to the specified input path.</p>
+    <p><strong>Best Practice:</strong> Use sequential positions starting from 0, ensure each array-in node connected to the same array-out has a unique position.</p>
+
+    <h3>Error Handling</h3>
+    <p>If the input path contains no data or is invalid, the node will set <code>meta.arrayData</code> to <code>null</code> and display a warning.</p>
 </script>

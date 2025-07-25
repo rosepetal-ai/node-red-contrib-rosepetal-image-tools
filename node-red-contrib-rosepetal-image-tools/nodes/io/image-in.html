@@ -44,16 +44,47 @@
 </script>
 
 <script type="text/x-red" data-help-name="image-in">
-    <p>Reads an image file from a path and outputs it as a raw image object to a specified property.</p>
+    <p>Loads an image file from the filesystem and outputs it as a raw image object for processing in the Node-RED flow.</p>
+    
+    <h3>Details</h3>
+    <p>This node reads image files from disk and converts them into the standard image format used throughout the Rosepetal Image Tools. It supports various image formats including JPEG, PNG, WebP, and BMP. The image is decoded using a high-performance C++ backend with OpenCV.</p>
     
     <h3>Properties</h3>
     <dl class="message-properties">
         <dt>File Path <span class="property-type">string</span></dt>
-        <dd>The full path to the image file on the server.</dd>
+        <dd>The full absolute or relative path to the image file on the server filesystem. Supports common image formats: JPEG, PNG, WebP, BMP.</dd>
         <dt>Output to <span class="property-type">string</span></dt>
         <dd>The location where the resulting image object will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
     </dl>
 
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any</span></dt>
+        <dd>Input message (content is ignored, only triggers the node operation).</dd>
+    </dl>
+
     <h3>Outputs</h3>
-    <p>The node sets the property specified in 'Output to' with the processed image object, which has the standard format: <code>{ data: Buffer, width: number, height: number, channels: string }</code>.</p>
+    <p>The node sets the property specified in 'Output to' with the processed image object using the standard format:</p>
+    <pre>{
+  data: Buffer,        // Raw pixel data
+  width: number,       // Image width in pixels  
+  height: number,      // Image height in pixels
+  channels: number,    // Channel count (1, 3, 4)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
+  dtype: string        // "uint8", "uint16", "float32"
+}</pre>
+    <p><strong>Legacy Format Support:</strong> The node also maintains backward compatibility with the legacy format: <code>{ data: Buffer, width: number, height: number, channels: string }</code></p>
+
+    <h3>Examples</h3>
+    <ul>
+        <li><strong>Basic Usage:</strong> Set File Path to <code>/path/to/image.jpg</code> and Output to <code>msg.payload</code></li>
+        <li><strong>Multiple Images:</strong> Connect to an array-out node to work with image collections</li>
+        <li><strong>Processing Pipeline:</strong> Connect to transform nodes like resize, rotate, or crop for image manipulation</li>
+    </ul>
+
+    <h3>Error Handling</h3>
+    <p>If the file path is invalid or the image cannot be read, the node will display a warning and not propagate the message. Check the debug panel for specific error details.</p>
+
+    <h3>Performance</h3>
+    <p>Image loading is performed asynchronously using the C++ backend for optimal performance. The node status displays processing time information.</p>
 </script>

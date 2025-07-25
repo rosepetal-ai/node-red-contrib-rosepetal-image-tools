@@ -64,55 +64,76 @@
 </script>
 
 <script type="text/x-red" data-help-name="array-select">
-    <p>Selects elements from an input array using flexible selection syntax.</p>
+    <p>Selects specific elements from an input array using flexible selection syntax including indices, ranges, and patterns.</p>
+    
+    <h3>Details</h3>
+    <p>This node provides powerful array element selection capabilities with Python-like slicing syntax. It can extract single elements, multiple specific indices, ranges, or patterns from arrays. The output format is automatically determined based on the selection size, with an option to force array output.</p>
     
     <h3>Properties</h3>
     <dl class="message-properties">
         <dt>Input from <span class="property-type">string</span></dt>
-        <dd>The location to read the input array from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context.</dd>
+        <dd>The location to read the input array from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
         <dt>Selection <span class="property-type">string</span></dt>
-        <dd>Specify which array elements to select using various formats.</dd>
+        <dd>Specify which array elements to select using various formats: single indices, comma-separated lists, ranges, or step patterns.</dd>
         <dt>Force Array <span class="property-type">boolean</span></dt>
-        <dd>When checked, always outputs an array even for single elements.</dd>
+        <dd>When checked, always outputs an array even for single elements. Default: false (single elements output directly).</dd>
     </dl>
 
-    <h3>Selection Formats</h3>
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">array</span></dt>
+        <dd>Input array from which to select elements. <strong>Must be an array</strong> - the node will warn and skip processing if input is not an array.</dd>
+    </dl>
+
+    <h3>Outputs</h3>
+    <dl class="message-properties">
+        <dt>payload <span class="property-type">any | array</span></dt>
+        <dd>Selected element(s). Single elements output directly unless "Force Array" is enabled. Multiple elements always output as array.</dd>
+    </dl>
+
+    <h3>Selection Syntax</h3>
     <ul>
         <li><strong>Single Index:</strong> <code>0</code>, <code>2</code>, <code>-1</code> (negative indices count from end)</li>
         <li><strong>Multiple Indices:</strong> <code>0,2,4</code>, <code>1,3,5</code> (comma-separated)</li>
         <li><strong>Range:</strong> <code>1:4</code> (indices 1 to 3), <code>0:5</code> (indices 0 to 4)</li>
         <li><strong>Step Range:</strong> <code>0::2</code> (every 2nd element), <code>1:7:2</code> (indices 1,3,5)</li>
+        <li><strong>Negative Ranges:</strong> <code>-2:</code> (last two elements), <code>:-2</code> (all but last two)</li>
     </ul>
 
-    <h3>Input Requirements</h3>
-    <p><strong>Input must always be an array.</strong> The node will warn and skip processing if the input is not an array.</p>
+    <h3>Examples</h3>
+    <p><strong>Input Array:</strong> <code>["A", "B", "C", "D", "E"]</code></p>
+    <ul>
+        <li><strong>Single:</strong> <code>0</code> → <code>"A"</code> (first element)</li>
+        <li><strong>Multiple:</strong> <code>1,3</code> → <code>["B", "D"]</code> (specific indices)</li>
+        <li><strong>Range:</strong> <code>1:4</code> → <code>["B", "C", "D"]</code> (slice range)</li>
+        <li><strong>Step:</strong> <code>0::2</code> → <code>["A", "C", "E"]</code> (every 2nd element)</li>
+        <li><strong>Negative:</strong> <code>-1</code> → <code>"E"</code> (last element)</li>
+        <li><strong>Last Two:</strong> <code>-2:</code> → <code>["D", "E"]</code> (from 2nd last to end)</li>
+    </ul>
+
+    <h3>Node Interactions</h3>
+    <p><strong>Works with:</strong> Array-out (to extract from assembled arrays), Transform nodes (to select processed results), any node that produces arrays</p>
+    <p><strong>Common Patterns:</strong> Array-out → Array-select (extract specific results), Transform → Array-select (pick best results), Image processing → Array-select (choose specific images)</p>
 
     <h3>Output Behavior</h3>
     <ul>
         <li><strong>Single Element:</strong> Outputs the element directly (unless "Force Array" is checked)</li>
         <li><strong>Multiple Elements:</strong> Always outputs as an array</li>
+        <li><strong>Empty Selection:</strong> Outputs empty array <code>[]</code></li>
         <li><strong>Invalid Selection:</strong> No message sent, warning logged</li>
         <li><strong>Out of Bounds:</strong> Invalid indices are ignored, warning logged</li>
     </ul>
 
-    <h3>Examples</h3>
-    <p><strong>Input:</strong> <code>[\"A\", \"B\", \"C\", \"D\", \"E\"]</code></p>
+    <h3>Error Handling</h3>
+    <p>Comprehensive validation and error reporting:</p>
     <ul>
-        <li><code>0</code> → <code>\"A\"</code></li>
-        <li><code>1,3</code> → <code>[\"B\", \"D\"]</code></li>
-        <li><code>1:4</code> → <code>[\"B\", \"C\", \"D\"]</code></li>
-        <li><code>0::2</code> → <code>[\"A\", \"C\", \"E\"]</code></li>
-        <li><code>-1</code> → <code>\"E\"</code> (last element)</li>
-        <li><code>-2:-1</code> → <code>[\"D\", \"E\"]</code> (last two elements)</li>
+        <li><strong>Non-array input:</strong> Warning logged, message not propagated</li>
+        <li><strong>Empty array:</strong> Warning logged, selection processed normally</li>
+        <li><strong>Invalid syntax:</strong> Warning logged, message not propagated</li>
+        <li><strong>Out-of-bounds indices:</strong> Invalid indices skipped, warning logged</li>
+        <li><strong>Status display:</strong> Shows current selection and processing state</li>
     </ul>
 
-    <h3>Error Handling</h3>
-    <p>The node provides comprehensive validation and error reporting:</p>
-    <ul>
-        <li>Warns if input is not an array</li>
-        <li>Warns if input array is empty</li>
-        <li>Warns for invalid selection syntax</li>
-        <li>Warns for out-of-bounds indices</li>
-        <li>Node status shows current processing state</li>
-    </ul>
+    <h3>Performance</h3>
+    <p>Selection operations are performed efficiently with minimal memory copying. Node status displays selection information and processing state.</p>
 </script>

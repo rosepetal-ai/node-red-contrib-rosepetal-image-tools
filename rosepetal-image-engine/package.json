@@ -4,15 +4,16 @@
     "private": true,
     "main": "index.js",
     "scripts": {
-      "build": "node-gyp build",
-      "configure": "node-gyp configure",
-      "rebuild": "node-gyp rebuild"
+        "install": "node-gyp rebuild",
+        "build": "node-gyp build",
+        "configure": "node-gyp configure",
+        "rebuild": "node-gyp rebuild"
     },
     "gypfile": true,
     "dependencies": {
-      "node-addon-api": "^7.1.0"
+        "node-addon-api": "^7.1.0"
     },
     "devDependencies": {
-      "node-gyp": "^10.1.0"
+        "node-gyp": "^10.1.0"
     }
-  }
+}

@@ -9,7 +9,8 @@
         name:{value:""},
         inputPath:{value:"payload"}, inputPathType:{value:"msg"},
         outputPath:{value:"payload"},outputPathType:{value:"msg"},
-        outputAsJpg:{value:false},
+        outputFormat:{value:"raw"},
+        outputQuality:{value:90},
         direction:{value:"right"},            // right|left|down|up
         strategy :{value:"pad-start"},        // pad-start|pad-end|pad-both|resize
         padColor :{value:"#000000"}
@@ -31,6 +32,13 @@
         function toggleColour(){ $padRow.toggle($strategy.val()!=="resize"); }
         $strategy.on("change",toggleColour);
         toggleColour();         /* initial state */
+        
+        function updateQualityVisibility(){
+          const format = $("#node-input-outputFormat").val();
+          $("#quality-row").toggle(format === "jpg" || format === "webp");
+        }
+        $("#node-input-outputFormat").on("change", updateQualityVisibility);
+        updateQualityVisibility(); // initial state
       }
     });
   </script>
@@ -47,8 +55,18 @@
       <input type="hidden" id="node-input-outputPathType">
     </div>
     <div class="form-row">
-      <label for="node-input-outputAsJpg"><i class="fa fa-file-image-o"></i> JPG</label>
-      <input type="checkbox" id="node-input-outputAsJpg" style="width:20px;height:20px;">
+      <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+      <select id="node-input-outputFormat" style="width: 200px;">
+        <option value="raw">Raw (fastest)</option>
+        <option value="jpg">JPEG</option>
+        <option value="png">PNG</option>
+        <option value="webp">WebP</option>
+      </select>
+    </div>
+    <div class="form-row" id="quality-row">
+      <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+      <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+      <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
     </div>
     <hr/>
     <div class="form-row">

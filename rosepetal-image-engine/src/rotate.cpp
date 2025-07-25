@@ -12,11 +12,13 @@ public:
                const Napi::Value& imgVal,
                double angDeg,
                cv::Scalar padRGB,   // R,G,B
-               bool   encJpg)
+               std::string outputFormat,
+               int quality = 90)
     : Napi::AsyncWorker(cb),
       angleDeg(angDeg),
       padColorRGB(padRGB),
-      encodeJpg(encJpg)
+      outputFormat(std::move(outputFormat)),
+      quality(quality)
   {
     try {
       inputMat = ConvertToMat(imgVal);            // zero-copy RAW
@@ -86,22 +88,22 @@ protected:
       taskMs = std::chrono::duration<double,std::milli>(
                  std::chrono::steady_clock::now() - t0).count(); 
 
-      // JPEG opcional
-      if (encodeJpg) {
-        // sólo convierte si el canal NO es BGR
-        const cv::Mat& srcForJpg =
+      // Multi-format encoding
+      if (outputFormat != "raw") {
+        // Convert to BGR if needed for encoding
+        const cv::Mat& srcForEncoding =
               (channelOrder == "BGR") ? resultMat
                                       : ToBgrForJpg(resultMat, channelOrder);
     
-        encodeMs = EncodeToJpgFast(srcForJpg, jpgBuf, 90);  // usa nuevo helper
-    }
+        encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality);
+      }
     } catch (const std::exception& e) { SetError(e.what()); }
   }
 
   void OnOK() override {
     Napi::Env env = Env();
-    Napi::Value jsImg = encodeJpg
-        ? VectorToBuffer(env, std::move(jpgBuf))
+    Napi::Value jsImg = (outputFormat != "raw")
+        ? VectorToBuffer(env, std::move(encodedBuf))
         : MatToRawJS(env, resultMat, channelOrder);
 
     Napi::Object res = Napi::Object::New(env);
@@ -118,23 +120,24 @@ private:
   cv::Mat inputMat, resultMat;
   double  angleDeg;
   cv::Scalar padColorRGB, padClrImg;
-  bool    encodeJpg;
+  std::string outputFormat;
+  int quality;
 
   std::string channelOrder;
   double taskMs  = 0.0;
   double encodeMs = 0.0;
-  std::vector<uchar> jpgBuf;
+  std::vector<uchar> encodedBuf;
 };
 
 // ───────── Binding JS → C++ ────────────────────────────────────────────
-// rotate(image, angleDeg, [padColor], [encodeJpg], callback)
+// rotate(image, angleDeg, [padColor], [outputFormat], [quality], callback)
 Napi::Value Rotate(const Napi::CallbackInfo& info)
 {
   Napi::Env env = info.Env();
-  if (info.Length() < 4 || info.Length() > 6 ||
+  if (info.Length() < 4 || info.Length() > 7 ||
       !info[info.Length()-1].IsFunction())
     return Napi::TypeError::New(env,
-      "rotate(image, angleDeg, [padColor], [encodeJpg], callback)").Value();
+      "rotate(image, angleDeg, [padColor], [outputFormat], [quality], callback)").Value();
 
   int i = 0;
   Napi::Value img   = info[i++];
@@ -143,8 +146,23 @@ Napi::Value Rotate(const Napi::CallbackInfo& info)
   std::string padColorStr = "#000000";      // negro por defecto
   if (info[i].IsString()) padColorStr = info[i++].As<Napi::String>();
 
-  bool encJpg = false;
-  if (info.Length()-i == 2) encJpg = info[i++].As<Napi::Boolean>();
+  // Handle backward compatibility and new parameters
+  std::string outputFormat = "raw";
+  int quality = 90;
+  
+  if (info.Length() - i >= 2) {
+    if (info[i].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+    } else if (info[i].IsString()) {
+      // New string format
+      outputFormat = info[i++].As<Napi::String>().Utf8Value();
+    }
+  }
+  
+  if (info.Length() - i >= 2) {
+    quality = info[i++].As<Napi::Number>().Int32Value();
+  }
 
   Napi::Function cb = info[i].As<Napi::Function>();
 
@@ -153,7 +171,8 @@ Napi::Value Rotate(const Napi::CallbackInfo& info)
       img,
       angleDeg,
       ParseColor(padColorStr),   // RGB
-      encJpg);
+      outputFormat,
+      quality);
   worker->Queue();
   return env.Undefined();
 }

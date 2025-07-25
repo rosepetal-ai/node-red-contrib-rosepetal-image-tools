@@ -19,7 +19,8 @@ module.exports = function (RED) {
         node.status({});
         const inputPath  = config.inputPath  || 'payload';
         const outputPath = config.outputPath || 'payload';
-        const outputAsJpg = !!config.outputAsJpg;
+        const outputFormat = config.outputFormat || 'raw';
+        const outputQuality = config.outputQuality || 90;
 
         const originalPayload = RED.util.getMessageProperty(msg, inputPath);
         const inputList = Array.isArray(originalPayload)
@@ -58,12 +59,13 @@ module.exports = function (RED) {
           wVal = wVal === null || wVal === '' ? NaN : Number(wVal);
           hVal = hVal === null || hVal === '' ? NaN : Number(hVal);
 
-          // Direct call to addon: (image, wMode, wVal, hMode, hVal, encodeJpg)
+          // Direct call to addon: (image, wMode, wVal, hMode, hVal, outputFormat, quality)
           return CppProcessor.resize(
             inputImage,
             config.widthMode,  wVal,
             config.heightMode, hVal,
-            outputAsJpg
+            outputFormat,
+            outputQuality
           );
         });
         const results = await Promise.all(promises);

@@ -21,7 +21,8 @@ module.exports = function (RED) {
         // I/O paths
         const inputPath = config.inputPath || 'payload';
         const outputPath = config.outputPath || 'payload';
-        const outputAsJpg = !!config.outputAsJpg;
+        const outputFormat = config.outputFormat || 'raw';
+        const outputQuality = config.outputQuality || 90;
 
         // Filter parameters
         const filterType = config.filterType || 'blur';
@@ -73,7 +74,8 @@ module.exports = function (RED) {
             filterType,
             kernelSize,
             intensity,
-            outputAsJpg
+            outputFormat,
+            outputQuality
           );
         });
 

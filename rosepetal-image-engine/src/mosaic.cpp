@@ -37,11 +37,13 @@ public:
                int canvasWidth, int canvasHeight,
                const std::string& backgroundColor,
                const Napi::Array& positionsArray,
-               bool normalized, bool encJpg)
+               bool normalized, std::string outputFormat,
+               int quality = 90)
     : Napi::AsyncWorker(cb),
       canvasWidth_(canvasWidth), canvasHeight_(canvasHeight),
       backgroundColor_(backgroundColor),
-      normalized_(normalized), encJpg_(encJpg)
+      normalized_(normalized), outputFormat_(std::move(outputFormat)),
+      quality_(quality)
   {
     /* ─ SUPER FAST image conversion with timing ─ */
     const int64 t0 = cv::getTickCount();
@@ -144,12 +146,12 @@ protected:
     
     taskMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
     
-    /* ─ SUPER FAST JPEG encoding (optional) ─ */
-    if (encJpg_) {
-      // Convert to BGR format for JPEG if needed (like other nodes do)
-      const cv::Mat& srcJpg = (canvasChannel_ == "BGR") ? canvas_ 
-                             : ToBgrForJpg(canvas_, canvasChannel_);
-      encodeMs_ = EncodeToJpgFast(srcJpg, jpgBuf_, 90);
+    /* ─ SUPER FAST multi-format encoding (optional) ─ */
+    if (outputFormat_ != "raw") {
+      // Convert to BGR format for encoding if needed (like other nodes do)
+      const cv::Mat& srcForEncoding = (canvasChannel_ == "BGR") ? canvas_ 
+                                     : ToBgrForJpg(canvas_, canvasChannel_);
+      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_);
     }
   }
   
@@ -157,8 +159,8 @@ protected:
     Napi::Env env = Env();
     
     // Zero-copy output creation with correct channel format
-    Napi::Value jsImg = encJpg_
-        ? VectorToBuffer(env, std::move(jpgBuf_))           // Zero-copy JPEG
+    Napi::Value jsImg = (outputFormat_ != "raw")
+        ? VectorToBuffer(env, std::move(encodedBuf_))       // Zero-copy encoded
         : MatToRawJS(env, canvas_.clone(), canvasChannel_); // Contiguous raw with correct channel format
     
     Napi::Object result = Napi::Object::New(env);
@@ -313,20 +315,22 @@ private:
   
   int canvasWidth_, canvasHeight_;
   std::string backgroundColor_;
-  bool normalized_, encJpg_;
+  bool normalized_;
+  std::string outputFormat_;
+  int quality_;
   
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
-  std::vector<uchar> jpgBuf_;
+  std::vector<uchar> encodedBuf_;
 };
 
-/*──────── BINDING: mosaic(imagesArray, width, height, bgColor, positions, normalized, encJpg, cb) ─*/
+/*──────── BINDING: mosaic(imagesArray, width, height, bgColor, positions, normalized, [outputFormat], [quality], cb) ─*/
 Napi::Value Mosaic(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Ultra-fast parameter validation
-  if (info.Length() < 7 || info.Length() > 8 || !info[info.Length()-1].IsFunction()) {
+  if (info.Length() < 7 || info.Length() > 9 || !info[info.Length()-1].IsFunction()) {
     return Napi::TypeError::New(env,
-      "mosaic(imagesArray, width, height, bgColor, positions, normalized, [encJpg], callback)")
+      "mosaic(imagesArray, width, height, bgColor, positions, normalized, [outputFormat], [quality], callback)")
       .Value();
   }
   
@@ -338,7 +342,25 @@ Napi::Value Mosaic(const Napi::CallbackInfo& info) {
   std::string backgroundColor = info[i++].As<Napi::String>().Utf8Value();
   Napi::Array positions = info[i++].As<Napi::Array>();
   bool normalized = info[i++].As<Napi::Boolean>().Value();
-  bool encJpg = (info.Length() - i == 2) ? info[i++].As<Napi::Boolean>().Value() : false;
+  
+  // Handle backward compatibility and new parameters
+  std::string outputFormat = "raw";
+  int quality = 90;
+  
+  if (info.Length() - i >= 2) {
+    if (info[i].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+    } else if (info[i].IsString()) {
+      // New string format
+      outputFormat = info[i++].As<Napi::String>().Utf8Value();
+    }
+  }
+  
+  if (info.Length() - i >= 2) {
+    quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
   Napi::Function callback = info[i].As<Napi::Function>();
   
   // Validate canvas dimensions
@@ -348,7 +370,7 @@ Napi::Value Mosaic(const Napi::CallbackInfo& info) {
   
   // Launch ULTRA-FAST worker
   (new MosaicWorker(callback, imagesArray, canvasWidth, canvasHeight, 
-                    backgroundColor, positions, normalized, encJpg))->Queue();
+                    backgroundColor, positions, normalized, outputFormat, quality))->Queue();
   
   return env.Undefined();
 }

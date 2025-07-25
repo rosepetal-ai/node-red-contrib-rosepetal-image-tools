@@ -17,11 +17,12 @@ ResizeWorker(Napi::Function& callback,
   const Napi::Value& inputImage,
   std::string widthMode,  double widthValue,
   std::string heightMode, double heightValue,
-  bool encodeJpg)
+  std::string outputFormat,
+  int quality = 90)
   : Napi::AsyncWorker(callback),
   widthMode(std::move(widthMode)),   widthValue(widthValue),
   heightMode(std::move(heightMode)), heightValue(heightValue),
-  encodeJpg(encodeJpg){
+  outputFormat(std::move(outputFormat)), quality(quality){
 
     try {
       auto t0 = std::chrono::steady_clock::now();
@@ -91,14 +92,14 @@ protected:
         auto t1 = std::chrono::steady_clock::now();
         taskMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
-        // --- 4.3 Codificación JPG (igual) -----------------------------
-        if (encodeJpg) {
-          // sólo convierte si el canal NO es BGR
-          const cv::Mat& srcForJpg =
+        // --- 4.3 Multi-format encoding -----------------------------
+        if (outputFormat != "raw") {
+          // Convert to BGR if needed for encoding
+          const cv::Mat& srcForEncoding =
                 (channelOrder == "BGR") ? resultMat
                                         : ToBgrForJpg(resultMat, channelOrder);
       
-          encodeMs = EncodeToJpgFast(srcForJpg, jpgBuf, 90);  // usa nuevo helper
+          encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality);
         }
     } catch (const std::exception& e) {
         SetError(e.what());
@@ -113,29 +114,17 @@ protected:
     Napi::Value imageResult; // Usamos un Napi::Value para guardar el resultado de la imagen
 
     // --- Lógica de la Imagen ---
-    if (encodeJpg) {
-        // Si se pidió un JPG, imageResult es SOLO el buffer del fichero.
-        uint8_t* jpgData = new uint8_t[jpgBuf.size()];
-        std::memcpy(jpgData, jpgBuf.data(), jpgBuf.size());
+    if (outputFormat != "raw") {
+        // Return encoded buffer (JPG/PNG/WebP)
+        uint8_t* encodedData = new uint8_t[encodedBuf.size()];
+        std::memcpy(encodedData, encodedBuf.data(), encodedBuf.size());
         imageResult = Napi::Buffer<uint8_t>::New(
-            env, jpgData, jpgBuf.size(),
+            env, encodedData, encodedBuf.size(),
             [](Napi::Env, uint8_t* p){ delete[] p; }
         );
     } else {
-        // Si se pidió raw, imageResult es el OBJETO raw completo.
-        Napi::Object imageObj = Napi::Object::New(env);
-        imageObj.Set("width",  Napi::Number::New(env, resultMat.cols));
-        imageObj.Set("height", Napi::Number::New(env, resultMat.rows));
-        
-        std::string depth = (resultMat.depth() == CV_16U) ? "int16" : "int8";
-        imageObj.Set("channels", Napi::String::New(env, depth + "_" + channelOrder));
-
-        size_t bytes = resultMat.total() * resultMat.elemSize();
-        uint8_t* rawData = new uint8_t[bytes];
-        std::memcpy(rawData, resultMat.data, bytes);
-        imageObj.Set("data", Napi::Buffer<uint8_t>::New(env, rawData, bytes, [](Napi::Env, uint8_t* p){ delete[] p; }));
-        
-        imageResult = imageObj;
+        // Return raw image object using new format
+        imageResult = MatToRawJS(env, resultMat, channelOrder);
     }
 
     // --- Lógica de Tiempos (siempre se añade) ---
@@ -171,26 +160,41 @@ private:
   double convertMs = 0.0;
   double taskMs    = 0.0;
 
-  bool encodeJpg;
-  std::vector<uchar> jpgBuf;
+  std::string outputFormat;
+  int quality;
+  std::vector<uchar> encodedBuf;
   double encodeMs = 0.0;
 };
 
 Napi::Value Resize(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-    if (info.Length() < 6 || info.Length() > 7 || !info[info.Length() - 1].IsFunction()) {
+    if (info.Length() < 6 || info.Length() > 8 || !info[info.Length() - 1].IsFunction()) {
       Napi::TypeError::New(env,
-        "Expected (image, widthMode, widthVal, heightMode, heightVal, [encodeJpg], callback)")
+        "Expected (image, widthMode, widthVal, heightMode, heightVal, [outputFormat], [quality], callback)")
         .ThrowAsJavaScriptException();
       return env.Null();
   }
 
-  bool encodeJpg = false;
+  std::string outputFormat = "raw";
+  int quality = 90;
   size_t cbIndex = 5;
+
+  // Handle backward compatibility and new parameters
   if (info.Length() == 7) {
-      encodeJpg = info[5].As<Napi::Boolean>().Value();
-      cbIndex   = 6;
+    if (info[5].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[5].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+      cbIndex = 6;
+    } else if (info[5].IsString()) {
+      // New string format
+      outputFormat = info[5].As<Napi::String>().Utf8Value();
+      cbIndex = 6;
+    }
+  } else if (info.Length() == 8) {
+    outputFormat = info[5].As<Napi::String>().Utf8Value();
+    quality = info[6].As<Napi::Number>().Int32Value();
+    cbIndex = 7;
   }
 
   Napi::Function cb = info[cbIndex].As<Napi::Function>();
@@ -202,7 +206,8 @@ Napi::Value Resize(const Napi::CallbackInfo& info) {
       info[2].As<Napi::Number>().DoubleValue(),   // widthVal
       info[3].As<Napi::String>().Utf8Value(),     // heightMode
       info[4].As<Napi::Number>().DoubleValue(),   // heightVal
-      encodeJpg);
+      outputFormat,                               // outputFormat
+      quality);                                   // quality
 
   worker->Queue();
   return env.Undefined();

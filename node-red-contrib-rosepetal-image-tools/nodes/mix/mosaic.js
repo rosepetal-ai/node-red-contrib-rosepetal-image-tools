@@ -21,7 +21,8 @@ module.exports = function (RED) {
         /* I/O paths */
         const inputPath = config.inputPath || 'payload';
         const outputPath = config.outputPath || 'payload';
-        const outputAsJpg = !!config.outputAsJpg;
+        const outputFormat = config.outputFormat || 'raw';
+        const outputQuality = config.outputQuality || 90;
 
         /* Canvas configuration */
         const canvasWidth = Number(NodeUtils.resolveDimension(node, config.canvasWidthType, config.canvasWidth, msg));
@@ -63,7 +64,8 @@ module.exports = function (RED) {
           backgroundColor,
           validPositions,
           normalized,
-          outputAsJpg
+          outputFormat,
+          outputQuality
         );
 
         /* Set output */

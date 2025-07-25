@@ -113,10 +113,12 @@ public:
                std::string dir,
                std::string strat,
                cv::Scalar padRGB,
-               bool jpg)
+               std::string outputFormat,
+               int quality = 90)
     : Napi::AsyncWorker(cb),
       padColorRGB(padRGB),
-      encodeJpg(jpg)
+      outputFormat(std::move(outputFormat)),
+      quality(quality)
   {
     // Convert string enums to faster integer types
     if (dir == "right") direction = Direction::RIGHT;
@@ -241,17 +243,17 @@ protected:
 
     taskMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 
-    // Fast JPG encoding if needed
-    if (encodeJpg) {
+    // Multi-format encoding if needed
+    if (outputFormat != "raw") {
       cv::Mat tmp = ToBgrForJpg(result, outputChannel);
-      encodeMs = EncodeToJpgFast(tmp, jpgBuf);
+      encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality);
     }
   }
 
   void OnOK() override {
     Napi::Env env = Env();
-    Napi::Value jsImg = encodeJpg ? VectorToBuffer(env, std::move(jpgBuf))
-                                  : MatToRawJS(env, result, outputChannel);
+    Napi::Value jsImg = (outputFormat != "raw") ? VectorToBuffer(env, std::move(encodedBuf))
+                                                 : MatToRawJS(env, result, outputChannel);
 
     Napi::Object out = Napi::Object::New(env);
     out.Set("image", jsImg);
@@ -267,9 +269,10 @@ private:
   Strategy strategy;
   std::string outputChannel;
   cv::Scalar padColorRGB, padClrImg;
-  bool encodeJpg;
+  std::string outputFormat;
+  int quality;
   double convertMs = 0, taskMs = 0, encodeMs = 0;
-  std::vector<uchar> jpgBuf;
+  std::vector<uchar> encodedBuf;
   int maxW = 0, maxH = 0;
 };
 
@@ -278,9 +281,9 @@ Napi::Value Concat(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Fast parameter validation
-  if (info.Length() < 5 || !info[0].IsArray() || !info[1].IsString() ||
+  if (info.Length() < 5 || info.Length() > 7 || !info[0].IsArray() || !info[1].IsString() ||
       !info[2].IsString() || !info[3].IsString() || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env, "concat(array, direction, strategy, padHex, [jpg], cb)")
+    Napi::TypeError::New(env, "concat(array, direction, strategy, padHex, [outputFormat], [quality], cb)")
       .ThrowAsJavaScriptException();
     return env.Null();
   }
@@ -300,10 +303,29 @@ Napi::Value Concat(const Napi::CallbackInfo& info) {
   std::string st = info[2].As<Napi::String>();
   cv::Scalar pad = ParseColor(info[3].As<Napi::String>());
   
-  const bool jpg = (info.Length() == 6) ? info[4].As<Napi::Boolean>().Value() : false;
-  const size_t cbIdx = (info.Length() == 6) ? 5 : 4;
+  // Handle backward compatibility and new parameters
+  std::string outputFormat = "raw";
+  int quality = 90;
+  size_t cbIdx = 4;
+  
+  if (info.Length() >= 6) {
+    if (info[4].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[4].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+      cbIdx = 5;
+    } else if (info[4].IsString()) {
+      // New string format
+      outputFormat = info[4].As<Napi::String>().Utf8Value();
+      cbIdx = 5;
+    }
+  }
+  
+  if (info.Length() == 7) {
+    quality = info[5].As<Napi::Number>().Int32Value();
+    cbIdx = 6;
+  }
 
   // Create and queue worker
-  (new ConcatWorker(info[cbIdx].As<Napi::Function>(), raw, dir, st, pad, jpg))->Queue();
+  (new ConcatWorker(info[cbIdx].As<Napi::Function>(), raw, dir, st, pad, outputFormat, quality))->Queue();
   return env.Undefined();
 }

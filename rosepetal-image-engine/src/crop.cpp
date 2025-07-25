@@ -10,10 +10,10 @@ public:
   CropWorker(Napi::Function cb,
              const Napi::Value& imgVal,
              double x,double y,double width,double height,
-             bool normalized,bool encJpg)
+             bool normalized,std::string outputFormat,int quality = 90)
     : Napi::AsyncWorker(cb),
       x_(x),y_(y),width_(width),height_(height),
-      normalized_(normalized),encJpg_(encJpg)
+      normalized_(normalized),outputFormat_(std::move(outputFormat)),quality_(quality)
   {
     /* ─ medir convertMs ─ */
     const int64 t0 = cv::getTickCount();
@@ -66,18 +66,18 @@ protected:
 
     taskMs_ = (cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
 
-    /* ─ JPEG opcional (encodeMs) ─ */
-    if(encJpg_){
-      const cv::Mat& srcJpg = (channel_=="BGR")? result_
+    /* ─ Multi-format encoding (encodeMs) ─ */
+    if(outputFormat_ != "raw"){
+      const cv::Mat& srcForEncoding = (channel_=="BGR")? result_
                          : ToBgrForJpg(result_,channel_);
-      encodeMs_ = EncodeToJpgFast(srcJpg, jpgBuf_);         // utils.h
+      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_);
     }
   }
 
   void OnOK() override {
     Napi::Env env = Env();
-    Napi::Value jsImg = encJpg_
-        ? VectorToBuffer(env,std::move(jpgBuf_))            // 0-copy
+    Napi::Value jsImg = (outputFormat_ != "raw")
+        ? VectorToBuffer(env,std::move(encodedBuf_))        // 0-copy
         : MatToRawJS(env,result_.clone(),channel_);         // contiguo
 
     Napi::Object out = Napi::Object::New(env);
@@ -93,20 +93,22 @@ protected:
 private:
   cv::Mat input_, result_;
   double x_, y_, width_, height_;
-  bool   normalized_, encJpg_;
+  bool   normalized_;
+  std::string outputFormat_;
+  int quality_;
   std::string channel_;
 
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
-  std::vector<uchar> jpgBuf_;
+  std::vector<uchar> encodedBuf_;
 };
 
-/*──────── binding: crop(image,x,y,width,height,normalized,[encodeJpg],cb) ─*/
+/*──────── binding: crop(image,x,y,width,height,normalized,[outputFormat],[quality],cb) ─*/
 Napi::Value Crop(const Napi::CallbackInfo& info)
 {
   Napi::Env env = info.Env();
-  if(info.Length()<7||info.Length()>8||!info[info.Length()-1].IsFunction())
+  if(info.Length()<7||info.Length()>9||!info[info.Length()-1].IsFunction())
     return Napi::TypeError::New(env,
-      "crop(image,x,y,width,height,normalized,[encodeJpg],callback)").Value();
+      "crop(image,x,y,width,height,normalized,[outputFormat],[quality],callback)").Value();
 
   int i=0;
   Napi::Value img = info[i++];
@@ -115,9 +117,27 @@ Napi::Value Crop(const Napi::CallbackInfo& info)
          width = info[i++].As<Napi::Number>(),
          height = info[i++].As<Napi::Number>();
   bool norm = info[i++].As<Napi::Boolean>();
-  bool jpg  = (info.Length()-i==2)? info[i++].As<Napi::Boolean>() : false;
+  
+  // Handle backward compatibility and new parameters
+  std::string outputFormat = "raw";
+  int quality = 90;
+  
+  if (info.Length() >= 8) {
+    if (info[i].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+    } else if (info[i].IsString()) {
+      // New string format
+      outputFormat = info[i++].As<Napi::String>().Utf8Value();
+    }
+  }
+  
+  if (info.Length() == 9) {
+    quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
   Napi::Function cb = info[i].As<Napi::Function>();
 
-  (new CropWorker(cb,img,x,y,width,height,norm,jpg))->Queue();
+  (new CropWorker(cb,img,x,y,width,height,norm,outputFormat,quality))->Queue();
   return env.Undefined();
 }

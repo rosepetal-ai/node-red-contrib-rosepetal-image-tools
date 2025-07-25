@@ -10,11 +10,13 @@ public:
                 const Napi::Value& imgVal,
                 int top,int bottom,int left,int right,
                 cv::Scalar padRGB,
-                bool encodeJpg)
+                std::string outputFormat,
+                int quality = 90)
     : Napi::AsyncWorker(cb),
       t_(top),b_(bottom),l_(left),r_(right),
       padColorRGB(padRGB),
-      encJpg(encodeJpg)
+      outputFormat(std::move(outputFormat)),
+      quality(quality)
   {
     /* convertMs — zero‑copy → cv::Mat */
     const int64 t0=cv::getTickCount();
@@ -55,16 +57,16 @@ protected:
     cv::copyMakeBorder(src_,dst_,t_,b_,l_,r_,cv::BORDER_CONSTANT,padClrImg);
     taskMs_=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
 
-    if(encJpg){
-      const cv::Mat& jpgIn=(channel_=="BGR")?dst_:ToBgrForJpg(dst_,channel_);
-      encodeMs_=EncodeToJpgFast(jpgIn,jpgBuf_,90);
+    if(outputFormat != "raw"){
+      const cv::Mat& srcForEncoding=(channel_=="BGR")?dst_:ToBgrForJpg(dst_,channel_);
+      encodeMs_=EncodeToFormat(srcForEncoding,encodedBuf_,outputFormat,quality);
     }
   }
 
   void OnOK() override {
     Napi::Env env=Env();
-    Napi::Value jsImg=encJpg?VectorToBuffer(env,std::move(jpgBuf_))
-                            :MatToRawJS(env,dst_,channel_);
+    Napi::Value jsImg=(outputFormat != "raw")?VectorToBuffer(env,std::move(encodedBuf_))
+                                             :MatToRawJS(env,dst_,channel_);
 
     Napi::Object res=Napi::Object::New(env);
     res.Set("image",jsImg);
@@ -77,18 +79,19 @@ private:
   int t_,b_,l_,r_;
   cv::Scalar padColorRGB,padClrImg;
   std::string channel_;
-  bool encJpg;
+  std::string outputFormat;
+  int quality;
 
   double convertMs_{0},taskMs_{0},encodeMs_{0};
-  std::vector<uchar> jpgBuf_;
+  std::vector<uchar> encodedBuf_;
 };
 
-/*──────── binding: padding(img,top,bottom,left,right,padHex,[jpg],cb) ─*/
+/*──────── binding: padding(img,top,bottom,left,right,padHex,[outputFormat],[quality],cb) ─*/
 Napi::Value Padding(const Napi::CallbackInfo& info){
   Napi::Env env=info.Env();
-  if(info.Length()<7||info.Length()>8||!info[info.Length()-1].IsFunction())
+  if(info.Length()<7||info.Length()>9||!info[info.Length()-1].IsFunction())
     return Napi::TypeError::New(env,
-      "padding(image,top,bottom,left,right,padHex,[encodeJpg],callback)").Value();
+      "padding(image,top,bottom,left,right,padHex,[outputFormat],[quality],callback)").Value();
 
   int i=0;
   Napi::Value img=info[i++];
@@ -98,10 +101,26 @@ Napi::Value Padding(const Napi::CallbackInfo& info){
   int right =info[i++].As<Napi::Number>();
   cv::Scalar pad=ParseColor(info[i++].As<Napi::String>());
 
-  bool jpg=false;
-  if(info.Length()-i==2) jpg=info[i++].As<Napi::Boolean>();
+  // Handle backward compatibility and new parameters
+  std::string outputFormat = "raw";
+  int quality = 90;
+  
+  if (info.Length() - i >= 2) {
+    if (info[i].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+    } else if (info[i].IsString()) {
+      // New string format
+      outputFormat = info[i++].As<Napi::String>().Utf8Value();
+    }
+  }
+  
+  if (info.Length() - i >= 2) {
+    quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
   Napi::Function cb=info[i].As<Napi::Function>();
 
-  (new PaddingWorker(cb,img,top,bottom,left,right,pad,jpg))->Queue();
+  (new PaddingWorker(cb,img,top,bottom,left,right,pad,outputFormat,quality))->Queue();
   return env.Undefined();
 }

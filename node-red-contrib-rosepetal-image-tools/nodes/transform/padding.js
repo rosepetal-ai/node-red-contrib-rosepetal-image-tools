@@ -40,7 +40,8 @@ module.exports = function (RED) {
         const imgs  = Array.isArray(rawIn) ? rawIn : [rawIn];
 
         /* static options from editor */
-        const jpg      = !!cfg.outputAsJpg;
+        const outputFormat = cfg.outputFormat || 'raw';
+        const outputQuality = cfg.outputQuality || 90;
         const padHex   = cfg.padColor || '#000000';
 
         /* numeric margins can come from msg / flow / global */
@@ -51,7 +52,7 @@ module.exports = function (RED) {
 
         /* one C++ call per image (fast, runs in parallel) */
         const tasks = imgs.map(img =>
-          CppProcessor.padding(img, tVal, bVal, lVal, rVal, padHex, jpg)
+          CppProcessor.padding(img, tVal, bVal, lVal, rVal, padHex, outputFormat, outputQuality)
         );
         const results = await Promise.all(tasks);
 

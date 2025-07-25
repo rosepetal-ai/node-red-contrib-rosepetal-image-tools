@@ -35,12 +35,13 @@ module.exports = function (RED) {
         /* ▸ Options from the editor -------------------------------------- */
         const direction = config.direction;   // 'right' | 'left' | 'down' | 'up'
         const strategy  = config.strategy;    // 'pad-start' | 'pad-end' | 'pad-both' | 'resize'
-        const asJpg     = !!config.outputAsJpg;
+        const outputFormat = config.outputFormat || 'raw';
+        const outputQuality = config.outputQuality || 90;
         const padColorHex = config.padColor    || '#000000';
 
         /* ▸ Single call to the C++ addon --------------------------------- */
         const { image, timing = {} } =
-              await Cpp.concat(imgs, direction, strategy, padColorHex, asJpg);
+              await Cpp.concat(imgs, direction, strategy, padColorHex, outputFormat, outputQuality);
 
         /* ▸ Write the single result back to msg -------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);

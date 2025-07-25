@@ -14,12 +14,14 @@ public:
                const std::string& filterType,
                int kernelSize,
                double intensity,
-               bool encodeJpg)
+               std::string outputFormat,
+               int quality = 90)
     : Napi::AsyncWorker(cb),
       filterType_(filterType),
       kernelSize_(kernelSize),
       intensity_(intensity),
-      encJpg_(encodeJpg)
+      outputFormat_(std::move(outputFormat)),
+      quality_(quality)
   {
     // Convert input image and measure timing
     const int64 t0 = cv::getTickCount();
@@ -74,11 +76,11 @@ protected:
       
       taskMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
       
-      // Optional JPEG encoding
-      if (encJpg_) {
-        const cv::Mat& srcJpg = (channel_ == "BGR") ? result_ 
-                               : ToBgrForJpg(result_, channel_);
-        encodeMs_ = EncodeToJpgFast(srcJpg, jpgBuf_);
+      // Multi-format encoding
+      if (outputFormat_ != "raw") {
+        const cv::Mat& srcForEncoding = (channel_ == "BGR") ? result_ 
+                                       : ToBgrForJpg(result_, channel_);
+        encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_);
       }
     } catch (const std::exception& e) {
       SetError(e.what());
@@ -87,8 +89,8 @@ protected:
 
   void OnOK() override {
     Napi::Env env = Env();
-    Napi::Value jsImg = encJpg_
-        ? VectorToBuffer(env, std::move(jpgBuf_))
+    Napi::Value jsImg = (outputFormat_ != "raw")
+        ? VectorToBuffer(env, std::move(encodedBuf_))
         : MatToRawJS(env, result_, channel_);
 
     Napi::Object out = Napi::Object::New(env);
@@ -106,11 +108,12 @@ private:
   std::string filterType_;
   int kernelSize_;
   double intensity_;
-  bool encJpg_;
+  std::string outputFormat_;
+  int quality_;
   std::string channel_;
   
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
-  std::vector<uchar> jpgBuf_;
+  std::vector<uchar> encodedBuf_;
 
   void ApplyBlurFilter() {
     // Box blur using OpenCV's optimized function
@@ -181,14 +184,14 @@ private:
   }
 };
 
-/*──────── binding: filter(image, filterType, kernelSize, intensity, [encodeJpg], callback) ─*/
+/*──────── binding: filter(image, filterType, kernelSize, intensity, [outputFormat], [quality], callback) ─*/
 Napi::Value Filter(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Validate arguments
-  if (info.Length() < 5 || info.Length() > 6 || !info[info.Length() - 1].IsFunction()) {
+  if (info.Length() < 5 || info.Length() > 7 || !info[info.Length() - 1].IsFunction()) {
     return Napi::TypeError::New(env,
-        "filter(image, filterType, kernelSize, intensity, [encodeJpg], callback)").Value();
+        "filter(image, filterType, kernelSize, intensity, [outputFormat], [quality], callback)").Value();
   }
 
   int i = 0;
@@ -196,7 +199,25 @@ Napi::Value Filter(const Napi::CallbackInfo& info) {
   std::string filterType = info[i++].As<Napi::String>();
   int kernelSize = info[i++].As<Napi::Number>().Int32Value();
   double intensity = info[i++].As<Napi::Number>().DoubleValue();
-  bool jpg = (info.Length() - i == 2) ? info[i++].As<Napi::Boolean>() : false;
+  
+  // Handle backward compatibility and new parameters
+  std::string outputFormat = "raw";
+  int quality = 90;
+  
+  if (info.Length() - i >= 2) {
+    if (info[i].IsBoolean()) {
+      // Legacy boolean format: convert to string
+      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
+    } else if (info[i].IsString()) {
+      // New string format
+      outputFormat = info[i++].As<Napi::String>().Utf8Value();
+    }
+  }
+  
+  if (info.Length() - i >= 2) {
+    quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
   Napi::Function cb = info[i].As<Napi::Function>();
 
   // Validate kernel size (must be odd)
@@ -206,6 +227,6 @@ Napi::Value Filter(const Napi::CallbackInfo& info) {
   kernelSize = std::max(3, std::min(kernelSize, 15)); // Clamp to reasonable range
 
   // Create and queue worker
-  (new FilterWorker(cb, img, filterType, kernelSize, intensity, jpg))->Queue();
+  (new FilterWorker(cb, img, filterType, kernelSize, intensity, outputFormat, quality))->Queue();
   return env.Undefined();
 }

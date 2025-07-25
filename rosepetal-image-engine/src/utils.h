@@ -140,7 +140,23 @@ inline cv::Mat ToBgrForJpg(const cv::Mat& src, const std::string& order) {
 }
 
 
-// utils.h  – función de compresión rápido a “.jpg”
+// Multi-format image encoding system supporting JPG, PNG, WebP
+enum class ImageFormat {
+  RAW = 0,
+  JPG = 1,
+  PNG = 2,
+  WEBP = 3
+};
+
+// Convert format string to enum
+inline ImageFormat ParseImageFormat(const std::string& format) {
+  if (format == "jpg" || format == "jpeg") return ImageFormat::JPG;
+  if (format == "png") return ImageFormat::PNG;
+  if (format == "webp") return ImageFormat::WEBP;
+  return ImageFormat::RAW;
+}
+
+// utils.h  – función de compresión rápido a ".jpg" (legacy compatibility)
 inline double EncodeToJpgFast(const cv::Mat& src,
   std::vector<uchar>& out,
   int quality = 90)          // 90 = buen balance
@@ -155,6 +171,51 @@ inline double EncodeToJpgFast(const cv::Mat& src,
     cv::imencode(".jpg", src, out, p);
 
 
+  return (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+}
+
+// Enhanced multi-format encoding function
+inline double EncodeToFormat(const cv::Mat& src,
+  std::vector<uchar>& out,
+  const std::string& format,
+  int quality = 90)
+{
+  const int64 t0 = cv::getTickCount();
+  ImageFormat fmt = ParseImageFormat(format);
+  
+  switch (fmt) {
+    case ImageFormat::JPG: {
+      out.reserve(src.total() >> 1);
+      std::vector<int> params{
+        cv::IMWRITE_JPEG_QUALITY, quality,
+        cv::IMWRITE_JPEG_PROGRESSIVE, 0,
+        cv::IMWRITE_JPEG_OPTIMIZE, 0
+      };
+      cv::imencode(".jpg", src, out, params);
+      break;
+    }
+    case ImageFormat::PNG: {
+      out.reserve(src.total());
+      std::vector<int> params{
+        cv::IMWRITE_PNG_COMPRESSION, 6,  // Balanced compression
+        cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_DEFAULT
+      };
+      cv::imencode(".png", src, out, params);
+      break;
+    }
+    case ImageFormat::WEBP: {
+      out.reserve(src.total() >> 1);
+      std::vector<int> params{
+        cv::IMWRITE_WEBP_QUALITY, quality
+      };
+      cv::imencode(".webp", src, out, params);
+      break;
+    }
+    default:
+      // RAW format - should not reach here, handled at higher level
+      throw std::runtime_error("RAW format encoding not supported");
+  }
+  
   return (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 }
 

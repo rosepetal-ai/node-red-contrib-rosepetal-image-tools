@@ -48,7 +48,33 @@ module.exports = function (RED) {
 
         /* ▸ Status: standardized success formatting ----------------------- */
         const total = performance.now() - t0;
-        NodeUtils.setSuccessStatus(node, 1, total, timing);
+        
+        // Debug image display
+        let debugFormat = null;
+        if (config.debugEnabled) {
+          try {
+            const debugResult = await NodeUtils.debugImageDisplay(
+              image, 
+              outputFormat,
+              outputQuality,
+              node,
+              true
+            );
+            
+            if (debugResult) {
+              debugFormat = debugResult.formatMessage;
+              // Update node status with debug info
+              NodeUtils.setSuccessStatusWithDebug(node, 1, total, timing, debugFormat);
+            }
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
+        
+        // Set regular status if debug not enabled or failed
+        if (!debugFormat) {
+          NodeUtils.setSuccessStatus(node, 1, total, timing);
+        }
 
         send(msg);
         done && done();

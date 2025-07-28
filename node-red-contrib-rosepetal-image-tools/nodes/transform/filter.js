@@ -99,11 +99,43 @@ module.exports = function (RED) {
 
         // Update node status with timing information
         const elapsedTime = performance.now() - startTime;
-        node.status({
-          fill: 'green',
-          shape: 'dot',
-          text: `OK: ${results.length} img in ${elapsedTime.toFixed(2)} ms (conv. ${(totalConvertMs + encodeMs).toFixed(2)} ms | task ${totalTaskMs.toFixed(2)} ms)`
-        });
+        
+        // Debug image display
+        let debugFormat = null;
+        if (config.debugEnabled) {
+          try {
+            // For arrays, show the first image as representative
+            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
+            const debugResult = await NodeUtils.debugImageDisplay(
+              debugImage, 
+              outputFormat,
+              outputQuality,
+              node,
+              true
+            );
+            
+            if (debugResult) {
+              debugFormat = debugResult.formatMessage;
+              // Update node status with debug info
+              NodeUtils.setSuccessStatusWithDebug(node, results.length, elapsedTime, {
+                convertMs: totalConvertMs,
+                taskMs: totalTaskMs,
+                encodeMs: encodeMs
+              }, debugFormat + (Array.isArray(originalPayload) ? ' (first)' : ''));
+            }
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
+        
+        // Set regular status if debug not enabled or failed
+        if (!debugFormat) {
+          node.status({
+            fill: 'green',
+            shape: 'dot',
+            text: `OK: ${results.length} img in ${elapsedTime.toFixed(2)} ms (conv. ${(totalConvertMs + encodeMs).toFixed(2)} ms | task ${totalTaskMs.toFixed(2)} ms)`
+          });
+        }
 
         // Set output and send message
         RED.util.setMessageProperty(msg, outputPath, output);

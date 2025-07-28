@@ -11,6 +11,8 @@
         outputPath:{value:"payload"},outputPathType:{value:"msg"},
         outputFormat:{value:"raw"},
         outputQuality:{value:90},
+        // Debug configuration
+        debugEnabled:{value:false},
         direction:{value:"right"},            // right|left|down|up
         strategy :{value:"pad-start"},        // pad-start|pad-end|pad-both|resize
         padColor :{value:"#000000"}
@@ -39,8 +41,132 @@
         }
         $("#node-input-outputFormat").on("change", updateQualityVisibility);
         updateQualityVisibility(); // initial state
+
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        
+        // Initialize debug state on node open
+        if (debugCheckbox.is(':checked')) {
+            this.debugDisplay = true;
+        }
+        
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            // Store debug state for runtime access
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
       }
     });
+
+    // Debug image display renderer - shared across all image processing nodes
+    if (!window.debugImageRendererInitialized) {
+        window.debugImageRendererInitialized = true;
+        
+        (function() {
+            var isSubscribed = false;
+            
+            function subscribeToDebugImages() {
+                if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+                isSubscribed = true;
+                
+                RED.comms.subscribe('debug-image', function(event, data) {
+                    if (!data || !data.id) return;
+                    
+                    try {
+                        renderDebugImage(data);
+                    } catch (err) {
+                        console.warn('Debug image render error:', err);
+                    }
+                });
+            }
+            
+            function renderDebugImage(data) {
+                const nodeId = data.id;
+                const base64Data = data.data;
+                const format = data.format || 'unknown';
+                const mimeType = data.mimeType || 'jpeg';
+                
+                if (!base64Data) {
+                    removeDebugImage(nodeId);
+                    return;
+                }
+                
+                const nodeElement = document.getElementById(nodeId);
+                if (!nodeElement) return;
+                
+                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                
+                if (!debugContainer) {
+                    // Create SVG foreignObject to embed HTML content in SVG
+                    debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    debugContainer.id = 'debug-img-container-' + nodeId;
+                    debugContainer.setAttribute('x', '70');
+                    debugContainer.setAttribute('y', '5');
+                    debugContainer.setAttribute('width', '120');
+                    debugContainer.setAttribute('height', '120');
+                    debugContainer.style.overflow = 'visible';
+                    
+                    // Create simple image directly inside foreignObject
+                    const img = document.createElement('img');
+                    img.id = 'debug-img-' + nodeId;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    img.style.cursor = 'pointer';
+                    img.style.maxHeight = '100px';
+                    img.style.maxWidth = '100px';
+                    
+                    img.onclick = function() {
+                        removeDebugImage(nodeId);
+                    };
+                    
+                    debugContainer.appendChild(img);
+                    nodeElement.appendChild(debugContainer);
+                }
+                
+                const img = document.getElementById('debug-img-' + nodeId);
+                
+                if (img) {
+                    img.src = `data:image/${mimeType};base64,${base64Data}`;
+                    img.title = 'Debug image (click to hide)';
+                }
+            }
+            
+            function removeDebugImage(nodeId) {
+                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                if (debugContainer) {
+                    debugContainer.remove();
+                }
+            }
+            
+            function initializeWhenReady() {
+                if (typeof RED !== 'undefined' && RED.comms) {
+                    subscribeToDebugImages();
+                    
+                    // Clean up orphaned debug images periodically
+                    setInterval(function() {
+                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(container => {
+                            const nodeId = container.id.replace('debug-img-container-', '');
+                            const nodeElement = document.getElementById(nodeId);
+                            if (!nodeElement) {
+                                container.remove();
+                            }
+                        });
+                    }, 5000);
+                } else {
+                    setTimeout(initializeWhenReady, 100);
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeWhenReady);
+            } else {
+                initializeWhenReady();
+            }
+        })();
+    }
   </script>
 
   <script type="text/x-red" data-template-name="concat">
@@ -68,6 +194,14 @@
       <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
       <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
     </div>
+    
+    <!-- Debug Configuration -->
+    <div class="form-row">
+      <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+      <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+      <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+    </div>
+    
     <hr/>
     <div class="form-row">
       <label><i class="fa fa-arrows-h"></i> Direction</label>

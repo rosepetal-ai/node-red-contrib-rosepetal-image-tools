@@ -75,17 +75,47 @@ module.exports = function (RED) {
         const { convertMs = 0, taskMs = 0, encodeMs = 0 } = timing;
         const totalTime = performance.now() - t0;
         
-        const statusText = validPositions.length === 0 
-          ? `OK: empty canvas in ${totalTime.toFixed(2)} ms`
-          : `OK: ${validPositions.length} pos in ${totalTime.toFixed(2)} ms ` +
-            `(conv ${(convertMs + encodeMs).toFixed(2)} ms | ` +
-            `task ${taskMs.toFixed(2)} ms)`;
+        // Debug image display
+        let debugFormat = null;
+        if (config.debugEnabled) {
+          try {
+            const debugResult = await NodeUtils.debugImageDisplay(
+              image, 
+              outputFormat,
+              outputQuality,
+              node,
+              true
+            );
+            
+            if (debugResult) {
+              debugFormat = debugResult.formatMessage;
+              // Update node status with debug info
+              const positionsText = validPositions.length === 0 ? 'empty canvas' : `${validPositions.length} pos`;
+              NodeUtils.setSuccessStatusWithDebug(node, 1, totalTime, {
+                convertMs: convertMs,
+                taskMs: taskMs,
+                encodeMs: encodeMs
+              }, `${debugFormat} (${positionsText})`);
+            }
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
         
-        node.status({
-          fill: 'green',
-          shape: 'dot',
-          text: statusText
-        });
+        // Set regular status if debug not enabled or failed
+        if (!debugFormat) {
+          const statusText = validPositions.length === 0 
+            ? `OK: empty canvas in ${totalTime.toFixed(2)} ms`
+            : `OK: ${validPositions.length} pos in ${totalTime.toFixed(2)} ms ` +
+              `(conv ${(convertMs + encodeMs).toFixed(2)} ms | ` +
+              `task ${taskMs.toFixed(2)} ms)`;
+          
+          node.status({
+            fill: 'green',
+            shape: 'dot',
+            text: statusText
+          });
+        }
 
         send(msg);
         done && done();

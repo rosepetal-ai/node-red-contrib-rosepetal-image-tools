@@ -67,7 +67,38 @@ module.exports = function (RED) {
 
         RED.util.setMessageProperty(msg, outPath, Array.isArray(rawIn) ? outImgs : outImgs[0]);
 
-        /* node status */
+        // Debug image display
+        const elapsedTime = performance.now() - t0;
+        let debugFormat = null;
+        if (cfg.debugEnabled) {
+          try {
+            // For arrays, show the first image as representative
+            const debugImage = Array.isArray(rawIn) ? outImgs[0] : outImgs[0];
+            const debugResult = await NodeUtils.debugImageDisplay(
+              debugImage, 
+              outputFormat,
+              outputQuality,
+              node,
+              true
+            );
+            
+            if (debugResult) {
+              debugFormat = debugResult.formatMessage;
+              // Update node status with debug info
+              NodeUtils.setSuccessStatusWithDebug(node, imgs.length, elapsedTime, {
+                convertMs: cMs,
+                taskMs: tMs,
+                encodeMs: eMs
+              }, debugFormat + (Array.isArray(rawIn) ? ' (first)' : ''));
+            }
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
+        
+        // Set regular status if debug not enabled or failed
+        if (!debugFormat) {
+          /* node status */
         node.status({
           fill:'green', shape:'dot',
           text:`OK: ${imgs.length} img in ${(performance.now()-t0).toFixed(2)} ms `

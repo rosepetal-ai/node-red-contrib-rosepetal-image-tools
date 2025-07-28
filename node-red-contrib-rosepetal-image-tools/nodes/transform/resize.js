@@ -86,11 +86,42 @@ module.exports = function (RED) {
         const out = Array.isArray(originalPayload) ? images : images[0];
         const elapsedTime = performance.now() - startTime;
         
-        NodeUtils.setSuccessStatus(node, results.length, elapsedTime, {
-          convertMs: totalConvertMs,
-          taskMs: totalTaskMs,
-          encodeMs: encodeMs
-        });
+        // Debug image display
+        let debugFormat = null;
+        if (config.debugEnabled) {
+          try {
+            // For arrays, show the first image as representative
+            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
+            const debugResult = await NodeUtils.debugImageDisplay(
+              debugImage, 
+              outputFormat,
+              outputQuality,
+              node,
+              true
+            );
+            
+            if (debugResult) {
+              debugFormat = debugResult.formatMessage;
+              // Update node status with debug info
+              NodeUtils.setSuccessStatusWithDebug(node, results.length, elapsedTime, {
+                convertMs: totalConvertMs,
+                taskMs: totalTaskMs,
+                encodeMs: encodeMs
+              }, debugFormat + (Array.isArray(originalPayload) ? ' (first)' : ''));
+            }
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
+        
+        // Set regular status if debug not enabled or failed
+        if (!debugFormat) {
+          NodeUtils.setSuccessStatus(node, results.length, elapsedTime, {
+            convertMs: totalConvertMs,
+            taskMs: totalTaskMs,
+            encodeMs: encodeMs
+          });
+        }
 
         RED.util.setMessageProperty(msg, outputPath, out);
 

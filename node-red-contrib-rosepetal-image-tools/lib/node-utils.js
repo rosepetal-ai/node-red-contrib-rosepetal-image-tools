@@ -215,5 +215,92 @@ module.exports = function(RED) {
     });
   }
 
+  /**
+   * Debug image display utility for inline node debugging
+   * Converts images to displayable format and returns data URL with format message
+   * @param {object|Buffer} image - Image data (raw image object or encoded buffer)
+   * @param {string} outputFormat - The output format selected ('raw', 'jpg', 'png', 'webp')
+   * @param {number} quality - JPEG quality for raw conversion (default: 90)
+   * @param {object} node - Node-RED node instance for error reporting
+   * @param {boolean} debugEnabled - Whether debugging is enabled
+   * @returns {Promise<object|null>} Debug result object with dataUrl and formatMessage, or null if disabled
+   */
+  utils.debugImageDisplay = async function(image, outputFormat, quality, node, debugEnabled) {
+    if (!debugEnabled) return null;
+    
+    try {
+      let imageBuffer, formatMessage;
+      
+      if (outputFormat === 'raw') {
+        // Convert raw image to JPG for display using existing utility
+        imageBuffer = await utils.rawToJpeg(image, quality || CONSTANTS.DEFAULT_JPEG_QUALITY);
+        formatMessage = 'jpg default';
+      } else {
+        // Reuse existing converted buffer
+        imageBuffer = Buffer.isBuffer(image) ? image : image.data;
+        formatMessage = outputFormat; // 'jpg', 'png', 'webp'
+      }
+      
+      if (!Buffer.isBuffer(imageBuffer)) {
+        node.warn('Debug display: Invalid image buffer format');
+        return null;
+      }
+      
+      // Convert to base64 for WebSocket transmission
+      const base64 = imageBuffer.toString('base64');
+      const mimeType = formatMessage.replace(' default', '');
+      const dataUrl = `data:image/${mimeType};base64,${base64}`;
+      
+      // Send image to frontend via WebSocket for inline display
+      try {
+        RED.comms.publish("debug-image", {
+          id: node.id,
+          data: base64,
+          format: formatMessage,
+          mimeType: mimeType,
+          size: imageBuffer.length
+        });
+      } catch (wsError) {
+        node.warn(`Debug WebSocket error: ${wsError.message}`);
+        // Continue anyway - status display will still work
+      }
+      
+      return {
+        dataUrl: dataUrl,
+        formatMessage: formatMessage,
+        size: imageBuffer.length
+      };
+      
+    } catch (error) {
+      node.warn(`Debug display error: ${error.message}`);
+      return null;
+    }
+  }
+
+  /**
+   * Enhanced success status formatting with debug information
+   * @param {object} node - Node-RED node instance  
+   * @param {number} count - Number of items processed
+   * @param {number} totalTime - Total processing time in ms
+   * @param {object} timing - Timing breakdown object
+   * @param {string} debugFormat - Optional debug format message to include in status
+   */
+  utils.setSuccessStatusWithDebug = function(node, count, totalTime, timing = {}, debugFormat = null) {
+    const { convertMs = 0, taskMs = 0, encodeMs = 0 } = timing;
+    let statusText = `OK: ${count} img in ${totalTime.toFixed(2)} ms ` +
+                    `(conv ${(convertMs + encodeMs).toFixed(2)} ms | ` +
+                    `task ${taskMs.toFixed(2)} ms)`;
+    
+    if (debugFormat) {
+      statusText += ` | ${debugFormat}`;
+    }
+    
+    node.status({
+      fill: 'green',
+      shape: 'dot',
+      text: statusText
+    });
+  }
+
   return utils;
 }

@@ -223,10 +223,14 @@ module.exports = function(RED) {
    * @param {number} quality - JPEG quality for raw conversion (default: 90)
    * @param {object} node - Node-RED node instance for error reporting
    * @param {boolean} debugEnabled - Whether debugging is enabled
+   * @param {number} debugWidth - Desired width for debug image display (default: 200)
    * @returns {Promise<object|null>} Debug result object with dataUrl and formatMessage, or null if disabled
    */
-  utils.debugImageDisplay = async function(image, outputFormat, quality, node, debugEnabled) {
+  utils.debugImageDisplay = async function(image, outputFormat, quality, node, debugEnabled, debugWidth) {
     if (!debugEnabled) return null;
+    
+    // Validate and set default debug width
+    debugWidth = Math.max(1, parseInt(debugWidth) || 200);
     
     try {
       let imageBuffer, formatMessage;
@@ -246,9 +250,52 @@ module.exports = function(RED) {
         return null;
       }
       
+      // Resize image for debug display using Sharp
+      let actualWidth = debugWidth;
+      let actualHeight = debugWidth; // Default fallback
+      try {
+        let sharpInstance = sharp(imageBuffer)
+          .resize(debugWidth, null, {
+            withoutEnlargement: false,
+            fit: 'inside'
+          });
+        
+        // Only convert format if output is raw, otherwise preserve the existing format
+        if (outputFormat === 'raw') {
+          // For raw format, convert to JPEG for display
+          sharpInstance = sharpInstance.jpeg({ quality: quality || 90 });
+          formatMessage = 'jpg default';
+        } else {
+          // For other formats (jpg, png, webp), just resize without format conversion
+          // The C++ backend has already converted to the desired format
+          formatMessage = outputFormat + ' resized';
+        }
+        
+        imageBuffer = await sharpInstance.toBuffer();
+        
+        // Get actual dimensions of resized image
+        const metadata = await sharp(imageBuffer).metadata();
+        actualWidth = metadata.width || debugWidth;
+        actualHeight = metadata.height || debugWidth;
+        
+      } catch (resizeError) {
+        node.warn(`Debug image resize error: ${resizeError.message}`);
+        // Continue with original image if resize fails
+        // Try to get original dimensions as fallback
+        try {
+          const originalMetadata = await sharp(imageBuffer).metadata();
+          actualWidth = originalMetadata.width || debugWidth;
+          actualHeight = originalMetadata.height || debugWidth;
+        } catch (metadataError) {
+          // Use debug width as fallback
+          actualWidth = debugWidth;
+          actualHeight = debugWidth;
+        }
+      }
+      
       // Convert to base64 for WebSocket transmission
       const base64 = imageBuffer.toString('base64');
-      const mimeType = formatMessage.replace(' default', '');
+      const mimeType = formatMessage.replace(' default', '').replace(' resized', '');
       const dataUrl = `data:image/${mimeType};base64,${base64}`;
       
       // Send image to frontend via WebSocket for inline display
@@ -258,7 +305,9 @@ module.exports = function(RED) {
           data: base64,
           format: formatMessage,
           mimeType: mimeType,
-          size: imageBuffer.length
+          size: imageBuffer.length,
+          debugWidth: actualWidth,
+          debugHeight: actualHeight
         });
       } catch (wsError) {
         node.warn(`Debug WebSocket error: ${wsError.message}`);

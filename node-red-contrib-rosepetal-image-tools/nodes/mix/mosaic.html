@@ -16,6 +16,8 @@
       outputQuality:{value:90},
       // Debug configuration
       debugEnabled:{value:false},
+        debugWidth:{value:200},
+        debugWidthType:{value:"num"},
   
       canvasWidth:{value:"800"},   canvasWidthType:{value:"num"},
       canvasHeight:{value:"600"},  canvasHeightType:{value:"num"},
@@ -136,20 +138,36 @@
       $("#node-input-outputFormat").on("change", updateQualityVisibility);
       updateQualityVisibility(); // initial state
 
-      // === Debug Display Logic ===
-      const debugCheckbox = $('#node-input-debugEnabled');
-      
-      // Initialize debug state on node open
-      if (debugCheckbox.is(':checked')) {
-          this.debugDisplay = true;
-      }
-      
-      // Handle debug checkbox changes
-      debugCheckbox.on('change', function() {
-          const enabled = this.checked;
-          // Store debug state for runtime access
-          $('#node-input-debugEnabled').data('debug-enabled', enabled);
-      });
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        const debugWidthRow = $('#debug-width-row');
+        
+        // Initialize debug width TypedInput
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+        
+        // Function to toggle debug width visibility
+        function updateDebugWidthVisibility() {
+            if (debugCheckbox.is(':checked')) {
+                debugWidthRow.show();
+            } else {
+                debugWidthRow.hide();
+            }
+        }
+        
+        // Initialize debug state on node open
+        updateDebugWidthVisibility();
+        
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            updateDebugWidthVisibility();
+            // Store debug state for runtime access
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
     }
   });
 
@@ -300,12 +318,18 @@
   <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
 </div>
 
-<!-- Debug Configuration -->
-<div class="form-row">
-  <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
-  <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
-  <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
-</div>
+  <!-- Debug Configuration -->
+  <div class="form-row">
+    <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+    <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+  </div>
+  <div class="form-row" id="debug-width-row" style="display: none;">
+    <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+    <input type="text" id="node-input-debugWidth" style="width: 120px;">
+    <input type="hidden" id="node-input-debugWidthType">
+    <span style="margin-left: 10px; color: #666;">pixels</span>
+  </div>
 
 <hr>
 

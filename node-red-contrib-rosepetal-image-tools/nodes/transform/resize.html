@@ -13,6 +13,8 @@
             outputQuality: { value: 90 }, 
             // Debug configuration
             debugEnabled: { value: false },
+            debugWidth: { value: 200 },
+            debugWidthType: { value: "num" },
             // Propiedades para la configuración del Ancho (Width)
             widthMode: { value: "set" },
             widthValue: { value: "" },
@@ -107,15 +109,31 @@
 
             // === Debug Display Logic ===
             const debugCheckbox = $('#node-input-debugEnabled');
+            const debugWidthRow = $('#debug-width-row');
+            
+            // Initialize debug width TypedInput
+            $("#node-input-debugWidth").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-debugWidthType"
+            });
+            
+            // Function to toggle debug width visibility
+            function updateDebugWidthVisibility() {
+                if (debugCheckbox.is(':checked')) {
+                    debugWidthRow.show();
+                } else {
+                    debugWidthRow.hide();
+                }
+            }
             
             // Initialize debug state on node open
-            if (debugCheckbox.is(':checked')) {
-                this.debugDisplay = true;
-            }
+            updateDebugWidthVisibility();
             
             // Handle debug checkbox changes
             debugCheckbox.on('change', function() {
                 const enabled = this.checked;
+                updateDebugWidthVisibility();
                 // Store debug state for runtime access
                 $('#node-input-debugEnabled').data('debug-enabled', enabled);
             });
@@ -158,6 +176,14 @@
                 const nodeElement = document.getElementById(nodeId);
                 if (!nodeElement) return;
                 
+                // Get debug dimensions with fallbacks
+                const debugWidth = data.debugWidth || 200;
+                const debugHeight = data.debugHeight || 200;
+                
+                // Apply reasonable maximum limits (500px max width)
+                const maxDisplayWidth = Math.min(debugWidth, 500);
+                const displayHeight = debugHeight * (maxDisplayWidth / debugWidth);
+                
                 let debugContainer = document.getElementById('debug-img-container-' + nodeId);
                 
                 if (!debugContainer) {
@@ -166,8 +192,8 @@
                     debugContainer.id = 'debug-img-container-' + nodeId;
                     debugContainer.setAttribute('x', '0');
                     debugContainer.setAttribute('y', '45');
-                    debugContainer.setAttribute('width', '200');
-                    debugContainer.setAttribute('height', '200');
+                    debugContainer.setAttribute('width', maxDisplayWidth.toString());
+                    debugContainer.setAttribute('height', displayHeight.toString());
                     debugContainer.style.overflow = 'visible';
                     
                     // Create simple image directly inside foreignObject
@@ -177,8 +203,9 @@
                     img.style.height = 'auto';
                     img.style.display = 'block';
                     img.style.cursor = 'pointer';
-                    img.style.maxHeight = '100px';
-                    img.style.maxWidth = '100px';
+                    // Remove fixed size constraints
+                    img.style.maxHeight = 'none';
+                    img.style.maxWidth = 'none';
                     
                     img.onclick = function() {
                         removeDebugImage(nodeId);
@@ -186,6 +213,10 @@
                     
                     debugContainer.appendChild(img);
                     nodeElement.appendChild(debugContainer);
+                } else {
+                    // Update existing container dimensions
+                    debugContainer.setAttribute('width', maxDisplayWidth.toString());
+                    debugContainer.setAttribute('height', displayHeight.toString());
                 }
                 
                 const img = document.getElementById('debug-img-' + nodeId);
@@ -271,6 +302,12 @@
         <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
         <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
         <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+    </div>
+    <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
+        <span style="margin-left: 10px; color: #666;">pixels</span>
     </div>
     
     <hr>

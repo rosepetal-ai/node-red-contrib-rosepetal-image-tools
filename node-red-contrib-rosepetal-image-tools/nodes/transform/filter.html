@@ -13,6 +13,8 @@
             outputQuality: { value: 90 },
             // Debug configuration
             debugEnabled: { value: false },
+            debugWidth: { value: 200 },
+            debugWidthType: { value: "num" },
             // Filter-specific properties
             filterType: { value: "blur" },
             kernelSize: { value: "3" },
@@ -106,20 +108,36 @@
             $("#node-input-outputFormat").on("change", updateQualityVisibility);
             updateQualityVisibility(); // initial state
 
-            // === Debug Display Logic ===
-            const debugCheckbox = $('#node-input-debugEnabled');
-            
-            // Initialize debug state on node open
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        const debugWidthRow = $('#debug-width-row');
+        
+        // Initialize debug width TypedInput
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+        
+        // Function to toggle debug width visibility
+        function updateDebugWidthVisibility() {
             if (debugCheckbox.is(':checked')) {
-                this.debugDisplay = true;
+                debugWidthRow.show();
+            } else {
+                debugWidthRow.hide();
             }
-            
-            // Handle debug checkbox changes
-            debugCheckbox.on('change', function() {
-                const enabled = this.checked;
-                // Store debug state for runtime access
-                $('#node-input-debugEnabled').data('debug-enabled', enabled);
-            });
+        }
+        
+        // Initialize debug state on node open
+        updateDebugWidthVisibility();
+        
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            updateDebugWidthVisibility();
+            // Store debug state for runtime access
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
         }
     });
 
@@ -272,6 +290,12 @@
         <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
         <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
         <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+    </div>
+    <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
+        <span style="margin-left: 10px; color: #666;">pixels</span>
     </div>
 
     <hr>

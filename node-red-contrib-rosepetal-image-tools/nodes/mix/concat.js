@@ -53,12 +53,22 @@ module.exports = function (RED) {
         let debugFormat = null;
         if (config.debugEnabled) {
           try {
+                        // Resolve and validate debug width
+            let debugWidth = NodeUtils.resolveDimension(
+              node,
+              config.debugWidthType,
+              config.debugWidth,
+              msg
+            );
+            debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
+            
             const debugResult = await NodeUtils.debugImageDisplay(
               image, 
               outputFormat,
               outputQuality,
               node,
-              true
+              true,
+              debugWidth
             );
             
             if (debugResult) {

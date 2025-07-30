@@ -72,6 +72,15 @@ module.exports = function (RED) {
         let debugFormat = null;
         if (cfg.debugEnabled) {
           try {
+            // Resolve and validate debug width
+            let debugWidth = NodeUtils.resolveDimension(
+              node,
+              cfg.debugWidthType,
+              cfg.debugWidth,
+              msg
+            );
+            debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
+            
             // For arrays, show the first image as representative
             const debugImage = Array.isArray(rawIn) ? outImgs[0] : outImgs[0];
             const debugResult = await NodeUtils.debugImageDisplay(
@@ -79,7 +88,8 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true
+              true,
+              debugWidth
             );
             
             if (debugResult) {

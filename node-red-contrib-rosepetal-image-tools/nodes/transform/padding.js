@@ -115,6 +115,8 @@ module.exports = function (RED) {
               + `(conv ${(cMs+eMs).toFixed(2)} | task ${tMs.toFixed(2)} ms)`
         });
 
+        }
+
         send(msg); done && done();
       } catch (err) {
         node.status({ fill: "red", shape: "ring", text: "Error" });

@@ -32,6 +32,7 @@
             "array-in": "nodes/io/array-in.js",
             "array-out": "nodes/io/array-out.js",
             "array-select": "nodes/io/array-select.js",
+            "cropBB": "nodes/specialized/cropBB.js",
             "resize": "nodes/transform/resize.js",
             "rotate": "nodes/transform/rotate.js",
             "crop": "nodes/transform/crop.js",

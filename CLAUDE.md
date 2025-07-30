@@ -2,72 +2,55 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Project Overview
+## Build and Development Commands
 
-This is a Node-RED image processing toolkit consisting of two main components:
-1. **node-red-contrib-rosepetal-image-tools**: Node-RED package with image processing nodes
-2. **rosepetal-image-engine**: C++ addon built with OpenCV for high-performance image operations
-
-The project provides Node-RED nodes for image processing operations like resize, rotate, crop, concat, padding, filtering, and mosaic creation.
-
-## Build and Installation Commands
-
-### Initial Setup (from project root)
+### Quick Setup
 ```bash
-# Install system dependencies and build everything
+# Complete installation (installs system deps and builds C++ engine)
 ./install.sh
+```
 
-# Manual installation steps:
+### Manual Build Process
+```bash
+# Build C++ engine only
 cd rosepetal-image-engine
+npm run build          # Standard build
+npm run rebuild         # Clean rebuild
+npm run configure       # Configure only
+
+# Install Node-RED package
+cd node-red-contrib-rosepetal-image-tools
 npm install
-npm run build
 
-cd ../node-red-contrib-rosepetal-image-tools
-npm install
-```
-
-### C++ Engine Build Commands (in rosepetal-image-engine/)
-```bash
-npm run build       # Build the C++ addon
-npm run configure   # Configure node-gyp
-npm run rebuild     # Clean rebuild
-```
-
-### Node-RED Integration
-```bash
-# Install in Node-RED (from .node-red directory)
+# Install into Node-RED instance
 cd ~/.node-red
 npm install /path/to/node-red-contrib-rosepetal-image-tools
 ```
 
-## Architecture
+### System Requirements
+- Node.js 16+ with node-gyp support
+- OpenCV 4.x (auto-detected via pkg-config)
+- C++ compiler with C++17 support
+- Platform support: Linux (Debian/Ubuntu, Fedora/CentOS, Arch), macOS
 
-### Two-Tier Structure
-- **JavaScript Layer**: Node-RED nodes handle configuration, validation, and I/O
-- **C++ Layer**: High-performance OpenCV-based image processing via Node.js addon
+## Architecture Overview
 
-### Node-RED Node Structure
-Each node consists of:
-- `*.js` file: Node logic using `lib/node-utils.js` and `lib/cpp-bridge.js`
-- `*.html` file: UI configuration with TypedInput widgets for dynamic property sources
+### Two-Tier Hybrid Structure
+This is a **hybrid JavaScript/C++ Node-RED package** with performance-critical operations implemented in C++:
 
-### Node Categories
-- **I/O nodes** (`nodes/io/`): `image-in`, `array-in`, `array-out`, `array-select`
-- **Transform nodes** (`nodes/transform/`): `resize`, `rotate`, `crop`, `padding`, `filter`
-- **Mix nodes** (`nodes/mix/`): `concat`, `mosaic`
-
-### Key Libraries
-- **lib/cpp-bridge.js**: Promisified interface to C++ addon functions
-- **lib/node-utils.js**: Common utilities for validation, dimension resolution, and error handling
-- **Sharp**: Used only for JPEG conversion, not for image processing
-- **OpenCV**: C++ backend for all image processing operations and format detection
+- **JavaScript Layer**: Node-RED nodes (`nodes/`) handle UI, configuration, validation, and I/O routing
+- **C++ Layer**: High-performance OpenCV-based image processing (`rosepetal-image-engine/src/`)
+- **Bridge Layer**: `lib/cpp-bridge.js` provides promisified access to C++ addon functions
+- **Utilities**: `lib/node-utils.js` contains shared validation, conversion, and error handling
 
 ### Image Data Format
-Images are passed as objects using the new structure:
+The system uses a **standardized image object format** with backward compatibility:
+
+**Standard Format (Current)**:
 ```javascript
 {
-  data: Buffer,        // Raw pixel data or file buffer
-  width: number,       // Image width in pixels
+  data: Buffer,        // Raw pixel data
+  width: number,       // Image width in pixels  
   height: number,      // Image height in pixels
   channels: number,    // Channel count (1, 3, 4)
   colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
@@ -75,49 +58,169 @@ Images are passed as objects using the new structure:
 }
 ```
 
-**Legacy Format Support**: The system maintains backward compatibility with the old format:
+**Legacy Format (Supported)**:
 ```javascript
 {
   data: Buffer,
   width: number,
   height: number,
-  channels: string     // e.g., "int8_RGB", "int8_RGBA", "int8_GRAY"
+  channels: string     // e.g., "int8_RGB", "int8_RGBA", "int8_GRAY"  
 }
 ```
 
-### Configuration System
-- Nodes support dynamic property sources via TypedInput: `msg`, `flow`, `global`, `num`
-- Input/output paths are configurable for flexible data routing
-- Many nodes support both single images and arrays transparently
+### Node Categories and Data Flow
 
-### C++ Addon Structure
-- Built with N-API (node-addon-api)
-- Optimized build flags: `-O3`, `-march=native`, `-ffast-math`
-- All functions are async and promisified in JavaScript layer
-- Uses OpenCV 4.x with pkg-config detection
+**I/O Nodes** (`nodes/io/`): Data flow management
+- `image-in`: Filesystem loading with Sharp decoding
+- `array-in`: Collect data into positioned arrays  
+- `array-out`: Assemble arrays from multiple sources
+- `array-select`: Extract elements with flexible selection
 
-## Development Notes
+**Transform Nodes** (`nodes/transform/`): Single image processing
+- `resize`, `rotate`, `crop`, `padding`, `filter`: Core OpenCV operations
 
-### Performance Considerations
-- C++ operations include timing information in results
-- Nodes display performance metrics in status
-- Image arrays are processed in parallel using Promise.all()
+**Mix Nodes** (`nodes/mix/`): Multi-image composition  
+- `concat`: Horizontal/vertical combination
+- `mosaic`: Grid layouts with positioning
 
-### Error Handling & Validation
-- **New Validation System**: `NodeUtils.validateImageStructure()` with comprehensive input validation
-- **Warning-Based Approach**: Uses `node.warn()` instead of throwing exceptions
-- **No Message Propagation**: Invalid inputs are blocked from proceeding through the flow
-- **Backward Compatibility**: Supports both new and legacy image formats
-- **Automatic Inference**: Missing fields like `channels`, `colorSpace`, `dtype` are inferred when possible
+## Development Patterns
 
-### Input Format Support
-- **File Buffers**: JPEG, PNG, WebP, BMP files are automatically detected and decoded by C++
-- **Raw Image Data**: Pixel data with explicit dimensions and format information
-- **Mixed Inputs**: Nodes can handle both encoded files and raw pixel data transparently
+### Adding New Image Processing Nodes
 
-### Adding New Nodes
-1. Create C++ implementation in `rosepetal-image-engine/src/`
-2. Export function in `src/main.cpp`
-3. Add to `binding.gyp` sources
-4. Create Node-RED wrapper in `nodes/`
-5. Register in `package.json` node-red section
+1. **C++ Implementation** (`rosepetal-image-engine/src/`):
+   ```cpp
+   // Create new_operation.cpp
+   #include <opencv2/opencv.hpp>
+   #include <napi.h>
+   
+   Napi::Value NewOperation(const Napi::CallbackInfo& info) {
+     // Implement OpenCV operation
+   }
+   ```
+
+2. **Export in main.cpp**:
+   ```cpp
+   exports.Set(Napi::String::New(env, "newOperation"), 
+               Napi::Function::New(env, NewOperation));
+   ```
+
+3. **Add to binding.gyp sources**:
+   ```json
+   "sources": ["src/main.cpp", "src/new_operation.cpp", ...]
+   ```
+
+4. **Create Node-RED wrapper** (`nodes/category/new-operation.js`):
+   ```javascript
+   const cppBridge = require('../../lib/cpp-bridge');
+   const utils = require('../../lib/node-utils')(RED);
+   
+   module.exports = function(RED) {
+     function NewOperationNode(config) {
+       // Use utils.validateImageStructure()
+       // Call cppBridge.newOperation()
+       // Apply utils.handleNodeError() and utils.setSuccessStatus()
+     }
+     RED.nodes.registerType("new-operation", NewOperationNode);
+   }
+   ```
+
+5. **Register in package.json**:
+   ```json
+   "node-red": {
+     "nodes": {
+       "new-operation": "nodes/category/new-operation.js"
+     }
+   }
+   ```
+
+### Image Validation and Error Handling
+
+**Always use standardized utilities**:
+```javascript
+const utils = require('../../lib/node-utils')(RED);
+
+// Validate single image
+const normalized = utils.validateImageStructure(image, node);
+if (!normalized) return; // Warning already sent
+
+// Validate image arrays  
+if (!utils.validateListImage(imageList, node)) return;
+
+// Handle errors consistently
+utils.handleNodeError(node, error, msg, done, 'operation_name');
+
+// Set success status with timing
+utils.setSuccessStatus(node, count, totalTime, { convertMs, taskMs, encodeMs });
+```
+
+### C++ Addon Integration
+
+**Key Integration Points**:
+- All C++ functions are **automatically promisified** by `cpp-bridge.js`
+- Use **OpenCV Mat objects** for image processing
+- Apply **performance optimizations**: `-O3`, `-march=native`, `-ffast-math`
+- Handle **multiple color spaces**: RGB, BGR, RGBA, BGRA, GRAY
+- Support **parallel processing** for image arrays
+
+**OpenCV Build Configuration**:
+```json
+// binding.gyp optimization flags
+"cflags_cc": ["-std=c++17", "-O3", "-ffast-math", "-march=native", "-funroll-loops"]
+```
+
+## Common Development Tasks
+
+### Testing Image Operations
+```bash
+# Test C++ engine directly  
+cd rosepetal-image-engine
+node test-formats.js
+
+# Test Node-RED integration
+# Use Node-RED debug nodes with test images
+```
+
+### Performance Optimization
+- **C++ Backend**: 10-100x faster than pure JavaScript
+- **Memory Management**: Efficient OpenCV Mat handling
+- **Parallel Processing**: Array inputs processed concurrently
+- **Timing Display**: Processing time shown in node status
+
+### Output Format Handling
+- **Raw Format**: Fastest for processing chains (no encoding overhead)
+- **JPEG/PNG/WebP**: Encoded formats for final output or storage
+- **Format Conversion**: Use `utils.rawToJpeg()` for standardized conversion
+
+## Troubleshooting
+
+### Build Issues
+- **OpenCV Not Found**: Ensure `pkg-config --exists opencv4` succeeds
+- **Node-gyp Failures**: Check Node.js version (16+) and build tools
+- **Missing Dependencies**: Run system package installation via `install.sh`
+
+### Runtime Issues  
+- **Invalid Image Structure**: Check `utils.validateImageStructure()` warnings
+- **Memory Issues**: Process large images in smaller batches
+- **Performance Problems**: Verify C++ addon built with optimization flags
+
+### Debug Information
+- **Node Status**: Real-time processing timing and status
+- **Validation Warnings**: Comprehensive input validation messages
+- **Error Context**: Standardized error reporting with operation context
+
+## Image Processing Workflows
+
+### Typical Processing Chain
+```
+image-in → transform nodes → [array processing] → mix nodes → output
+```
+
+### Batch Processing Pattern  
+```
+[multiple image-in] → [array-in nodes] → array-out → transform → array-select
+```
+
+### Format Considerations
+- Use **raw format** for intermediate processing steps (fastest)  
+- Use **encoded formats** (JPEG/PNG/WebP) for final outputs
+- **Legacy format support** maintained for backward compatibility

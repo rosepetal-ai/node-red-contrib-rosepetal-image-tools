@@ -2,6 +2,8 @@
 
 A comprehensive Node-RED package for high-performance image processing operations using OpenCV backend. This toolkit provides 11 specialized nodes for loading, transforming, combining, and managing images in Node-RED flows.
 
+![Node-RED Flow Example](docs/flow-example.gif)
+
 ## Overview
 
 This Node-RED image processing toolkit consists of two main components:
@@ -102,6 +104,11 @@ The system maintains backward compatibility:
 - **Output**: Raw image objects or encoded file buffers (JPEG, PNG, WebP)
 
 ## Common Workflows
+
+### Computer Vision Workflow Example
+![Node-RED Flow Example](docs/flow-example.gif)
+
+*Real-time object detection pipeline with cropBB node extracting bounding box crops*
 
 ### Basic Image Processing Pipeline
 ```

@@ -62,14 +62,30 @@
         typeField:"#node-input-debugWidthType"
       });
 
-      /* debug toggle */
-      $("#node-input-debugEnabled").on("change", function(){
-        const enabled = $(this).prop("checked");
-        $("#debug-options").toggle(enabled);
-      });
-      
-      // Initial state
-      $("#debug-options").toggle($("#node-input-debugEnabled").prop("checked"));
+      /* Quality visibility logic */
+      function updateQualityVisibility() {
+        const format = $('#node-input-outputFormat').val();
+        if (format === 'jpg' || format === 'webp') {
+          $('#quality-row').show();
+        } else {
+          $('#quality-row').hide();
+        }
+      }
+
+      $('#node-input-outputFormat').on('change', updateQualityVisibility);
+      updateQualityVisibility(); // Initial call
+
+      /* Debug visibility logic */
+      function updateDebugWidthVisibility() {
+        if ($('#node-input-debugEnabled').is(':checked')) {
+          $('#debug-width-row').show();
+        } else {
+          $('#debug-width-row').hide();
+        }
+      }
+
+      $('#node-input-debugEnabled').on('change', updateDebugWidthVisibility);
+      updateDebugWidthVisibility(); // Initial call
     }
   });
 </script>
@@ -81,75 +97,61 @@
     <input type="text" id="node-input-name" placeholder="Name">
   </div>
 
-  <!-- Input Paths -->
+  <hr>
+
+  <!-- I/O Section -->
   <div class="form-row">
-    <label for="node-input-imageInputPath"><i class="fa fa-picture-o"></i> Image Input</label>
-    <input style="width:70%" type="text" id="node-input-imageInputPath" placeholder="images">
+    <label for="node-input-imageInputPath"><i class="fa fa-sign-in"></i> Input from</label>
+    <input type="text" id="node-input-imageInputPath" style="width: 70%;">
     <input type="hidden" id="node-input-imageInputPathType">
   </div>
-
   <div class="form-row">
     <label for="node-input-bboxInputPath"><i class="fa fa-square-o"></i> Bounding Boxes</label>
-    <input style="width:70%" type="text" id="node-input-bboxInputPath" placeholder="default">
+    <input type="text" id="node-input-bboxInputPath" style="width: 70%;">
     <input type="hidden" id="node-input-bboxInputPathType">
   </div>
-
-  <!-- Output Configuration -->
   <div class="form-row">
-    <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output</label>
-    <input style="width:70%" type="text" id="node-input-outputPath" placeholder="payload">
+    <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+    <input type="text" id="node-input-outputPath" style="width: 70%;">
     <input type="hidden" id="node-input-outputPathType">
   </div>
-
   <div class="form-row">
     <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
-    <select id="node-input-outputFormat" style="width:70%;">
+    <select id="node-input-outputFormat" style="width: 200px;">
       <option value="raw">Raw (fastest)</option>
       <option value="jpg">JPEG</option>
       <option value="png">PNG</option>
       <option value="webp">WebP</option>
     </select>
   </div>
-
-  <div class="form-row">
+  <div class="form-row" id="quality-row">
     <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
-    <input type="range" id="node-input-outputQuality" min="1" max="100" style="width:60%;">
-    <span id="quality-value">90</span>%
+    <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
   </div>
 
-  <!-- Filtering Options -->
+  <!-- Debug Configuration -->
+  <div class="form-row">
+    <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+    <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+  </div>
+  <div class="form-row" id="debug-width-row" style="display: none;">
+    <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+    <input type="text" id="node-input-debugWidth" style="width: 120px;">
+    <input type="hidden" id="node-input-debugWidthType">
+    <span style="margin-left: 10px; color: #666;">pixels</span>
+  </div>
+
+  <hr>
+
+  <!-- CropBB Specific Options -->
   <div class="form-row">
     <label for="node-input-minConfidence"><i class="fa fa-filter"></i> Min Confidence</label>
-    <input style="width:70%" type="text" id="node-input-minConfidence" placeholder="0.5">
+    <input type="text" id="node-input-minConfidence" style="width: 70%;">
     <input type="hidden" id="node-input-minConfidenceType">
   </div>
 
-  <!-- Debug Options -->
-  <div class="form-row">
-    <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
-    <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:top;">
-    <label for="node-input-debugEnabled" style="width:70%;">Enable debug image display</label>
-  </div>
-
-  <div id="debug-options" style="display:none;">
-    <div class="form-row">
-      <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
-      <input style="width:70%" type="text" id="node-input-debugWidth" placeholder="200">
-      <input type="hidden" id="node-input-debugWidthType">
-    </div>
-  </div>
-
-  <script>
-    // Quality slider sync
-    $("#node-input-outputQuality").on("input", function(){
-      $("#quality-value").text($(this).val());
-    });
-    
-    // Initialize quality display
-    setTimeout(function(){
-      $("#quality-value").text($("#node-input-outputQuality").val());
-    }, 100);
-  </script>
 </script>
 
 <!-- 3 ▸ Help documentation -->

@@ -2,7 +2,7 @@
 
 A comprehensive Node-RED package for high-performance image processing operations using OpenCV backend. This toolkit provides 11 specialized nodes for loading, transforming, combining, and managing images in Node-RED flows.
 
-![Node-RED Flow Example](docs/flow-example.gif)
+![Demo](assets/flow_time_example.gif)
 
 ## Overview
 

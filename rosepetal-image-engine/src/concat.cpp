@@ -16,11 +16,7 @@ std::string DetectChannelFormat(const Napi::Value& jsImg, const cv::Mat& mat) {
     if (obj.Has("colorSpace")) {
       return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
     }
-    // Handle legacy string format
-    else if (obj.Has("channels") && obj.Get("channels").IsString()) {
-      return ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
-    }
-    // Default based on channel count for new numeric format
+    // Default based on channel count
     else {
       const int channels = mat.channels();
       return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
@@ -303,21 +299,14 @@ Napi::Value Concat(const Napi::CallbackInfo& info) {
   std::string st = info[2].As<Napi::String>();
   cv::Scalar pad = ParseColor(info[3].As<Napi::String>());
   
-  // Handle backward compatibility and new parameters
+  // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
   size_t cbIdx = 4;
   
   if (info.Length() >= 6) {
-    if (info[4].IsBoolean()) {
-      // Legacy boolean format: convert to string
-      outputFormat = info[4].As<Napi::Boolean>().Value() ? "jpg" : "raw";
-      cbIdx = 5;
-    } else if (info[4].IsString()) {
-      // New string format
-      outputFormat = info[4].As<Napi::String>().Utf8Value();
-      cbIdx = 5;
-    }
+    outputFormat = info[4].As<Napi::String>().Utf8Value();
+    cbIdx = 5;
   }
   
   if (info.Length() == 7) {

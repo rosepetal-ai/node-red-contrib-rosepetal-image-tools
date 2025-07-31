@@ -6,13 +6,19 @@
             name: { value: "" },
             inputPath: { value: "payload" },
             inputPathType: { value: "msg" },
-            arrayPosition: { value: 0 }
+            arrayPositionType: { value: "num" },
+            arrayPositionValue: { value: 0 }
         },
         inputs: 1,
         outputs: 1,
         icon: "font-awesome/fa-sign-in",
         label: function() {
-            return this.name || `Array In [${this.arrayPosition}]`;
+            if (this.name) return this.name;
+            
+            const posDisplay = this.arrayPositionType === 'num' 
+              ? this.arrayPositionValue 
+              : `${this.arrayPositionType}.${this.arrayPositionValue}`;
+            return `Array In [${posDisplay}]`;
         },
         oneditprepare: function() {
             // Set up TypedInput for input path
@@ -20,6 +26,13 @@
                 default: 'msg',
                 types: ['msg', 'flow', 'global'],
                 typeField: "#node-input-inputPathType"
+            });
+            
+            // Set up TypedInput for array position
+            $("#node-input-arrayPositionValue").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-arrayPositionType"
             });
         }
     });
@@ -40,12 +53,13 @@
     </div>
     
     <div class="form-row">
-        <label for="node-input-arrayPosition"><i class="fa fa-sort-numeric-asc"></i> Array Position</label>
-        <input type="number" id="node-input-arrayPosition" min="0" step="1" style="width: 70%;" placeholder="0">
+        <label for="node-input-arrayPositionValue"><i class="fa fa-sort-numeric-asc"></i> Array Position</label>
+        <input type="text" id="node-input-arrayPositionValue" style="width: 70%;" placeholder="0">
+        <input type="hidden" id="node-input-arrayPositionType">
     </div>
     
     <div class="form-tips">
-        <b>Tip:</b> Set array position starting from 0. This determines where this data will be placed in the output array.
+        <b>Tip:</b> Array position can be a fixed number (starting from 0) or dynamically resolved from msg, flow, or global context. This determines where this data will be placed in the output array.
     </div>
 </script>
 
@@ -59,8 +73,8 @@
     <dl class="message-properties">
         <dt>Input from <span class="property-type">string</span></dt>
         <dd>The location to read data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
-        <dt>Array Position <span class="property-type">number</span></dt>
-        <dd>The index position (0, 1, 2...) where this data should be placed in the final array. Must be a non-negative integer.</dd>
+        <dt>Array Position <span class="property-type">number | msg | flow | global</span></dt>
+        <dd>The index position (0, 1, 2...) where this data should be placed in the final array. Can be a fixed number or dynamically resolved from message properties, flow context, or global context. Must resolve to a non-negative integer.</dd>
     </dl>
 
     <h3>Inputs</h3>
@@ -81,8 +95,10 @@
     <h3>Examples</h3>
     <ul>
         <li><strong>Basic Array Assembly:</strong> Three array-in nodes with positions 0, 1, 2 feeding into an array-out will create: <code>[data0, data1, data2]</code></li>
+        <li><strong>Dynamic Positioning:</strong> Set array position from <code>msg.index</code> to dynamically determine where data should be placed based on message content</li>
         <li><strong>Image Collection:</strong> Multiple image-in nodes → array-in nodes (positions 0, 1, 2...) → array-out → transform nodes that support arrays</li>
         <li><strong>Mixed Data Sources:</strong> Combine data from different context levels (msg, flow, global) into a single ordered array</li>
+        <li><strong>Conditional Assembly:</strong> Use flow variables to set positions based on processing conditions or user preferences</li>
     </ul>
 
     <h3>Node Interactions</h3>

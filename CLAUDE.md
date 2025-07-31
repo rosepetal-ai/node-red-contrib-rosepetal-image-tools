@@ -44,9 +44,8 @@ This is a **hybrid JavaScript/C++ Node-RED package** with performance-critical o
 - **Utilities**: `lib/node-utils.js` contains shared validation, conversion, and error handling
 
 ### Image Data Format
-The system uses a **standardized image object format** with backward compatibility:
+The system uses a **standardized image object format**:
 
-**Standard Format (Current)**:
 ```javascript
 {
   data: Buffer,        // Raw pixel data
@@ -55,16 +54,6 @@ The system uses a **standardized image object format** with backward compatibili
   channels: number,    // Channel count (1, 3, 4)
   colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
   dtype: string        // "uint8", "uint16", "float32"
-}
-```
-
-**Legacy Format (Supported)**:
-```javascript
-{
-  data: Buffer,
-  width: number,
-  height: number,
-  channels: string     // e.g., "int8_RGB", "int8_RGBA", "int8_GRAY"  
 }
 ```
 
@@ -223,4 +212,3 @@ image-in → transform nodes → [array processing] → mix nodes → output
 ### Format Considerations
 - Use **raw format** for intermediate processing steps (fastest)  
 - Use **encoded formats** (JPEG/PNG/WebP) for final outputs
-- **Legacy format support** maintained for backward compatibility

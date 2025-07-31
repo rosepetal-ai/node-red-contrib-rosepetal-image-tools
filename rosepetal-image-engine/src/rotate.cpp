@@ -30,11 +30,7 @@ public:
         if (obj.Has("colorSpace")) {
           channelOrder = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
         }
-        // Handle legacy string format
-        else if (obj.Has("channels") && obj.Get("channels").IsString()) {
-          channelOrder = ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
-        }
-        // Default based on channel count for new numeric format
+        // Default based on channel count
         else {
           channelOrder = (inputMat.channels() == 4) ? "BGRA"
                        : (inputMat.channels() == 3) ? "BGR" 
@@ -146,18 +142,12 @@ Napi::Value Rotate(const Napi::CallbackInfo& info)
   std::string padColorStr = "#000000";      // negro por defecto
   if (info[i].IsString()) padColorStr = info[i++].As<Napi::String>();
 
-  // Handle backward compatibility and new parameters
+  // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
   
   if (info.Length() - i >= 2) {
-    if (info[i].IsBoolean()) {
-      // Legacy boolean format: convert to string
-      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
-    } else if (info[i].IsString()) {
-      // New string format
-      outputFormat = info[i++].As<Napi::String>().Utf8Value();
-    }
+    outputFormat = info[i++].As<Napi::String>().Utf8Value();
   }
   
   if (info.Length() - i >= 2) {

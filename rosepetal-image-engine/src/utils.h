@@ -10,15 +10,14 @@
 #include <chrono>
 
 /**
- * Converts JS input to cv::Mat supporting both new and legacy formats:
- * - New: {data, width, height, channels, colorSpace, dtype}
- * - Legacy: {data, width, height, channels: "int8_RGB"}
+ * Converts JS input to cv::Mat supporting:
+ * - Image object: {data, width, height, channels, colorSpace, dtype}
  * - Buffer: Raw image file data (JPEG/PNG/WebP)
  */
 inline cv::Mat ConvertToMat(const Napi::Value& input) {
   Napi::Env env = input.Env();
 
-  // --- 1. Raw image object (new or legacy format) -------------------------
+  // --- 1. Raw image object -------------------------
   if (input.IsObject() && !input.IsBuffer()) {
     Napi::Object obj = input.As<Napi::Object>();
     if (obj.Has("data") && obj.Has("width") && obj.Has("height")) {
@@ -35,7 +34,6 @@ inline cv::Mat ConvertToMat(const Napi::Value& input) {
       if (obj.Has("channels")) {
         auto channelsVal = obj.Get("channels");
         
-        // Handle new numeric format
         if (channelsVal.IsNumber()) {
           channels = channelsVal.As<Napi::Number>().Int32Value();
           
@@ -52,18 +50,8 @@ inline cv::Mat ConvertToMat(const Napi::Value& input) {
                 throw Napi::Error::New(env, "Unsupported channel count: " + std::to_string(channels));
             }
           }
-        }
-        // Handle legacy string format ("int8_RGB")
-        else if (channelsVal.IsString()) {
-          std::string ch = channelsVal.As<Napi::String>().Utf8Value();
-          auto pos = ch.find('_');
-          colorSpace = (pos != std::string::npos) ? ch.substr(pos + 1) : ch;
-          
-          // Map colorSpace to channels
-          if (colorSpace == "GRAY") channels = 1;
-          else if (colorSpace == "RGB" || colorSpace == "BGR") channels = 3;
-          else if (colorSpace == "RGBA" || colorSpace == "BGRA") channels = 4;
-          else throw Napi::Error::New(env, "Unknown legacy channel format: " + ch);
+        } else {
+          throw Napi::Error::New(env, "Channels must be a number");
         }
       }
 
@@ -156,7 +144,7 @@ inline ImageFormat ParseImageFormat(const std::string& format) {
   return ImageFormat::RAW;
 }
 
-// utils.h  – función de compresión rápido a ".jpg" (legacy compatibility)
+// Fast JPEG compression function
 inline double EncodeToJpgFast(const cv::Mat& src,
   std::vector<uchar>& out,
   int quality = 90)          // 90 = buen balance

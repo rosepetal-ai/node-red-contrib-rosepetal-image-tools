@@ -13,19 +13,39 @@ module.exports = function(RED) {
     // Store configuration with validation
     node.inputPath = config.inputPath || 'payload';
     node.inputPathType = config.inputPathType || 'msg';
-    const parsedPosition = parseInt(config.arrayPosition);
-    node.arrayPosition = !isNaN(parsedPosition) ? parsedPosition : 0;
+    
+    // Dynamic position configuration
+    node.arrayPositionType = config.arrayPositionType || 'num';
+    node.arrayPositionValue = config.arrayPositionValue !== undefined ? config.arrayPositionValue : 0;
 
     // Set initial status
+    const statusText = node.arrayPositionType === 'num' 
+      ? `Position: ${node.arrayPositionValue}` 
+      : `Position: ${node.arrayPositionType}.${node.arrayPositionValue}`;
     node.status({ 
       fill: "blue", 
       shape: "dot", 
-      text: `Position: ${node.arrayPosition}` 
+      text: statusText
     });
 
     // Handle incoming messages
     node.on('input', function(msg, send, done) {
       try {
+        // Resolve array position dynamically
+        let resolvedPosition;
+        try {
+          resolvedPosition = NodeUtils.resolveArrayPosition(
+            node, 
+            node.arrayPositionType, 
+            node.arrayPositionValue, 
+            msg
+          );
+        } catch (err) {
+          node.warn(`Failed to resolve array position: ${err.message}`);
+          node.status({ fill: "red", shape: "ring", text: "Invalid position" });
+          return done ? done() : null;
+        }
+
         // Get data from configured input path
         let arrayData;
         if (node.inputPathType === 'msg') {
@@ -48,7 +68,7 @@ module.exports = function(RED) {
         }
 
         // Add array metadata and set payload
-        msg.meta.arrayPosition = node.arrayPosition;
+        msg.meta.arrayPosition = resolvedPosition;
         msg.meta.arrayData = arrayData;
         msg.payload = arrayData; // Put data in payload for processing
 
@@ -56,7 +76,7 @@ module.exports = function(RED) {
         node.status({ 
           fill: "green", 
           shape: "dot", 
-          text: `Position: ${node.arrayPosition}` 
+          text: `Position: ${resolvedPosition}` 
         });
 
         // Send the message with array metadata

@@ -88,17 +88,6 @@ Images are passed as objects using the current structure:
 }
 ```
 
-### Legacy Format Support
-The system maintains backward compatibility:
-```javascript
-{
-  data: Buffer,
-  width: number,
-  height: number,
-  channels: string     // e.g., "int8_RGB", "int8_RGBA", "int8_GRAY"
-}
-```
-
 ### File Format Support
 - **Input**: JPEG, PNG, WebP, BMP files automatically detected and decoded
 - **Output**: Raw image objects or encoded file buffers (JPEG, PNG, WebP)
@@ -209,7 +198,6 @@ Most configuration parameters support dynamic values:
 ### Recovery Strategies
 - **Graceful Degradation**: Fallback to safe defaults when possible
 - **Automatic Inference**: Missing fields inferred from available data
-- **Format Conversion**: Automatic handling of legacy formats
 
 ## Performance Optimization
 

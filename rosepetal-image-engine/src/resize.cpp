@@ -33,17 +33,11 @@ ResizeWorker(Napi::Function& callback,
       if (inputImage.IsObject() && !inputImage.IsBuffer()) {
         Napi::Object obj = inputImage.As<Napi::Object>();
         
-        // Check for new colorSpace field first
+        // Check for colorSpace field
         if (obj.Has("colorSpace")) {
           channelOrder = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
         }
-        // Handle legacy string format
-        else if (obj.Has("channels") && obj.Get("channels").IsString()) {
-          std::string chFull = obj.Get("channels").As<Napi::String>().Utf8Value();
-          std::size_t pos = chFull.find('_');
-          channelOrder = (pos != std::string::npos) ? chFull.substr(pos + 1) : chFull;
-        }
-        // Default based on channel count for new numeric format
+        // Default based on channel count
         else {
           channelOrder = (inputMat.channels() == 4) ? "BGRA"
                        : (inputMat.channels() == 3) ? "BGR"
@@ -180,17 +174,10 @@ Napi::Value Resize(const Napi::CallbackInfo& info) {
   int quality = 90;
   size_t cbIndex = 5;
 
-  // Handle backward compatibility and new parameters
+  // Handle parameters
   if (info.Length() == 7) {
-    if (info[5].IsBoolean()) {
-      // Legacy boolean format: convert to string
-      outputFormat = info[5].As<Napi::Boolean>().Value() ? "jpg" : "raw";
-      cbIndex = 6;
-    } else if (info[5].IsString()) {
-      // New string format
-      outputFormat = info[5].As<Napi::String>().Utf8Value();
-      cbIndex = 6;
-    }
+    outputFormat = info[5].As<Napi::String>().Utf8Value();
+    cbIndex = 6;
   } else if (info.Length() == 8) {
     outputFormat = info[5].As<Napi::String>().Utf8Value();
     quality = info[6].As<Napi::Number>().Int32Value();

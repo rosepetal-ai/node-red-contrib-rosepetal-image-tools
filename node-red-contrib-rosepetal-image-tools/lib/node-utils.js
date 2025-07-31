@@ -21,8 +21,7 @@ module.exports = function(RED) {
 
   /**
    * Validates and normalizes an image structure
-   * Supports both new structure {data, width, height, channels, colorSpace, dtype}
-   * and legacy structure {data, width, height, channels: "int8_RGB"}
+   * Supports structure: {data, width, height, channels, colorSpace, dtype}
    */
   utils.validateImageStructure = function(image, node) {
     if (!image) {
@@ -53,15 +52,10 @@ module.exports = function(RED) {
           channels = calculatedChannels;
         }
 
-        // Handle legacy string format ("int8_RGB")
-        if (typeof channels === 'string') {
-          const [, chanStr] = channels.split('_');
-          if (CONSTANTS.CHANNEL_MAP[chanStr]) {
-            channels = CONSTANTS.CHANNEL_MAP[chanStr];
-          } else {
-            node.warn(`Unknown legacy channel format: ${channels}`);
-            return null;
-          }
+        // Validate channels is a number
+        if (typeof channels !== 'number') {
+          node.warn(`Channels must be a number, got: ${typeof channels}`);
+          return null;
         }
 
         // Validate data length matches dimensions
@@ -73,20 +67,14 @@ module.exports = function(RED) {
         // Handle colorSpace with defaults
         let colorSpace = image.colorSpace;
         if (!colorSpace) {
-          // For legacy format, extract from string
-          if (typeof image.channels === 'string') {
-            const [, chanStr] = image.channels.split('_');
-            colorSpace = chanStr || 'RGB';
-          } else {
-            // Default based on channel count
-            switch (channels) {
-              case 1: colorSpace = "GRAY"; break;
-              case 3: colorSpace = "RGB"; break;
-              case 4: colorSpace = "RGBA"; break;
-              default:
-                node.warn(`Cannot determine default colorSpace for ${channels} channels`);
-                return null;
-            }
+          // Default based on channel count
+          switch (channels) {
+            case 1: colorSpace = "GRAY"; break;
+            case 3: colorSpace = "RGB"; break;
+            case 4: colorSpace = "RGBA"; break;
+            default:
+              node.warn(`Cannot determine default colorSpace for ${channels} channels`);
+              return null;
           }
         }
 
@@ -149,6 +137,35 @@ module.exports = function(RED) {
     if (numericValue === undefined || isNaN(numericValue)) {
         throw new Error(`Value "${resolvedValue}" from property "${value}" is not a valid number.`);
     }
+    return numericValue;
+  }
+
+  /**
+   * Resolves array position value from various sources (msg, flow, global, or direct value)
+   * @param {Object} node - The Node-RED node instance
+   * @param {string} type - The type of source ('msg', 'flow', 'global', or 'num')
+   * @param {*} value - The value or property path to resolve
+   * @param {Object} msg - The message object for msg property resolution
+   * @returns {number} The resolved array position as a non-negative integer
+   * @throws {Error} If the resolved value is not a valid non-negative integer
+   */
+  utils.resolveArrayPosition = function(node, type, value, msg) {
+    if (value === null || value === undefined || String(value).trim() === '') {
+      return CONSTANTS.DEFAULT_ARRAY_POSITION;
+    }
+    
+    let resolvedValue;
+    if (type === 'msg' || type === 'flow' || type === 'global') {
+      resolvedValue = RED.util.evaluateNodeProperty(value, type, node, msg);
+    } else {
+      resolvedValue = value;
+    }
+    
+    const numericValue = parseInt(resolvedValue);
+    if (numericValue === undefined || isNaN(numericValue) || numericValue < 0) {
+      throw new Error(`Array position "${resolvedValue}" from property "${value}" must be a non-negative integer.`);
+    }
+    
     return numericValue;
   }
 

@@ -66,11 +66,7 @@ public:
         if (obj.Has("colorSpace")) {
           channel = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
         }
-        // Handle legacy string format
-        else if (obj.Has("channels") && obj.Get("channels").IsString()) {
-          channel = ExtractChannelOrder(obj.Get("channels").As<Napi::String>().Utf8Value());
-        }
-        // Default based on channel count for new numeric format
+        // Default based on channel count
         else {
           channel = (images_[i].channels() == 4) ? "BGRA"
                   : (images_[i].channels() == 3) ? "BGR" 
@@ -343,18 +339,12 @@ Napi::Value Mosaic(const Napi::CallbackInfo& info) {
   Napi::Array positions = info[i++].As<Napi::Array>();
   bool normalized = info[i++].As<Napi::Boolean>().Value();
   
-  // Handle backward compatibility and new parameters
+  // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
   
   if (info.Length() - i >= 2) {
-    if (info[i].IsBoolean()) {
-      // Legacy boolean format: convert to string
-      outputFormat = info[i++].As<Napi::Boolean>().Value() ? "jpg" : "raw";
-    } else if (info[i].IsString()) {
-      // New string format
-      outputFormat = info[i++].As<Napi::String>().Utf8Value();
-    }
+    outputFormat = info[i++].As<Napi::String>().Utf8Value();
   }
   
   if (info.Length() - i >= 2) {

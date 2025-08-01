@@ -288,8 +288,70 @@ t.Set("encodeMs",  Napi::Number::New(env, encodeMs));
 return t;
 }
 
+// Helper function to detect channel format for individual images (shared between blend and concat)
+inline std::string DetectChannelFormatShared(const Napi::Value& jsImg, const cv::Mat& mat) {
+  if (jsImg.IsObject() && !jsImg.IsBuffer()) {
+    Napi::Object obj = jsImg.As<Napi::Object>();
+    
+    // Check for colorSpace field first
+    if (obj.Has("colorSpace")) {
+      return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+    }
+    // Default based on channel count
+    else {
+      const int channels = mat.channels();
+      return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
+    }
+  } else {
+    // Buffer input - determine from OpenCV Mat
+    const int channels = mat.channels();
+    return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
+  }
+}
 
-
-
+// Helper function to convert image to target channel format (shared between blend and concat)
+inline cv::Mat ConvertToTargetFormatShared(const cv::Mat& src, const std::string& srcFormat, const std::string& targetFormat) {
+  if (srcFormat == targetFormat) {
+    return src; // No conversion needed
+  }
+  
+  cv::Mat dst;
+  
+  // Convert to target format
+  if (srcFormat == "GRAY" && targetFormat == "BGR") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2BGR);
+  } else if (srcFormat == "GRAY" && targetFormat == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2RGB);
+  } else if (srcFormat == "GRAY" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2BGRA);
+  } else if (srcFormat == "GRAY" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_GRAY2RGBA);
+  } else if (srcFormat == "BGR" && targetFormat == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_BGR2RGB);
+  } else if (srcFormat == "RGB" && targetFormat == "BGR") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2BGR);
+  } else if (srcFormat == "BGR" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_BGR2BGRA);
+  } else if (srcFormat == "BGR" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_BGR2RGBA);
+  } else if (srcFormat == "RGB" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2RGBA);
+  } else if (srcFormat == "RGB" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2BGRA);
+  } else if (srcFormat == "BGRA" && targetFormat == "BGR") {
+    cv::cvtColor(src, dst, cv::COLOR_BGRA2BGR);
+  } else if (srcFormat == "RGBA" && targetFormat == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_RGBA2RGB);
+  } else if (srcFormat == "BGRA" && targetFormat == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_BGRA2RGBA);
+  } else if (srcFormat == "RGBA" && targetFormat == "BGRA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGBA2BGRA);
+  } else {
+    // Fallback: return source if no conversion available
+    dst = src;
+  }
+  
+  return dst;
+}
 
 #endif // UTILS_H

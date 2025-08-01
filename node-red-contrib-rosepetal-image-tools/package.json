@@ -39,7 +39,8 @@
             "concat": "nodes/mix/concat.js",
             "padding": "nodes/transform/padding.js",
             "filter": "nodes/transform/filter.js",
-            "mosaic": "nodes/mix/mosaic.js"
+            "mosaic": "nodes/mix/mosaic.js",
+            "blend": "nodes/blend/blend.js"
         }
     },
     "dependencies": {

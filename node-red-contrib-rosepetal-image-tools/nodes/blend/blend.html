@@ -1,0 +1,427 @@
+<!-- nodes/blend/blend.html -->
+
+<script type="text/javascript">
+    RED.nodes.registerType('blend',{
+      category:'RP Image',
+      color:'#DDA0DD',
+      icon:'font-awesome/fa-adjust',
+      defaults:{
+        name:{value:""},
+        image1Path:{value:"payload.image1"}, image1PathType:{value:"msg"},
+        image2Path:{value:"payload.image2"}, image2PathType:{value:"msg"},
+        outputPath:{value:"payload"},outputPathType:{value:"msg"},
+        outputFormat:{value:"raw"},
+        outputQuality:{value:90},
+        // Debug configuration
+        debugEnabled:{value:false},
+        debugWidth:{value:200},
+        debugWidthType:{value:"num"},
+        opacity:{value:50}              // 0-100%, default 50% (equal blend)
+      },
+      inputs:1,outputs:1,
+      label:function(){return this.name||"blend";},
+      oneditprepare:function(){
+        /* path typedInputs */
+        $("#node-input-image1Path").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-image1PathType"});
+        $("#node-input-image2Path").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-image2PathType"});
+        $("#node-input-outputPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-outputPathType"});
+
+        /* opacity slider functionality */
+        const $opacitySlider = $("#node-input-opacity");
+        const $opacityValue = $("#opacity-value");
+        const $opacityLabel = $("#opacity-label");
+        
+        function updateOpacityDisplay() {
+          const value = parseInt($opacitySlider.val());
+          $opacityValue.text(value + "%");
+          
+          // Calculate complementary percentage ensuring exact 100% total
+          const img1Percent = value;
+          const img2Percent = 100 - value;
+          
+          // Update label to show blend ratio
+          if (value === 0) {
+            $opacityLabel.text("0% Image 1, 100% Image 2");
+          } else if (value === 100) {
+            $opacityLabel.text("100% Image 1, 0% Image 2");
+          } else if (value === 50) {
+            $opacityLabel.text("50% each image");
+          } else {
+            $opacityLabel.text(img1Percent + "% Image 1, " + img2Percent + "% Image 2");
+          }
+        }
+        
+        $opacitySlider.on("input", updateOpacityDisplay);
+        updateOpacityDisplay(); // initial state
+        
+        function updateQualityVisibility(){
+          const format = $("#node-input-outputFormat").val();
+          $("#quality-row").toggle(format === "jpg" || format === "webp");
+        }
+        $("#node-input-outputFormat").on("change", updateQualityVisibility);
+        updateQualityVisibility(); // initial state
+
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        const debugWidthRow = $('#debug-width-row');
+        
+        // Initialize debug width TypedInput
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+        
+        // Function to toggle debug width visibility
+        function updateDebugWidthVisibility() {
+            if (debugCheckbox.is(':checked')) {
+                debugWidthRow.show();
+            } else {
+                debugWidthRow.hide();
+            }
+        }
+        
+        // Initialize debug state on node open
+        updateDebugWidthVisibility();
+        
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            updateDebugWidthVisibility();
+            // Store debug state for runtime access
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
+      }
+    });
+
+    // Debug image display renderer - shared across all image processing nodes
+    if (!window.debugImageRendererInitialized) {
+        window.debugImageRendererInitialized = true;
+        
+        (function() {
+            var isSubscribed = false;
+            
+            function subscribeToDebugImages() {
+                if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+                isSubscribed = true;
+                
+                RED.comms.subscribe('debug-image', function(event, data) {
+                    if (!data || !data.id) return;
+                    
+                    try {
+                        renderDebugImage(data);
+                    } catch (err) {
+                        console.warn('Debug image render error:', err);
+                    }
+                });
+            }
+            
+            function renderDebugImage(data) {
+                const nodeId = data.id;
+                const base64Data = data.data;
+                const format = data.format || 'unknown';
+                const mimeType = data.mimeType || 'jpeg';
+                
+                if (!base64Data) {
+                    removeDebugImage(nodeId);
+                    return;
+                }
+                
+                const nodeElement = document.getElementById(nodeId);
+                if (!nodeElement) return;
+                
+                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                
+                if (!debugContainer) {
+                    // Create SVG foreignObject to embed HTML content in SVG
+                    debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    debugContainer.id = 'debug-img-container-' + nodeId;
+                    debugContainer.setAttribute('x', '70');
+                    debugContainer.setAttribute('y', '5');
+                    debugContainer.setAttribute('width', '120');
+                    debugContainer.setAttribute('height', '120');
+                    debugContainer.style.overflow = 'visible';
+                    
+                    // Create simple image directly inside foreignObject
+                    const img = document.createElement('img');
+                    img.id = 'debug-img-' + nodeId;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    img.style.cursor = 'pointer';
+                    img.style.maxHeight = '100px';
+                    img.style.maxWidth = '100px';
+                    
+                    img.onclick = function() {
+                        removeDebugImage(nodeId);
+                    };
+                    
+                    debugContainer.appendChild(img);
+                    nodeElement.appendChild(debugContainer);
+                }
+                
+                const img = document.getElementById('debug-img-' + nodeId);
+                
+                if (img) {
+                    img.src = `data:image/${mimeType};base64,${base64Data}`;
+                    img.title = 'Debug image (click to hide)';
+                }
+            }
+            
+            function removeDebugImage(nodeId) {
+                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                if (debugContainer) {
+                    debugContainer.remove();
+                }
+            }
+            
+            function initializeWhenReady() {
+                if (typeof RED !== 'undefined' && RED.comms) {
+                    subscribeToDebugImages();
+                    
+                    // Clean up orphaned debug images periodically
+                    setInterval(function() {
+                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(container => {
+                            const nodeId = container.id.replace('debug-img-container-', '');
+                            const nodeElement = document.getElementById(nodeId);
+                            if (!nodeElement) {
+                                container.remove();
+                            }
+                        });
+                    }, 5000);
+                } else {
+                    setTimeout(initializeWhenReady, 100);
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeWhenReady);
+            } else {
+                initializeWhenReady();
+            }
+        })();
+    }
+</script>
+
+<script type="text/x-red" data-template-name="blend">
+  <div class="form-row">
+    <label><i class="fa fa-picture-o"></i> Image 1</label>
+    <input type="text" id="node-input-image1Path" style="width:70%;">
+    <input type="hidden" id="node-input-image1PathType">
+  </div>
+  
+  <div class="form-row">
+    <label><i class="fa fa-picture-o"></i> Image 2</label>
+    <input type="text" id="node-input-image2Path" style="width:70%;">
+    <input type="hidden" id="node-input-image2PathType">
+  </div>
+  
+  <div class="form-row">
+    <label><i class="fa fa-sign-out"></i> Output</label>
+    <input type="text" id="node-input-outputPath" style="width:70%;">
+    <input type="hidden" id="node-input-outputPathType">
+  </div>
+  
+  <div class="form-row">
+    <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+    <select id="node-input-outputFormat" style="width: 200px;">
+      <option value="raw">Raw (fastest)</option>
+      <option value="jpg">JPEG</option>
+      <option value="png">PNG</option>
+      <option value="webp">WebP</option>
+    </select>
+  </div>
+  
+  <div class="form-row" id="quality-row">
+    <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+    <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+  </div>
+  
+  <!-- Debug Configuration -->
+  <div class="form-row">
+      <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+      <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+      <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+  </div>
+  <div class="form-row" id="debug-width-row" style="display: none;">
+      <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+      <input type="text" id="node-input-debugWidth" style="width: 120px;">
+      <input type="hidden" id="node-input-debugWidthType">
+      <span style="margin-left: 10px; color: #666;">pixels</span>
+  </div>
+  
+  <hr/>
+  
+  <div class="form-row">
+    <label for="node-input-opacity"><i class="fa fa-adjust"></i> Opacity</label>
+    <input type="range" id="node-input-opacity" min="0" max="100" value="50" style="width: 200px;">
+    <span id="opacity-value" style="margin-left: 10px; font-weight: bold;">50%</span>
+    <div style="margin-top: 5px; font-size: 11px; color: #666;" id="opacity-label">
+      50% each image
+    </div>
+    <div style="margin-top: 5px; font-size: 10px; color: #999;">
+      0% = Image 2 only | 50% = Equal blend | 100% = Image 1 only
+    </div>
+  </div>
+</script>
+
+<script type="text/x-red" data-help-name="blend">
+  <p><b>rosepetal-blend</b> combines two images using alpha blending with adjustable opacity. This node creates smooth transitions and artistic effects by mixing pixel values from both input images.</p>
+
+  <h3>Details</h3>
+  <p>This node performs high-performance alpha blending using OpenCV's optimized <code>addWeighted</code> function. The opacity slider controls the contribution of each image to the final result, allowing for precise control over the blending effect. Images with different dimensions are automatically resized to match, and color space conversions are handled transparently.</p>
+
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Image 1 <span class="property-type">string</span></dt>
+    <dd>Message property path containing the first input image. This image's contribution increases as opacity approaches 100%. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    
+    <dt>Image 2 <span class="property-type">string</span></dt>
+    <dd>Message property path containing the second input image. This image's contribution increases as opacity approaches 0%. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>Message property path where the blended image will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    
+    <dt>Output Format <span class="property-type">string</span></dt>
+    <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+    
+    <dt>Quality <span class="property-type">number</span></dt>
+    <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
+    
+    <dt>Opacity <span class="property-type">number</span></dt>
+    <dd>Blend ratio from 0% to 100%. Controls the contribution of each image to the final result.</dd>
+  </dl>
+
+  <h3>Inputs</h3>
+  <p>Requires two input images from the specified message property paths:</p>
+  <ul>
+    <li><b>Image 1:</b> From the path specified in "Image 1" field (default: <code>msg.payload.image1</code>)</li>
+    <li><b>Image 2:</b> From the path specified in "Image 2" field (default: <code>msg.payload.image2</code>)</li>
+  </ul>
+  
+  <p>Each image should follow the standard format:</p>
+  <pre>{
+  data: Buffer,        // Raw pixel data or encoded file buffer
+  width: number,       // Image width in pixels
+  height: number,      // Image height in pixels
+  channels: number,    // Channel count (1=grayscale, 3=RGB, 4=RGBA)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
+  dtype: string        // "uint8", "uint16", "float32"
+}</pre>
+  <p>File buffers (JPEG, PNG, WebP, BMP) are automatically detected and decoded.</p>
+
+  <h3>Outputs</h3>
+  <p>Produces a single blended image in the specified format:</p>
+  <ul>
+    <li><b>Raw format:</b> Complete image object with pixel data and metadata</li>
+    <li><b>Encoded formats (JPG/PNG/WebP):</b> File buffer ready for storage or transmission</li>
+  </ul>
+  <p>Output dimensions match the larger of the two input images. Smaller images are automatically resized to prevent dimension mismatches.</p>
+
+  <h3>Blending Behavior</h3>
+  <h4>Opacity Control</h4>
+  <ul>
+    <li><b>0% (Far Left):</b> 100% Image 2, 0% Image 1 - Shows only the second image</li>
+    <li><b>25%:</b> 25% Image 1, 75% Image 2 - Second image dominates with first image visible</li>
+    <li><b>50% (Center):</b> 50% each image - Equal contribution from both images</li>
+    <li><b>75%:</b> 75% Image 1, 25% Image 2 - First image dominates with second image visible</li>
+    <li><b>100% (Far Right):</b> 100% Image 1, 0% Image 2 - Shows only the first image</li>
+  </ul>
+
+  <h4>Mathematical Formula</h4>
+  <p>The blend operation uses OpenCV's <code>addWeighted</code> function:</p>
+  <pre>result = image1 × (opacity/100) + image2 × (1 - opacity/100)</pre>
+
+  <h3>Automatic Image Processing</h3>
+  <h4>Dimension Handling</h4>
+  <ul>
+    <li><b>Same Size:</b> Direct blending with no resizing</li>
+    <li><b>Different Sizes:</b> Smaller image is resized to match the larger one using high-quality interpolation</li>
+    <li><b>Aspect Ratio:</b> Preserved during resize operations to prevent distortion</li>
+  </ul>
+
+  <h4>Color Space Conversion</h4>
+  <ul>
+    <li><b>Automatic Detection:</b> Color spaces are detected from image metadata or inferred from channel count</li>
+    <li><b>Smart Conversion:</b> Images are converted to a common format for blending (RGBA > BGRA > RGB > BGR > GRAY priority)</li>
+    <li><b>Quality Preservation:</b> Lossless conversions maintain image quality throughout the process</li>
+  </ul>
+
+  <h3>Examples</h3>
+  <h4>Photo Double Exposure</h4>
+  <p>Create artistic double exposure effects:</p>
+  <ul>
+    <li>Input: Portrait + landscape images</li>
+    <li>Opacity: 60-80% for subtle overlay</li>
+    <li>Output: PNG for transparency support</li>
+  </ul>
+
+  <h4>Background Replacement</h4>
+  <p>Blend foreground object with new background:</p>
+  <ul>
+    <li>Image 1: Foreground with transparency</li>
+    <li>Image 2: New background</li>
+    <li>Opacity: 90-100% to preserve foreground</li>
+  </ul>
+
+  <h4>Watermark Application</h4>
+  <p>Add semi-transparent watermarks:</p>
+  <ul>
+    <li>Image 1: Main content</li>
+    <li>Image 2: Watermark/logo</li>
+    <li>Opacity: 80-95% for subtle branding</li>
+  </ul>
+
+  <h4>Transition Effects</h4>
+  <p>Create smooth transitions between images:</p>
+  <ul>
+    <li>Use with flow control to animate opacity</li>
+    <li>Multiple blend nodes for complex transitions</li>
+    <li>Real-time adjustment via message properties</li>
+  </ul>
+
+  <h3>Node Interactions</h3>
+  <ul>
+    <li><b>Upstream:</b> Works with <code>image-in</code>, <code>array-in</code>, or any nodes producing image pairs</li>
+    <li><b>Downstream:</b> Connect to image writers, further processing nodes, or display components</li>
+    <li><b>Chaining:</b> Can be chained for complex multi-layer compositions</li>
+    <li><b>Flow Integration:</b> Supports flow and global context for cross-node data sharing</li>
+  </ul>
+
+
+  <h3>Error Handling</h3>
+  <ul>
+    <li><b>Missing Images:</b> Clear warnings when either input image is missing or invalid</li>
+    <li><b>Dimension Mismatch:</b> Automatic resizing with performance-optimized interpolation</li>
+    <li><b>Color Space Issues:</b> Intelligent conversion with format preservation</li>
+    <li><b>Memory Management:</b> Efficient processing of large images with automatic cleanup</li>
+    <li><b>Format Compatibility:</b> Graceful handling of different input formats and encodings</li>
+  </ul>
+
+  <h3>Performance</h3>
+  <ul>
+    <li><b>C++ Backend:</b> High-performance OpenCV implementation with SIMD optimizations</li>
+    <li><b>Memory Efficient:</b> Minimal memory allocation with intelligent buffer reuse</li>
+    <li><b>Parallel Processing:</b> Multi-threaded operations for large images</li>
+    <li><b>Status Timing:</b> Real-time metrics showing conversion, processing, and encoding times</li>
+    <li><b>Zero-Copy Operations:</b> Efficient data transfer between JavaScript and C++ layers</li>
+    <li><b>Optimized Builds:</b> Compiled with <code>-O3</code>, <code>-march=native</code> for maximum performance</li>
+  </ul>
+
+  <h3>Advanced Features</h3>
+  <ul>
+    <li><b>Live Preview:</b> Debug mode shows blended result in real-time</li>
+    <li><b>Opacity Animation:</b> Programmatic control for animated blending effects</li>
+    <li><b>Batch Processing:</b> Efficient handling of multiple image pairs</li>
+    <li><b>Context Integration:</b> Full support for flow and global context storage</li>
+    <li><b>Format Flexibility:</b> Seamless conversion between raw and encoded formats</li>
+  </ul>
+</script>

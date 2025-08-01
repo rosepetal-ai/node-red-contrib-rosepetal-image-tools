@@ -11,6 +11,7 @@
         "src/padding.cpp",
         "src/filter.cpp",
         "src/mosaic.cpp",
+        "src/advanced-mosaic.cpp",
         "src/blend.cpp"
       ],
       "include_dirs": [

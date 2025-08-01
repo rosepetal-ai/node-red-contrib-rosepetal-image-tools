@@ -40,6 +40,7 @@
             "padding": "nodes/transform/padding.js",
             "filter": "nodes/transform/filter.js",
             "mosaic": "nodes/mix/mosaic.js",
+            "advanced-mosaic": "nodes/mix/advanced-mosaic.js",
             "blend": "nodes/blend/blend.js"
         }
     },

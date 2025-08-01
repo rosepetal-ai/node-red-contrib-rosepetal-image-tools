@@ -1,0 +1,1157 @@
+<!-- ───────── nodes/mix/advanced-mosaic.html ────────────── -->
+
+<!-- 1 ▸ Runtime registration -->
+<script type="text/javascript">
+  RED.nodes.registerType('advanced-mosaic',{
+  
+    category:'RP Image',
+    color   :'#DA70D6',
+    icon    :'font-awesome/fa-th-large',
+  
+    defaults:{
+      name:{value:""},
+      inputPath:{value:"payload"},   inputPathType:{value:"msg"},
+      outputPath:{value:"payload"},  outputPathType:{value:"msg"},
+      outputFormat:{value:"raw"},
+      outputQuality:{value:90},
+      // Debug configuration
+      debugEnabled:{value:false},
+      debugWidth:{value:200},
+      debugWidthType:{value:"num"},
+  
+      canvasWidth:{value:"800"},   canvasWidthType:{value:"num"},
+      canvasHeight:{value:"600"},  canvasHeightType:{value:"num"},
+      backgroundColor:{value:"#000000"},
+      
+      imageConfigs:{value:[]}  // Array of {arrayIndex, x, y, width, height, rotation, zIndex} objects
+    },
+  
+    inputs:1, outputs:1,
+    label:function(){ return this.name || "advanced-mosaic"; },
+  
+    /* ---------------- oneditprepare ---------------- */
+    oneditprepare:function(){
+      const node = this;
+  
+      /* Standard I/O typedInputs */
+      $("#node-input-inputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-inputPathType"
+      });
+      $("#node-input-outputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-outputPathType"
+      });
+  
+      /* Canvas dimension typedInputs */
+      $("#node-input-canvasWidth").typedInput({
+        default:'num',
+        types:['num','msg','flow','global'],
+        typeField:"#node-input-canvasWidthType"
+      });
+      $("#node-input-canvasHeight").typedInput({
+        default:'num',
+        types:['num','msg','flow','global'],
+        typeField:"#node-input-canvasHeightType"
+      });
+  
+
+      /* Quality visibility based on output format */
+      function updateQualityVisibility(){
+        const format = $("#node-input-outputFormat").val();
+        $("#quality-row").toggle(format === "jpg" || format === "webp");
+      }
+      $("#node-input-outputFormat").on("change", updateQualityVisibility);
+      updateQualityVisibility(); // initial state
+
+      // === Debug Display Logic ===
+      const debugCheckbox = $('#node-input-debugEnabled');
+      const debugWidthRow = $('#debug-width-row');
+      
+      // Initialize debug width TypedInput
+      $("#node-input-debugWidth").typedInput({
+          default: 'num',
+          types: ['num', 'msg', 'flow', 'global'],
+          typeField: "#node-input-debugWidthType"
+      });
+      
+      // Function to toggle debug width visibility
+      function updateDebugWidthVisibility() {
+          if (debugCheckbox.is(':checked')) {
+              debugWidthRow.show();
+          } else {
+              debugWidthRow.hide();
+          }
+      }
+      
+      // Initialize debug state on node open
+      updateDebugWidthVisibility();
+      
+      // Handle debug checkbox changes
+      debugCheckbox.on('change', function() {
+          updateDebugWidthVisibility();
+      });
+
+      /* Initialize image configurations if empty */
+      if (!node.imageConfigs || node.imageConfigs.length === 0) {
+        node.imageConfigs = [{
+          arrayIndex: 0, 
+          inputWidth: 800,
+          inputHeight: 600,
+          x: 50, 
+          y: 50, 
+          width: 200, 
+          height: 150, 
+          rotation: 0, 
+          zIndex: 0
+        }];
+      }
+
+      /* Interactive Canvas Editor */
+      class MosaicCanvasEditor {
+        constructor(canvasElement, node) {
+          this.canvas = canvasElement;
+          this.ctx = this.canvas.getContext('2d');
+          this.node = node;
+          this.selectedIndex = -1;
+          this.isDragging = false;
+          this.isResizing = false;
+          this.isRotating = false;
+          this.resizeHandle = null; // 'nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'
+          this.dragStartX = 0;
+          this.dragStartY = 0;
+          this.originalBounds = null;
+          this.showGrid = true;
+          this.snapToGrid = true;
+          this.gridSize = 20;
+          this.handleSize = 8;
+          
+          this.setupEventListeners();
+          this.updateCanvasSize();
+          this.render();
+        }
+        
+        updateCanvasSize() {
+          const width = parseInt($("#node-input-canvasWidth").val()) || 800;
+          const height = parseInt($("#node-input-canvasHeight").val()) || 600;
+          
+          // Scale down for display (max 500x400)
+          const scale = Math.min(500/width, 400/height, 1);
+          this.canvas.width = width * scale;
+          this.canvas.height = height * scale;
+          this.canvas.style.maxWidth = '500px';
+          this.canvas.style.maxHeight = '400px';
+          this.scale = scale;
+          this.canvasWidth = width;
+          this.canvasHeight = height;
+        }
+        
+        setupEventListeners() {
+          this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+          this.canvas.addEventListener('mousemove', (e) => {
+            this.handleMouseMove(e);
+            this.updateCursor(e);
+          });
+          this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+          this.canvas.addEventListener('click', (e) => this.handleClick(e));
+          
+          // Canvas size change listeners
+          $("#node-input-canvasWidth, #node-input-canvasHeight").on('input', () => {
+            this.updateCanvasSize();
+            this.render();
+          });
+        }
+        
+        getMousePos(e) {
+          const rect = this.canvas.getBoundingClientRect();
+          return {
+            x: (e.clientX - rect.left) / this.scale,
+            y: (e.clientY - rect.top) / this.scale
+          };
+        }
+        
+        snapToGridPos(x, y) {
+          if (!this.snapToGrid) return {x, y};
+          return {
+            x: Math.round(x / this.gridSize) * this.gridSize,
+            y: Math.round(y / this.gridSize) * this.gridSize
+          };
+        }
+        
+        getImageBounds(config, index) {
+          const width = config.width || 100;
+          const height = config.height || 100;
+          return {
+            x: config.x,
+            y: config.y,
+            width: width,
+            height: height
+          };
+        }
+        
+        hitTestHandles(x, y) {
+          if (this.selectedIndex < 0) return null;
+          
+          const config = this.node.imageConfigs[this.selectedIndex];
+          const bounds = this.getImageBounds(config, this.selectedIndex);
+          const h = this.handleSize;
+          
+          // Test rotation handle first
+          const rotHandleX = bounds.x + bounds.width/2;
+          const rotHandleY = bounds.y - 25;
+          const rotDist = Math.sqrt((x - rotHandleX)**2 + (y - rotHandleY)**2);
+          if (rotDist <= h) {
+            return 'rotate';
+          }
+          
+          // Test resize handles
+          const handles = {
+            'nw': { x: bounds.x - h/2, y: bounds.y - h/2 },
+            'n':  { x: bounds.x + bounds.width/2 - h/2, y: bounds.y - h/2 },
+            'ne': { x: bounds.x + bounds.width - h/2, y: bounds.y - h/2 },
+            'e':  { x: bounds.x + bounds.width - h/2, y: bounds.y + bounds.height/2 - h/2 },
+            'se': { x: bounds.x + bounds.width - h/2, y: bounds.y + bounds.height - h/2 },
+            's':  { x: bounds.x + bounds.width/2 - h/2, y: bounds.y + bounds.height - h/2 },
+            'sw': { x: bounds.x - h/2, y: bounds.y + bounds.height - h/2 },
+            'w':  { x: bounds.x - h/2, y: bounds.y + bounds.height/2 - h/2 }
+          };
+          
+          for (let [handleType, handle] of Object.entries(handles)) {
+            if (x >= handle.x && x <= handle.x + h &&
+                y >= handle.y && y <= handle.y + h) {
+              return handleType;
+            }
+          }
+          
+          return null;
+        }
+        
+        hitTest(x, y) {
+          // First check handles if something is selected
+          const handleHit = this.hitTestHandles(x, y);
+          if (handleHit) return { type: 'handle', handle: handleHit, index: this.selectedIndex };
+          
+          // Test in reverse order (highest z-index first)
+          const configs = [...this.node.imageConfigs].sort((a, b) => (b.zIndex || 0) - (a.zIndex || 0));
+          
+          for (let config of configs) {
+            const originalIndex = this.node.imageConfigs.indexOf(config);
+            const bounds = this.getImageBounds(config, originalIndex);
+            
+            if (x >= bounds.x && x <= bounds.x + bounds.width &&
+                y >= bounds.y && y <= bounds.y + bounds.height) {
+              return { type: 'image', index: originalIndex };
+            }
+          }
+          return null;
+        }
+        
+        handleMouseDown(e) {
+          const pos = this.getMousePos(e);
+          const hit = this.hitTest(pos.x, pos.y);
+          
+          if (hit && hit.type === 'handle') {
+            // Handle interaction
+            if (hit.handle === 'rotate') {
+              this.isRotating = true;
+              const config = this.node.imageConfigs[hit.index];
+              const bounds = this.getImageBounds(config, hit.index);
+              this.rotationCenter = { x: bounds.x + bounds.width/2, y: bounds.y + bounds.height/2 };
+              this.originalRotation = config.rotation || 0;
+            } else {
+              this.isResizing = true;
+              this.resizeHandle = hit.handle;
+            }
+            
+            this.dragStartX = pos.x;
+            this.dragStartY = pos.y;
+            const config = this.node.imageConfigs[hit.index];
+            this.originalBounds = {
+              x: config.x,
+              y: config.y,
+              width: config.width || 100,
+              height: config.height || 100
+            };
+          } else if (hit && hit.type === 'image') {
+            // Image selection/drag
+            this.selectedIndex = hit.index;
+            this.isDragging = true;
+            this.dragStartX = pos.x - this.node.imageConfigs[hit.index].x;
+            this.dragStartY = pos.y - this.node.imageConfigs[hit.index].y;
+            this.updatePropertiesPanel();
+            this.render();
+          } else {
+            // Deselect
+            this.selectedIndex = -1;
+            this.updatePropertiesPanel();
+            this.render();
+          }
+        }
+        
+        handleMouseMove(e) {
+          const pos = this.getMousePos(e);
+          
+          if (this.isDragging && this.selectedIndex >= 0) {
+            // Normal dragging
+            const snapped = this.snapToGridPos(pos.x - this.dragStartX, pos.y - this.dragStartY);
+            
+            this.node.imageConfigs[this.selectedIndex].x = Math.max(0, Math.min(snapped.x, this.canvasWidth - (this.node.imageConfigs[this.selectedIndex].width || 100)));
+            this.node.imageConfigs[this.selectedIndex].y = Math.max(0, Math.min(snapped.y, this.canvasHeight - (this.node.imageConfigs[this.selectedIndex].height || 100)));
+            
+            this.updatePropertiesPanel();
+            this.render();
+            RED.nodes.dirty(true);
+          } else if (this.isResizing && this.selectedIndex >= 0) {
+            // Resize handling
+            const config = this.node.imageConfigs[this.selectedIndex];
+            const deltaX = pos.x - this.dragStartX;
+            const deltaY = pos.y - this.dragStartY;
+            
+            let newBounds = { ...this.originalBounds };
+            
+            // Apply resize based on handle type
+            switch (this.resizeHandle) {
+              case 'nw':
+                newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
+                newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
+                newBounds.x = this.originalBounds.x + deltaX;
+                newBounds.y = this.originalBounds.y + deltaY;
+                break;
+              case 'n':
+                newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
+                newBounds.y = this.originalBounds.y + deltaY;
+                break;
+              case 'ne':
+                newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
+                newBounds.y = this.originalBounds.y + deltaY;
+                break;
+              case 'e':
+                newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                break;
+              case 'se':
+                newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                break;
+              case 's':
+                newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                break;
+              case 'sw':
+                newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
+                newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                newBounds.x = this.originalBounds.x + deltaX;
+                break;
+              case 'w':
+                newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
+                newBounds.x = this.originalBounds.x + deltaX;
+                break;
+            }
+            
+            // Apply bounds
+            config.x = Math.max(0, Math.min(newBounds.x, this.canvasWidth - newBounds.width));
+            config.y = Math.max(0, Math.min(newBounds.y, this.canvasHeight - newBounds.height));
+            config.width = newBounds.width;
+            config.height = newBounds.height;
+            
+            this.updatePropertiesPanel();
+            this.render();
+            RED.nodes.dirty(true);
+          } else if (this.isRotating && this.selectedIndex >= 0) {
+            // Rotation handling
+            const config = this.node.imageConfigs[this.selectedIndex];
+            const angle = Math.atan2(pos.y - this.rotationCenter.y, pos.x - this.rotationCenter.x);
+            const degrees = (angle * 180 / Math.PI + 90) % 360;
+            
+            config.rotation = Math.round(degrees);
+            
+            this.updatePropertiesPanel();
+            this.render();
+            RED.nodes.dirty(true);
+          }
+        }
+        
+        handleMouseUp(e) {
+          this.isDragging = false;
+          this.isResizing = false;
+          this.isRotating = false;
+          this.resizeHandle = null;
+          this.originalBounds = null;
+          this.canvas.style.cursor = 'default';
+        }
+        
+        handleClick(e) {
+          // Selection is handled in mousedown
+        }
+        
+        updateCursor(e) {
+          if (this.isDragging || this.isResizing || this.isRotating) return;
+          
+          const pos = this.getMousePos(e);
+          const hit = this.hitTest(pos.x, pos.y);
+          
+          if (hit && hit.type === 'handle') {
+            const cursors = {
+              'nw': 'nw-resize', 'n': 'n-resize', 'ne': 'ne-resize',
+              'e': 'e-resize', 'se': 'se-resize', 's': 's-resize',
+              'sw': 'sw-resize', 'w': 'w-resize', 'rotate': 'crosshair'
+            };
+            this.canvas.style.cursor = cursors[hit.handle] || 'pointer';
+          } else if (hit && hit.type === 'image') {
+            this.canvas.style.cursor = 'move';
+          } else {
+            this.canvas.style.cursor = 'default';
+          }
+        }
+        
+        render() {
+          const ctx = this.ctx;
+          ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+          
+          // Scale context for display
+          ctx.save();
+          ctx.scale(this.scale, this.scale);
+          
+          // Draw background
+          const bgColor = $("#node-input-backgroundColor").val() || '#000000';
+          ctx.fillStyle = bgColor;
+          ctx.fillRect(0, 0, this.canvasWidth, this.canvasHeight);
+          
+          // Draw grid
+          if (this.showGrid) {
+            ctx.strokeStyle = '#ddd';
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 0.5;
+            
+            for (let x = 0; x <= this.canvasWidth; x += this.gridSize) {
+              ctx.beginPath();
+              ctx.moveTo(x, 0);
+              ctx.lineTo(x, this.canvasHeight);
+              ctx.stroke();
+            }
+            
+            for (let y = 0; y <= this.canvasHeight; y += this.gridSize) {
+              ctx.beginPath();
+              ctx.moveTo(0, y);
+              ctx.lineTo(this.canvasWidth, y);
+              ctx.stroke();
+            }
+            
+            ctx.globalAlpha = 1;
+          }
+          
+          // Draw image placeholders (sorted by z-index)
+          const sortedConfigs = [...this.node.imageConfigs]
+            .map((config, index) => ({config, index}))
+            .sort((a, b) => (a.config.zIndex || 0) - (b.config.zIndex || 0));
+          
+          sortedConfigs.forEach(({config, index}) => {
+            this.drawImagePlaceholder(ctx, config, index);
+          });
+          
+          // Draw selection handles for selected image
+          if (this.selectedIndex >= 0) {
+            this.drawSelectionHandles(ctx, this.node.imageConfigs[this.selectedIndex], this.selectedIndex);
+          }
+          
+          ctx.restore();
+        }
+        
+        drawImagePlaceholder(ctx, config, index) {
+          const bounds = this.getImageBounds(config, index);
+          const isSelected = index === this.selectedIndex;
+          
+          // Generate consistent color for array index
+          const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FECA57', '#FF9FF3', '#54A0FF', '#5F27CD'];
+          const color = colors[config.arrayIndex % colors.length];
+          
+          ctx.save();
+          
+          // Apply rotation if any
+          if (config.rotation && config.rotation !== 0) {
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+            ctx.translate(centerX, centerY);
+            ctx.rotate((config.rotation * Math.PI) / 180);
+            ctx.translate(-centerX, -centerY);
+          }
+          
+          // Draw selection highlight background (glow effect)
+          if (isSelected) {
+            ctx.shadowColor = '#FFD700';
+            ctx.shadowBlur = 8;
+            ctx.shadowOffsetX = 2;
+            ctx.shadowOffsetY = 2;
+            
+            // Selection background highlight
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
+            ctx.fillRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
+            
+            // Reset shadow
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+          }
+          
+          // Draw placeholder rectangle
+          ctx.fillStyle = color;
+          ctx.globalAlpha = isSelected ? 0.9 : 0.7;
+          ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          
+          // Draw border with enhanced selection styling
+          if (isSelected) {
+            // Double border for selection
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 4;
+            ctx.globalAlpha = 1;
+            ctx.strokeRect(bounds.x - 2, bounds.y - 2, bounds.width + 4, bounds.height + 4);
+            
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          } else {
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = 1;
+            ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          }
+          
+          // Draw labels with better contrast
+          ctx.fillStyle = isSelected ? '#000' : '#333';
+          ctx.font = isSelected ? 'bold 12px Arial' : '12px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          
+          // White text outline for better readability
+          if (isSelected) {
+            ctx.strokeStyle = '#FFF';
+            ctx.lineWidth = 3;
+            ctx.strokeText(
+              `Image ${config.arrayIndex}`,
+              bounds.x + bounds.width / 2,
+              bounds.y + bounds.height / 2 - 8
+            );
+          }
+          
+          ctx.fillText(
+            `Image ${config.arrayIndex}`,
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2 - 8
+          );
+          
+          // Draw dimensions
+          ctx.font = isSelected ? 'bold 10px Arial' : '10px Arial';
+          
+          if (isSelected) {
+            ctx.strokeText(
+              `${bounds.width}x${bounds.height}`,
+              bounds.x + bounds.width / 2,
+              bounds.y + bounds.height / 2 + 8
+            );
+          }
+          
+          ctx.fillText(
+            `${bounds.width}x${bounds.height}`,
+            bounds.x + bounds.width / 2,
+            bounds.y + bounds.height / 2 + 8
+          );
+          
+          // Draw rotation indicator
+          if (config.rotation && config.rotation !== 0) {
+            if (isSelected) {
+              ctx.strokeText(
+                `${config.rotation}°`,
+                bounds.x + bounds.width / 2,
+                bounds.y + bounds.height / 2 + 22
+              );
+            }
+            
+            ctx.fillText(
+              `${config.rotation}°`,
+              bounds.x + bounds.width / 2,
+              bounds.y + bounds.height / 2 + 22
+            );
+          }
+          
+          ctx.restore();
+        }
+        
+        drawSelectionHandles(ctx, config, index) {
+          const bounds = this.getImageBounds(config, index);
+          const h = this.handleSize;
+          
+          ctx.save();
+          
+          // Don't rotate handles - they stay aligned to screen
+          // Apply same scaling as main rendering
+          
+          // Define handle positions
+          const handles = {
+            'nw': { x: bounds.x - h/2, y: bounds.y - h/2 },
+            'n':  { x: bounds.x + bounds.width/2 - h/2, y: bounds.y - h/2 },
+            'ne': { x: bounds.x + bounds.width - h/2, y: bounds.y - h/2 },
+            'e':  { x: bounds.x + bounds.width - h/2, y: bounds.y + bounds.height/2 - h/2 },
+            'se': { x: bounds.x + bounds.width - h/2, y: bounds.y + bounds.height - h/2 },
+            's':  { x: bounds.x + bounds.width/2 - h/2, y: bounds.y + bounds.height - h/2 },
+            'sw': { x: bounds.x - h/2, y: bounds.y + bounds.height - h/2 },
+            'w':  { x: bounds.x - h/2, y: bounds.y + bounds.height/2 - h/2 }
+          };
+          
+          // Draw resize handles
+          ctx.fillStyle = '#FFD700';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 1;
+          
+          Object.values(handles).forEach(handle => {
+            ctx.fillRect(handle.x, handle.y, h, h);
+            ctx.strokeRect(handle.x, handle.y, h, h);
+          });
+          
+          // Draw rotation handle
+          const rotHandleX = bounds.x + bounds.width/2;
+          const rotHandleY = bounds.y - 25;
+          
+          // Connection line to rotation handle
+          ctx.strokeStyle = '#FFD700';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath();
+          ctx.moveTo(bounds.x + bounds.width/2, bounds.y);
+          ctx.lineTo(rotHandleX, rotHandleY + h/2);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          
+          // Rotation handle (circle)
+          ctx.fillStyle = '#FF6B6B';
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(rotHandleX, rotHandleY, h/2, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.stroke();
+          
+          // Rotation symbol
+          ctx.fillStyle = '#FFF';
+          ctx.font = 'bold 10px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('↻', rotHandleX, rotHandleY);
+          
+          ctx.restore();
+        }
+        
+        updatePropertiesPanel() {
+          const panel = $('#selected-properties');
+          
+          if (this.selectedIndex >= 0) {
+            const config = this.node.imageConfigs[this.selectedIndex];
+            panel.show();
+            
+            // Input dimensions
+            $('#prop-array-index').val(config.arrayIndex || 0);
+            $('#prop-input-width').val(config.inputWidth || 800);
+            $('#prop-input-height').val(config.inputHeight || 600);
+            
+            // Resize dimensions
+            $('#prop-width').val(config.width || '');
+            $('#prop-height').val(config.height || '');
+            
+            // Transform
+            $('#prop-rotation').val(config.rotation || 0);
+            $('#prop-z-index').val(config.zIndex || this.selectedIndex);
+            
+            // Position
+            $('#prop-x').val(config.x || 0);
+            $('#prop-y').val(config.y || 0);
+            
+            $('#remove-selected-config').prop('disabled', false);
+          } else {
+            panel.hide();
+            $('#remove-selected-config').prop('disabled', true);
+          }
+        }
+        
+        updateConfigFromProperties() {
+          if (this.selectedIndex >= 0) {
+            const config = this.node.imageConfigs[this.selectedIndex];
+            
+            // Input dimensions
+            config.arrayIndex = parseInt($('#prop-array-index').val()) || 0;
+            config.inputWidth = parseInt($('#prop-input-width').val()) || 800;
+            config.inputHeight = parseInt($('#prop-input-height').val()) || 600;
+            
+            // Resize dimensions
+            const widthVal = $('#prop-width').val();
+            config.width = widthVal === '' ? null : parseInt(widthVal);
+            
+            const heightVal = $('#prop-height').val();
+            config.height = heightVal === '' ? null : parseInt(heightVal);
+            
+            // Transform
+            config.rotation = parseFloat($('#prop-rotation').val()) || 0;
+            config.zIndex = parseInt($('#prop-z-index').val()) || 0;
+            
+            // Position
+            config.x = parseFloat($('#prop-x').val()) || 0;
+            config.y = parseFloat($('#prop-y').val()) || 0;
+            
+            this.render();
+            RED.nodes.dirty(true);
+          }
+        }
+      }
+      
+      // Initialize canvas editor
+      const canvasEditor = new MosaicCanvasEditor(document.getElementById('mosaic-canvas'), node);
+      // Event handlers for canvas controls
+      $('#add-image-config').on('click', function() {
+        node.imageConfigs.push({
+          arrayIndex: node.imageConfigs.length,
+          inputWidth: 800,
+          inputHeight: 600,
+          x: 50 + (node.imageConfigs.length * 20),
+          y: 50 + (node.imageConfigs.length * 20),
+          width: 200,
+          height: 150,
+          rotation: 0,
+          zIndex: node.imageConfigs.length
+        });
+        canvasEditor.render();
+        RED.nodes.dirty(true);
+      });
+      
+      $('#remove-selected-config').on('click', function() {
+        if (canvasEditor.selectedIndex >= 0) {
+          node.imageConfigs.splice(canvasEditor.selectedIndex, 1);
+          canvasEditor.selectedIndex = -1;
+          canvasEditor.updatePropertiesPanel();
+          canvasEditor.render();
+          RED.nodes.dirty(true);
+        }
+      });
+      
+      $('#show-grid').on('change', function() {
+        canvasEditor.showGrid = $(this).is(':checked');
+        canvasEditor.render();
+      });
+      
+      $('#snap-to-grid').on('change', function() {
+        canvasEditor.snapToGrid = $(this).is(':checked');
+      });
+      
+      $('#duplicate-selected').on('click', function() {
+        if (canvasEditor.selectedIndex >= 0) {
+          const original = node.imageConfigs[canvasEditor.selectedIndex];
+          const duplicate = {
+            arrayIndex: original.arrayIndex,
+            inputWidth: original.inputWidth,
+            inputHeight: original.inputHeight,
+            x: original.x + 30,
+            y: original.y + 30,
+            width: original.width,
+            height: original.height,
+            rotation: original.rotation,
+            zIndex: node.imageConfigs.length
+          };
+          node.imageConfigs.push(duplicate);
+          canvasEditor.render();
+          RED.nodes.dirty(true);
+        }
+      });
+      
+      // Properties panel event handlers
+      $('#selected-properties input').on('input', function() {
+        canvasEditor.updateConfigFromProperties();
+      });
+      
+      // Background color change
+      $('#node-input-backgroundColor').on('change', function() {
+        canvasEditor.render();
+      });
+    }
+  });
+
+  // Debug image display renderer - shared across all image processing nodes
+  if (!window.debugImageRendererInitialized) {
+      window.debugImageRendererInitialized = true;
+      
+      (function() {
+          var isSubscribed = false;
+          
+          function subscribeToDebugImages() {
+              if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+              isSubscribed = true;
+              
+              RED.comms.subscribe('debug-image', function(event, data) {
+                  if (!data || !data.id) return;
+                  
+                  try {
+                      renderDebugImage(data);
+                  } catch (err) {
+                      console.warn('Debug image render error:', err);
+                  }
+              });
+          }
+          
+          function renderDebugImage(data) {
+              const nodeId = data.id;
+              const base64Data = data.data;
+              const format = data.format || 'unknown';
+              const mimeType = data.mimeType || 'jpeg';
+              
+              if (!base64Data) {
+                  removeDebugImage(nodeId);
+                  return;
+              }
+              
+              const nodeElement = document.getElementById(nodeId);
+              if (!nodeElement) return;
+              
+              let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+              
+              if (!debugContainer) {
+                  // Create SVG foreignObject to embed HTML content in SVG
+                  debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                  debugContainer.id = 'debug-img-container-' + nodeId;
+                  debugContainer.setAttribute('x', '70');
+                  debugContainer.setAttribute('y', '5');
+                  debugContainer.setAttribute('width', '120');
+                  debugContainer.setAttribute('height', '120');
+                  debugContainer.style.overflow = 'visible';
+                  
+                  // Create simple image directly inside foreignObject
+                  const img = document.createElement('img');
+                  img.id = 'debug-img-' + nodeId;
+                  img.style.width = '100%';
+                  img.style.height = 'auto';
+                  img.style.display = 'block';
+                  img.style.cursor = 'pointer';
+                  img.style.maxHeight = '100px';
+                  img.style.maxWidth = '100px';
+                  
+                  img.onclick = function() {
+                      removeDebugImage(nodeId);
+                  };
+                  
+                  debugContainer.appendChild(img);
+                  nodeElement.appendChild(debugContainer);
+              }
+              
+              const img = document.getElementById('debug-img-' + nodeId);
+              
+              if (img) {
+                  img.src = `data:image/${mimeType};base64,${base64Data}`;
+                  img.title = 'Debug image (click to hide)';
+              }
+          }
+          
+          function removeDebugImage(nodeId) {
+              const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+              if (debugContainer) {
+                  debugContainer.remove();
+              }
+          }
+          
+          function initializeWhenReady() {
+              if (typeof RED !== 'undefined' && RED.comms) {
+                  subscribeToDebugImages();
+                  
+                  // Clean up orphaned debug images periodically
+                  setInterval(function() {
+                      const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                      debugContainers.forEach(container => {
+                          const nodeId = container.id.replace('debug-img-container-', '');
+                          const nodeElement = document.getElementById(nodeId);
+                          if (!nodeElement) {
+                              container.remove();
+                          }
+                      });
+                  }, 5000);
+              } else {
+                  setTimeout(initializeWhenReady, 100);
+              }
+          }
+          
+          if (document.readyState === 'loading') {
+              document.addEventListener('DOMContentLoaded', initializeWhenReady);
+          } else {
+              initializeWhenReady();
+          }
+      })();
+  }
+</script>
+
+<!-- 2 ▸ Edit‑dialog template -->
+<script type="text/x-red" data-template-name="advanced-mosaic">
+
+<!-- Name -->
+<div class="form-row">
+  <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+  <input type="text" id="node-input-name" placeholder="Name">
+</div>
+
+<hr>
+
+<!-- STANDARD I/O SECTION -->
+<div class="form-row">
+  <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+  <input type="text" id="node-input-inputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-inputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+  <input type="text" id="node-input-outputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-outputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+  <select id="node-input-outputFormat" style="width: 200px;">
+    <option value="raw">Raw (fastest)</option>
+    <option value="jpg">JPEG</option>
+    <option value="png">PNG</option>
+    <option value="webp">WebP</option>
+  </select>
+</div>
+<div class="form-row" id="quality-row">
+  <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+  <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+  <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+</div>
+
+<!-- Debug Configuration -->
+<div class="form-row">
+  <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+  <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+  <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+</div>
+<div class="form-row" id="debug-width-row" style="display: none;">
+  <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+  <input type="text" id="node-input-debugWidth" style="width: 120px;">
+  <input type="hidden" id="node-input-debugWidthType">
+  <span style="margin-left: 10px; color: #666;">pixels</span>
+</div>
+
+<hr>
+
+<!-- CANVAS CONFIGURATION -->
+<div class="form-row">
+  <label for="node-input-canvasWidth"><i class="fa fa-arrows-h"></i> Canvas Width</label>
+  <input type="text" id="node-input-canvasWidth" style="width: 70%;" placeholder="800">
+  <input type="hidden" id="node-input-canvasWidthType">
+</div>
+<div class="form-row">
+  <label for="node-input-canvasHeight"><i class="fa fa-arrows-v"></i> Canvas Height</label>
+  <input type="text" id="node-input-canvasHeight" style="width: 70%;" placeholder="600">
+  <input type="hidden" id="node-input-canvasHeightType">
+</div>
+<div class="form-row">
+  <label for="node-input-backgroundColor"><i class="fa fa-paint-brush"></i> Background Color</label>
+  <input type="color" id="node-input-backgroundColor" style="width: 70px; height: 30px;">
+</div>
+
+
+<hr>
+
+<!-- INTERACTIVE CANVAS EDITOR -->
+<div class="form-row">
+  <label style="width: 100%; margin-bottom: 10px;"><i class="fa fa-th-large"></i> Visual Canvas Editor</label>
+  
+  <!-- Canvas Controls -->
+  <div style="display: flex; gap: 10px; margin-bottom: 10px; align-items: center;">
+    <button type="button" id="add-image-config" style="background: #4CAF50; color: white; border: none; padding: 6px 12px; cursor: pointer; font-size: 12px;">Add Image</button>
+    <button type="button" id="remove-selected-config" style="background: #ff4444; color: white; border: none; padding: 6px 12px; cursor: pointer; font-size: 12px;" disabled>Remove Selected</button>
+    <label style="display: flex; align-items: center; gap: 5px; margin-left: auto;">
+      <input type="checkbox" id="show-grid" checked> Show Grid
+    </label>
+    <label style="display: flex; align-items: center; gap: 5px;">
+      <input type="checkbox" id="snap-to-grid" checked> Snap to Grid
+    </label>
+  </div>
+  
+  <!-- Canvas Container -->
+  <div id="canvas-container" style="border: 2px solid #ddd; background: #f9f9f9; position: relative; margin-bottom: 10px;">
+    <canvas id="mosaic-canvas" width="400" height="300" style="display: block; cursor: default;"></canvas>
+  </div>
+  
+  <!-- Selected Image Properties -->
+  <div id="selected-properties" style="display: none; background: #f0f0f0; padding: 10px; border-radius: 4px; font-size: 12px;">
+    <strong>Selected Image Properties:</strong>
+    
+    <!-- Input Dimensions Section -->
+    <div style="background: #e8f4fd; padding: 8px; margin: 8px 0; border-radius: 4px;">
+      <strong style="color: #1976d2;">Input Dimensions (Original Image):</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
+        <div>
+          <label>Array Index:</label>
+          <input type="number" id="prop-array-index" min="0" style="width: 100%; font-size: 11px;">
+        </div>
+        <div>
+          <label>Input Width:</label>
+          <input type="number" id="prop-input-width" min="1" style="width: 100%; font-size: 11px;" placeholder="800">
+        </div>
+        <div>
+          <label>Input Height:</label>
+          <input type="number" id="prop-input-height" min="1" style="width: 100%; font-size: 11px;" placeholder="600">
+        </div>
+      </div>
+    </div>
+    
+    <!-- Resize & Transform Section -->
+    <div style="background: #fff3e0; padding: 8px; margin: 8px 0; border-radius: 4px;">
+      <strong style="color: #f57c00;">Resize & Transform:</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
+        <div>
+          <label>Resize Width:</label>
+          <input type="number" id="prop-width" min="1" style="width: 100%; font-size: 11px;" placeholder="Keep original">
+        </div>
+        <div>
+          <label>Resize Height:</label>
+          <input type="number" id="prop-height" min="1" style="width: 100%; font-size: 11px;" placeholder="Keep original">
+        </div>
+        <div>
+          <label>Rotation (°):</label>
+          <input type="number" id="prop-rotation" step="any" style="width: 100%; font-size: 11px;">
+        </div>
+        <div>
+          <label>Z-Index:</label>
+          <input type="number" id="prop-z-index" style="width: 100%; font-size: 11px;">
+        </div>
+      </div>
+    </div>
+    
+    <!-- Position Section -->
+    <div style="background: #f3e5f5; padding: 8px; margin: 8px 0; border-radius: 4px;">
+      <strong style="color: #7b1fa2;">Position & Actions:</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
+        <div>
+          <label>X Position:</label>
+          <input type="number" id="prop-x" step="any" style="width: 100%; font-size: 11px;">
+        </div>
+        <div>
+          <label>Y Position:</label>
+          <input type="number" id="prop-y" step="any" style="width: 100%; font-size: 11px;">
+        </div>
+        <div>
+          <label>Actions:</label>
+          <button type="button" id="duplicate-selected" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Duplicate</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="form-tips">
+  <b>Canvas Editor Instructions:</b>
+  <ul>
+    <li><b>Add Image:</b> Click "Add Image" to create a new placeholder rectangle</li>
+    <li><b>Select & Drag:</b> Click on any placeholder to select it, then drag to reposition</li>
+    <li><b>Properties Panel:</b> When selected, use the properties panel to set array index, dimensions, rotation, and z-index</li>
+    <li><b>Grid Helpers:</b> Enable "Show Grid" and "Snap to Grid" for precise alignment</li>
+    <li><b>Color Coding:</b> Each array index has a unique color for easy identification</li>
+    <li><b>Visual Feedback:</b> Placeholders show current dimensions, rotation, and array index</li>
+    <li><b>Duplicate:</b> Use "Duplicate" button to copy the selected image configuration</li>
+  </ul>
+</div>
+</script>
+
+<!-- 3 ▸ Help panel -->
+<script type="text/x-red" data-help-name="advanced-mosaic">
+<p><b>rosepetal-advanced-mosaic</b> creates composite images with per-image transformations including resize, rotate, and positioning. This advanced node extends the basic mosaic functionality by allowing individual transformation of each image before placement on the canvas.</p>
+
+<h3>Details</h3>
+<p>This node processes arrays of images and applies individual transformations (resize, rotate) to each image before placing them on a customizable canvas. Each image can be independently resized, rotated, and positioned using an interactive visual canvas editor with drag-and-drop functionality.</p>
+
+<h3>Properties</h3>
+<dl class="message-properties">
+  <dt>Input from <span class="property-type">string</span></dt>
+  <dd>Message property path containing the input image array.</dd>
+  
+  <dt>Output to <span class="property-type">string</span></dt>
+  <dd>Message property path where the composite image will be stored.</dd>
+  
+  <dt>Output Format <span class="property-type">string</span></dt>
+  <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+  
+  <dt>Quality <span class="property-type">number</span></dt>
+  <dd>Compression quality (1-100) for JPEG and WebP formats.</dd>
+  
+  <dt>Canvas Width/Height <span class="property-type">number|string</span></dt>
+  <dd>Dimensions of the output canvas in pixels. Supports dynamic values from context.</dd>
+  
+  <dt>Background Color <span class="property-type">color</span></dt>
+  <dd>Canvas background color in hex format.</dd>
+  
+  <dt>Normalized Coords <span class="property-type">boolean</span></dt>
+  <dd>When enabled, position coordinates use normalized values (0.0-1.0).</dd>
+  
+  <dt>Visual Canvas Editor <span class="property-type">interactive</span></dt>
+  <dd>Interactive canvas interface for visually configuring image transformations with drag-and-drop positioning, magnetic helpers, and real-time preview.</dd>
+</dl>
+
+<h3>Image Transformations</h3>
+<h4>Resize Options</h4>
+<ul>
+  <li><b>Absolute Sizing:</b> Set specific width and height in pixels</li>
+  <li><b>Aspect Ratio Preservation:</b> Specify only width or height to maintain proportions</li>
+  <li><b>Original Size:</b> Leave width/height empty to use original dimensions</li>
+</ul>
+
+<h4>Rotation System</h4>
+<ul>
+  <li><b>Arbitrary Angles:</b> Rotate by any angle in degrees</li>
+  <li><b>Optimized 90° Rotations:</b> Fast-path processing for 90°, 180°, 270°</li>
+  <li><b>Automatic Padding:</b> Expanded canvas prevents cropping during rotation</li>
+</ul>
+
+<h4>Layering Control</h4>
+<ul>
+  <li><b>Z-Index Ordering:</b> Control which images appear on top</li>
+  <li><b>Automatic Z-Assignment:</b> Default ordering based on configuration sequence</li>
+</ul>
+
+<h3>Performance Optimizations</h3>
+<ul>
+  <li><b>C++ Backend:</b> High-performance OpenCV-based processing with SIMD acceleration</li>
+  <li><b>Transformation Pipeline:</b> Optimized resize → rotate → place sequence</li>
+  <li><b>Zero-Copy Operations:</b> Minimal memory allocation and copying</li>
+  <li><b>Parallel Processing:</b> Multiple images processed concurrently when beneficial</li>
+  <li><b>Fast-Path Rotations:</b> Optimized handling for common rotation angles</li>
+</ul>
+
+<h3>Configuration Workflow</h3>
+<h4>Interactive Canvas Editor</h4>
+<ul>
+  <li><b>Visual Positioning:</b> Drag-and-drop placeholder rectangles to position images</li>
+  <li><b>Magnetic Helpers:</b> Snap-to-grid and alignment guides for precise positioning</li>
+  <li><b>Properties Panel:</b> Fine-tune settings for selected images with numeric inputs</li>
+  <li><b>Real-time Preview:</b> See exactly how your mosaic will look with color-coded placeholders</li>
+  <li><b>Dynamic Management:</b> Add, remove, and duplicate image configurations with visual feedback</li>
+  <li><b>Grid System:</b> Optional grid overlay with configurable snap-to-grid functionality</li>
+</ul>
+
+<h3>Error Handling & Validation</h3>
+<ul>
+  <li><b>Input Validation:</b> Comprehensive validation of image arrays and configurations</li>
+  <li><b>Bounds Checking:</b> Automatic handling of out-of-bounds coordinates and indices</li>
+  <li><b>Transformation Validation:</b> Safe handling of invalid resize and rotation parameters</li>
+  <li><b>Canvas Validation:</b> Ensures valid canvas dimensions and background colors</li>
+  <li><b>Warning System:</b> Non-fatal issues reported without stopping execution</li>
+</ul>
+
+<h3>Example Configurations</h3>
+<h4>Photo Collage</h4>
+<ul>
+  <li>Canvas: 1200x800 pixels, white background</li>
+  <li>Image 0: Resize to 300x200, position at (50, 50)</li>
+  <li>Image 1: Keep original size, rotate 15°, position at (400, 100)</li>
+  <li>Image 2: Resize to 250x250, position at (700, 300)</li>
+</ul>
+
+<h4>Dashboard Layout</h4>
+<ul>
+  <li>Canvas: 1920x1080 pixels, dark background</li>
+  <li>Header image: Full width resize, position at (0, 0)</li>
+  <li>Sidebar: Fixed height, position at (0, 100)</li>
+  <li>Main content: Scaled, position at (300, 100)</li>
+</ul>
+</script>

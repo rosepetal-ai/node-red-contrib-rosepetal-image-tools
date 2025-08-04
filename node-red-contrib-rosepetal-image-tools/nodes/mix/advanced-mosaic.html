@@ -248,6 +248,41 @@
             snapLines.push({ type: 'horizontal', pos: this.canvasHeight, color: '#FF6B6B' });
           }
           
+          // Grid line snapping to canvas borders - enhanced magnetic grid
+          if (this.showGrid) {
+            // Snap to vertical grid lines near canvas borders
+            for (let gridX = 0; gridX <= this.canvasWidth; gridX += this.gridSize) {
+              // Snap image left edge to grid line
+              if (Math.abs(x - gridX) < dist) {
+                snappedX = gridX;
+                snapLines.push({ type: 'vertical', pos: gridX, color: '#FFA500' });
+                break;
+              }
+              // Snap image right edge to grid line
+              if (Math.abs(x + width - gridX) < dist) {
+                snappedX = gridX - width;
+                snapLines.push({ type: 'vertical', pos: gridX, color: '#FFA500' });
+                break;
+              }
+            }
+            
+            // Snap to horizontal grid lines near canvas borders
+            for (let gridY = 0; gridY <= this.canvasHeight; gridY += this.gridSize) {
+              // Snap image top edge to grid line
+              if (Math.abs(y - gridY) < dist) {
+                snappedY = gridY;
+                snapLines.push({ type: 'horizontal', pos: gridY, color: '#FFA500' });
+                break;
+              }
+              // Snap image bottom edge to grid line
+              if (Math.abs(y + height - gridY) < dist) {
+                snappedY = gridY - height;
+                snapLines.push({ type: 'horizontal', pos: gridY, color: '#FFA500' });
+                break;
+              }
+            }
+          }
+          
           // Image edge snapping
           for (let i = 0; i < this.node.imageConfigs.length; i++) {
             if (i === excludeIndex) continue;
@@ -767,22 +802,33 @@
             targetHeight = originalHeight;
           }
           
+          // Calculate z-index for depth effects
+          const zIndex = config.zIndex || 0;
+          const maxZ = Math.max(...this.node.imageConfigs.map(cfg => cfg.zIndex || 0));
+          const minZ = Math.min(...this.node.imageConfigs.map(cfg => cfg.zIndex || 0));
+          const zRange = Math.max(1, maxZ - minZ);
+          const normalizedZ = (zIndex - minZ) / zRange; // 0 to 1
+          
+          // Add depth shadow based on z-index (higher z = more prominent shadow)
+          const shadowIntensity = normalizedZ * 0.5 + 0.1; // 0.1 to 0.6
+          const shadowOffset = Math.round(normalizedZ * 4 + 2); // 2 to 6 pixels
+          
+          ctx.shadowColor = `rgba(0, 0, 0, ${shadowIntensity})`;
+          ctx.shadowBlur = shadowOffset * 2;
+          ctx.shadowOffsetX = shadowOffset;
+          ctx.shadowOffsetY = shadowOffset;
+          
           // Draw selection highlight background (glow effect)
           if (isSelected) {
+            // Enhanced selection glow for better visibility
             ctx.shadowColor = '#FFD700';
-            ctx.shadowBlur = 8;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
+            ctx.shadowBlur = 12;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
             
             // Selection background highlight
-            ctx.fillStyle = 'rgba(255, 215, 0, 0.2)';
-            ctx.fillRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
-            
-            // Reset shadow
-            ctx.shadowColor = 'transparent';
-            ctx.shadowBlur = 0;
-            ctx.shadowOffsetX = 0;
-            ctx.shadowOffsetY = 0;
+            ctx.fillStyle = 'rgba(255, 215, 0, 0.3)';
+            ctx.fillRect(bounds.x - 6, bounds.y - 6, bounds.width + 12, bounds.height + 12);
           }
           
           // Draw the final bounding box (expanded for rotation) - now transparent padding
@@ -875,7 +921,7 @@
           }
           
           ctx.fillText(
-            `Image ${config.arrayIndex}`,
+            `Image ${config.arrayIndex} (Z:${zIndex})`,
             bounds.x + bounds.width / 2,
             bounds.y + bounds.height / 2 - 16
           );
@@ -917,6 +963,38 @@
               bounds.y + bounds.height / 2 + 16
             );
           }
+          
+          // Draw z-index indicator badge in top-right corner
+          const badgeSize = 16;
+          const badgeX = bounds.x + bounds.width - badgeSize - 2;
+          const badgeY = bounds.y + 2;
+          
+          // Reset shadow for badge
+          ctx.shadowColor = 'transparent';
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+          
+          // Badge background (color-coded by z-index level)
+          const badgeAlpha = normalizedZ * 0.6 + 0.4; // 0.4 to 1.0
+          ctx.fillStyle = `rgba(0, 100, 200, ${badgeAlpha})`;
+          ctx.fillRect(badgeX, badgeY, badgeSize, badgeSize);
+          
+          // Badge border
+          ctx.strokeStyle = '#003366';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(badgeX, badgeY, badgeSize, badgeSize);
+          
+          // Z-index number
+          ctx.fillStyle = '#FFFFFF';
+          ctx.font = 'bold 10px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(
+            zIndex.toString(),
+            badgeX + badgeSize / 2,
+            badgeY + badgeSize / 2
+          );
           
           ctx.restore();
         }
@@ -1213,6 +1291,47 @@
           }
         });
         
+        // Z-Index control buttons
+        $('#bring-to-front').on('click', function() {
+          if (canvasEditor.selectedIndex >= 0) {
+            const maxZ = Math.max(...node.imageConfigs.map(cfg => cfg.zIndex || 0));
+            node.imageConfigs[canvasEditor.selectedIndex].zIndex = maxZ + 1;
+            canvasEditor.updatePropertiesPanel();
+            canvasEditor.render();
+            RED.nodes.dirty(true);
+          }
+        });
+        
+        $('#send-to-back').on('click', function() {
+          if (canvasEditor.selectedIndex >= 0) {
+            const minZ = Math.min(...node.imageConfigs.map(cfg => cfg.zIndex || 0));
+            node.imageConfigs[canvasEditor.selectedIndex].zIndex = minZ - 1;
+            canvasEditor.updatePropertiesPanel();
+            canvasEditor.render();
+            RED.nodes.dirty(true);
+          }
+        });
+        
+        $('#move-up').on('click', function() {
+          if (canvasEditor.selectedIndex >= 0) {
+            const currentZ = node.imageConfigs[canvasEditor.selectedIndex].zIndex || 0;
+            node.imageConfigs[canvasEditor.selectedIndex].zIndex = currentZ + 1;
+            canvasEditor.updatePropertiesPanel();
+            canvasEditor.render();
+            RED.nodes.dirty(true);
+          }
+        });
+        
+        $('#move-down').on('click', function() {
+          if (canvasEditor.selectedIndex >= 0) {
+            const currentZ = node.imageConfigs[canvasEditor.selectedIndex].zIndex || 0;
+            node.imageConfigs[canvasEditor.selectedIndex].zIndex = currentZ - 1;
+            canvasEditor.updatePropertiesPanel();
+            canvasEditor.render();
+            RED.nodes.dirty(true);
+          }
+        });
+        
         // Properties panel event handlers
         $('#selected-properties input').on('input', function() {
           canvasEditor.updateConfigFromProperties();
@@ -1460,7 +1579,7 @@
     <!-- Resize & Transform Section -->
     <div style="background: #fff3e0; padding: 8px; margin: 8px 0; border-radius: 4px;">
       <strong style="color: #f57c00;">Resize & Transform:</strong>
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
         <div>
           <label>Resize Width:</label>
           <input type="number" id="prop-width" min="1" style="width: 100%; font-size: 11px;" placeholder="Keep original">
@@ -1472,10 +1591,6 @@
         <div>
           <label>Rotation (°):</label>
           <input type="number" id="prop-rotation" step="any" style="width: 100%; font-size: 11px;">
-        </div>
-        <div>
-          <label>Z-Index:</label>
-          <input type="number" id="prop-z-index" style="width: 100%; font-size: 11px;">
         </div>
       </div>
     </div>
@@ -1513,7 +1628,29 @@
         </div>
         <div>
           <label>Actions:</label>
-          <button type="button" id="duplicate-selected" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Duplicate</button>
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <button type="button" id="duplicate-selected" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Duplicate</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Layering Control Section -->
+    <div style="background: #fff8e1; padding: 8px; margin: 8px 0; border-radius: 4px;">
+      <strong style="color: #f57c00;">Layer Control (Z-Index):</strong>
+      <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 10px; margin-top: 8px;">
+        <div>
+          <label>Z-Index:</label>
+          <input type="number" id="prop-z-index" style="width: 100%; font-size: 11px;">
+        </div>
+        <div>
+          <label>Layer Actions:</label>
+          <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+            <button type="button" id="bring-to-front" style="background: #4CAF50; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Bring to Front</button>
+            <button type="button" id="send-to-back" style="background: #FF9800; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Send to Back</button>
+            <button type="button" id="move-up" style="background: #2196F3; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Move Up</button>
+            <button type="button" id="move-down" style="background: #9C27B0; color: white; border: none; padding: 4px 8px; cursor: pointer; font-size: 10px;">Move Down</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1529,8 +1666,8 @@
     <li><b>Accurate Preview:</b> The canvas shows exact dimensions matching the C++ processing pipeline</li>
     <li><b>Transparent Rotation:</b> Rotated images use transparent padding (diagonal pattern) allowing layered compositions</li>
     <li><b>Properties Panel:</b> Shows computed dimensions after resize and rotation, plus expansion factors</li>
-    <li><b>Grid Helpers:</b> Enable "Show Grid" and "Snap to Grid" for precise alignment</li>
-    <li><b>Magnetic Snapping:</b> Enable "Magnetic Snap" for automatic alignment to canvas edges and other images</li>
+    <li><b>Enhanced Grid Snapping:</b> Magnetic snap to grid lines, canvas borders, and other image edges</li>
+    <li><b>Z-Index Control:</b> Visual depth indicators with easy layer management buttons (bring to front, send to back)</li>
     <li><b>Aspect Ratio Lock:</b> Toggle "Lock Aspect Ratio" to control default resize behavior</li>
     <li><b>Visual Feedback:</b> Colored snap lines appear during dragging, aspect ratio indicator shows during resize</li>
     <li><b>Color Coding:</b> Each array index has a unique color for easy identification</li>

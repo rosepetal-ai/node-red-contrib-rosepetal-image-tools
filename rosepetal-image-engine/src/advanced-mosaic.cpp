@@ -226,16 +226,20 @@ private:
       if (std::abs(normalizedAngle) < eps || std::abs(normalizedAngle - 360.0) < eps) {
         // 0 degrees - no rotation needed
       } else if (std::abs(normalizedAngle - 90.0) < eps) {
-        cv::rotate(img, img, cv::ROTATE_90_CLOCKWISE);
+        // 90° counterclockwise (mathematical standard)
+        cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
       } else if (std::abs(normalizedAngle - 180.0) < eps) {
         cv::rotate(img, img, cv::ROTATE_180);
       } else if (std::abs(normalizedAngle - 270.0) < eps) {
-        cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
+        // 270° counterclockwise = 90° clockwise
+        cv::rotate(img, img, cv::ROTATE_90_CLOCKWISE);
       } else {
         // Arbitrary angles - use affine transformation
+        // Negate rotation to make positive angles counterclockwise (mathematical standard)
+        // OpenCV uses clockwise positive, so we negate to get counterclockwise positive
         int w = img.cols, h = img.rows;
         cv::Point2f center(w / 2.0f, h / 2.0f);
-        cv::Mat rotationMatrix = cv::getRotationMatrix2D(center, config.rotation, 1.0);
+        cv::Mat rotationMatrix = cv::getRotationMatrix2D(center, -config.rotation, 1.0);
         
         // Calculate new bounding box to prevent cropping
         double cosA = std::abs(rotationMatrix.at<double>(0, 0));

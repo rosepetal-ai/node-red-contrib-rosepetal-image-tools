@@ -126,6 +126,16 @@
           this.gridSize = 20;
           this.handleSize = 8;
           
+          // Enhanced magnetic grid features
+          this.magneticSnap = true;
+          this.magneticDistance = 10; // pixels
+          this.snapLines = []; // Visual feedback for snapping
+          
+          // Aspect ratio preservation
+          this.shiftPressed = false;
+          this.preserveAspectRatio = true; // Default behavior
+          this.originalAspectRatio = 1.0;
+          
           this.setupEventListeners();
           this.updateCanvasSize();
           this.render();
@@ -135,12 +145,19 @@
           const width = parseInt($("#node-input-canvasWidth").val()) || 800;
           const height = parseInt($("#node-input-canvasHeight").val()) || 600;
           
-          // Scale down for display (max 500x400)
-          const scale = Math.min(500/width, 400/height, 1);
+          // Get available width from the canvas container (Node-RED dialog width minus padding)
+          const containerWidth = $('#canvas-container').width() || 600;
+          const availableWidth = Math.min(containerWidth - 20, 800); // Leave some padding
+          const availableHeight = Math.min(availableWidth * 0.75, 500); // Maintain reasonable aspect ratio
+          
+          // Scale to fit available space while maintaining aspect ratio
+          const scale = Math.min(availableWidth/width, availableHeight/height, 1);
           this.canvas.width = width * scale;
           this.canvas.height = height * scale;
-          this.canvas.style.maxWidth = '500px';
-          this.canvas.style.maxHeight = '400px';
+          this.canvas.style.width = `${width * scale}px`;
+          this.canvas.style.height = `${height * scale}px`;
+          this.canvas.style.maxWidth = '100%';
+          this.canvas.style.maxHeight = '500px';
           this.scale = scale;
           this.canvasWidth = width;
           this.canvasHeight = height;
@@ -160,6 +177,27 @@
             this.updateCanvasSize();
             this.render();
           });
+          
+          // Window resize listener to adjust canvas size
+          $(window).on('resize', () => {
+            setTimeout(() => {
+              this.updateCanvasSize();
+              this.render();
+            }, 100);
+          });
+          
+          // Keyboard event listeners for shift key detection
+          document.addEventListener('keydown', (e) => {
+            if (e.key === 'Shift') {
+              this.shiftPressed = true;
+            }
+          });
+          
+          document.addEventListener('keyup', (e) => {
+            if (e.key === 'Shift') {
+              this.shiftPressed = false;
+            }
+          });
         }
         
         getMousePos(e) {
@@ -178,14 +216,153 @@
           };
         }
         
+        // Enhanced magnetic snapping to edges and canvas boundaries
+        magneticSnapPosition(x, y, width, height, excludeIndex = -1) {
+          if (!this.magneticSnap) return { x, y, snapLines: [] };
+          
+          let snappedX = x;
+          let snappedY = y;
+          const snapLines = [];
+          const dist = this.magneticDistance;
+          
+          // Canvas boundary snapping
+          // Left edge
+          if (Math.abs(x) < dist) {
+            snappedX = 0;
+            snapLines.push({ type: 'vertical', pos: 0, color: '#FF6B6B' });
+          }
+          // Right edge
+          else if (Math.abs(x + width - this.canvasWidth) < dist) {
+            snappedX = this.canvasWidth - width;
+            snapLines.push({ type: 'vertical', pos: this.canvasWidth, color: '#FF6B6B' });
+          }
+          
+          // Top edge
+          if (Math.abs(y) < dist) {
+            snappedY = 0;
+            snapLines.push({ type: 'horizontal', pos: 0, color: '#FF6B6B' });
+          }
+          // Bottom edge
+          else if (Math.abs(y + height - this.canvasHeight) < dist) {
+            snappedY = this.canvasHeight - height;
+            snapLines.push({ type: 'horizontal', pos: this.canvasHeight, color: '#FF6B6B' });
+          }
+          
+          // Image edge snapping
+          for (let i = 0; i < this.node.imageConfigs.length; i++) {
+            if (i === excludeIndex) continue;
+            
+            const otherConfig = this.node.imageConfigs[i];
+            const otherBounds = this.getImageBounds(otherConfig, i);
+            
+            // Horizontal alignment (X-axis snapping)
+            // Left to left
+            if (Math.abs(x - otherBounds.x) < dist) {
+              snappedX = otherBounds.x;
+              snapLines.push({ type: 'vertical', pos: otherBounds.x, color: '#4ECDC4' });
+            }
+            // Right to right
+            else if (Math.abs(x + width - (otherBounds.x + otherBounds.width)) < dist) {
+              snappedX = otherBounds.x + otherBounds.width - width;
+              snapLines.push({ type: 'vertical', pos: otherBounds.x + otherBounds.width, color: '#4ECDC4' });
+            }
+            // Left to right
+            else if (Math.abs(x - (otherBounds.x + otherBounds.width)) < dist) {
+              snappedX = otherBounds.x + otherBounds.width;
+              snapLines.push({ type: 'vertical', pos: otherBounds.x + otherBounds.width, color: '#45B7D1' });
+            }
+            // Right to left
+            else if (Math.abs(x + width - otherBounds.x) < dist) {
+              snappedX = otherBounds.x - width;
+              snapLines.push({ type: 'vertical', pos: otherBounds.x, color: '#45B7D1' });
+            }
+            
+            // Vertical alignment (Y-axis snapping)
+            // Top to top
+            if (Math.abs(y - otherBounds.y) < dist) {
+              snappedY = otherBounds.y;
+              snapLines.push({ type: 'horizontal', pos: otherBounds.y, color: '#4ECDC4' });
+            }
+            // Bottom to bottom
+            else if (Math.abs(y + height - (otherBounds.y + otherBounds.height)) < dist) {
+              snappedY = otherBounds.y + otherBounds.height - height;
+              snapLines.push({ type: 'horizontal', pos: otherBounds.y + otherBounds.height, color: '#4ECDC4' });
+            }
+            // Top to bottom
+            else if (Math.abs(y - (otherBounds.y + otherBounds.height)) < dist) {
+              snappedY = otherBounds.y + otherBounds.height;
+              snapLines.push({ type: 'horizontal', pos: otherBounds.y + otherBounds.height, color: '#45B7D1' });
+            }
+            // Bottom to top
+            else if (Math.abs(y + height - otherBounds.y) < dist) {
+              snappedY = otherBounds.y - height;
+              snapLines.push({ type: 'horizontal', pos: otherBounds.y, color: '#45B7D1' });
+            }
+          }
+          
+          return { x: snappedX, y: snappedY, snapLines };
+        }
+        
         getImageBounds(config, index) {
-          const width = config.width || 100;
-          const height = config.height || 100;
+          // Match C++ processing pipeline exactly: resize → rotate → final bounds
+          
+          // Step 1: Calculate resize dimensions (matching C++ logic lines 206-218)
+          let targetWidth, targetHeight;
+          const originalWidth = config.inputWidth || 800;
+          const originalHeight = config.inputHeight || 600;
+          
+          if (config.width > 0 || config.height > 0) {
+            targetWidth = config.width > 0 ? config.width : originalWidth;
+            targetHeight = config.height > 0 ? config.height : originalHeight;
+            
+            // Maintain aspect ratio if only one dimension specified (matching C++)
+            if (config.width > 0 && (config.height <= 0 || !config.height)) {
+              targetHeight = Math.round(targetWidth * originalHeight / originalWidth);
+            } else if (config.height > 0 && (config.width <= 0 || !config.width)) {
+              targetWidth = Math.round(targetHeight * originalWidth / originalHeight);
+            }
+          } else {
+            // Keep original dimensions
+            targetWidth = originalWidth;
+            targetHeight = originalHeight;
+          }
+          
+          // Step 2: Calculate rotation expansion (matching C++ logic lines 241-248)
+          let finalWidth = targetWidth;
+          let finalHeight = targetHeight;
+          
+          if (config.rotation && Math.abs(config.rotation) > 1e-3) {
+            const normalizedAngle = ((config.rotation % 360) + 360) % 360;
+            const eps = 1e-3;
+            
+            // Fast-path for 90-degree rotations (matching C++ fast-path)
+            if (Math.abs(normalizedAngle) < eps || Math.abs(normalizedAngle - 360.0) < eps) {
+              // 0 degrees - no size change
+            } else if (Math.abs(normalizedAngle - 90.0) < eps) {
+              // 90° rotation swaps dimensions
+              finalWidth = targetHeight;
+              finalHeight = targetWidth;
+            } else if (Math.abs(normalizedAngle - 180.0) < eps) {
+              // 180° rotation - no size change
+            } else if (Math.abs(normalizedAngle - 270.0) < eps) {
+              // 270° rotation swaps dimensions
+              finalWidth = targetHeight;
+              finalHeight = targetWidth;
+            } else {
+              // Arbitrary angles - calculate expanded bounding box (matching C++ formula)
+              const radians = config.rotation * Math.PI / 180;
+              const cosA = Math.abs(Math.cos(radians));
+              const sinA = Math.abs(Math.sin(radians));
+              finalWidth = Math.round(targetHeight * sinA + targetWidth * cosA);
+              finalHeight = Math.round(targetHeight * cosA + targetWidth * sinA);
+            }
+          }
+          
           return {
             x: config.x,
             y: config.y,
-            width: width,
-            height: height
+            width: finalWidth,
+            height: finalHeight
           };
         }
         
@@ -292,62 +469,155 @@
           const pos = this.getMousePos(e);
           
           if (this.isDragging && this.selectedIndex >= 0) {
-            // Normal dragging
-            const snapped = this.snapToGridPos(pos.x - this.dragStartX, pos.y - this.dragStartY);
+            // Enhanced dragging with magnetic snapping
+            const config = this.node.imageConfigs[this.selectedIndex];
+            const bounds = this.getImageBounds(config, this.selectedIndex);
             
-            this.node.imageConfigs[this.selectedIndex].x = Math.max(0, Math.min(snapped.x, this.canvasWidth - (this.node.imageConfigs[this.selectedIndex].width || 100)));
-            this.node.imageConfigs[this.selectedIndex].y = Math.max(0, Math.min(snapped.y, this.canvasHeight - (this.node.imageConfigs[this.selectedIndex].height || 100)));
+            let newX = pos.x - this.dragStartX;
+            let newY = pos.y - this.dragStartY;
+            
+            // Apply magnetic snapping for dragging
+            const magneticResult = this.magneticSnapPosition(newX, newY, bounds.width, bounds.height, this.selectedIndex);
+            newX = magneticResult.x;
+            newY = magneticResult.y;
+            this.snapLines = magneticResult.snapLines;
+            
+            // Apply grid snapping if magnetic snapping didn't activate
+            if (this.snapLines.length === 0) {
+              const gridSnapped = this.snapToGridPos(newX, newY);
+              newX = gridSnapped.x;
+              newY = gridSnapped.y;
+            }
+            
+            // Bounds checking
+            newX = Math.max(0, Math.min(newX, this.canvasWidth - bounds.width));
+            newY = Math.max(0, Math.min(newY, this.canvasHeight - bounds.height));
+            
+            config.x = newX;
+            config.y = newY;
             
             this.updatePropertiesPanel();
             this.render();
             RED.nodes.dirty(true);
           } else if (this.isResizing && this.selectedIndex >= 0) {
-            // Resize handling
+            // Enhanced resize handling with aspect ratio preservation
             const config = this.node.imageConfigs[this.selectedIndex];
             const deltaX = pos.x - this.dragStartX;
             const deltaY = pos.y - this.dragStartY;
             
             let newBounds = { ...this.originalBounds };
+            const preserveRatio = this.preserveAspectRatio && !this.shiftPressed;
             
-            // Apply resize based on handle type
+            // Apply resize based on handle type with aspect ratio preservation
             switch (this.resizeHandle) {
               case 'nw':
-                newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
-                newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
-                newBounds.x = this.originalBounds.x + deltaX;
-                newBounds.y = this.originalBounds.y + deltaY;
+                if (preserveRatio) {
+                  // Use the larger change to maintain aspect ratio
+                  const scaleX = Math.max(20, this.originalBounds.width - deltaX) / this.originalBounds.width;
+                  const scaleY = Math.max(20, this.originalBounds.height - deltaY) / this.originalBounds.height;
+                  const scale = Math.min(scaleX, scaleY);
+                  
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.x = this.originalBounds.x + (this.originalBounds.width - newBounds.width);
+                  newBounds.y = this.originalBounds.y + (this.originalBounds.height - newBounds.height);
+                } else {
+                  newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
+                  newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
+                  newBounds.x = this.originalBounds.x + deltaX;
+                  newBounds.y = this.originalBounds.y + deltaY;
+                }
                 break;
               case 'n':
-                newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
-                newBounds.y = this.originalBounds.y + deltaY;
+                if (preserveRatio) {
+                  const scale = Math.max(20, this.originalBounds.height - deltaY) / this.originalBounds.height;
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.x = this.originalBounds.x + (this.originalBounds.width - newBounds.width) / 2;
+                  newBounds.y = this.originalBounds.y + (this.originalBounds.height - newBounds.height);
+                } else {
+                  newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
+                  newBounds.y = this.originalBounds.y + deltaY;
+                }
                 break;
               case 'ne':
-                newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
-                newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
-                newBounds.y = this.originalBounds.y + deltaY;
+                if (preserveRatio) {
+                  const scaleX = Math.max(20, this.originalBounds.width + deltaX) / this.originalBounds.width;
+                  const scaleY = Math.max(20, this.originalBounds.height - deltaY) / this.originalBounds.height;
+                  const scale = Math.min(scaleX, scaleY);
+                  
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.y = this.originalBounds.y + (this.originalBounds.height - newBounds.height);
+                } else {
+                  newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                  newBounds.height = Math.max(20, this.originalBounds.height - deltaY);
+                  newBounds.y = this.originalBounds.y + deltaY;
+                }
                 break;
               case 'e':
-                newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                if (preserveRatio) {
+                  const scale = Math.max(20, this.originalBounds.width + deltaX) / this.originalBounds.width;
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.y = this.originalBounds.y + (this.originalBounds.height - newBounds.height) / 2;
+                } else {
+                  newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                }
                 break;
               case 'se':
-                newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
-                newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                if (preserveRatio) {
+                  const scaleX = Math.max(20, this.originalBounds.width + deltaX) / this.originalBounds.width;
+                  const scaleY = Math.max(20, this.originalBounds.height + deltaY) / this.originalBounds.height;
+                  const scale = Math.min(scaleX, scaleY);
+                  
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                } else {
+                  newBounds.width = Math.max(20, this.originalBounds.width + deltaX);
+                  newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                }
                 break;
               case 's':
-                newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                if (preserveRatio) {
+                  const scale = Math.max(20, this.originalBounds.height + deltaY) / this.originalBounds.height;
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.x = this.originalBounds.x + (this.originalBounds.width - newBounds.width) / 2;
+                } else {
+                  newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                }
                 break;
               case 'sw':
-                newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
-                newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
-                newBounds.x = this.originalBounds.x + deltaX;
+                if (preserveRatio) {
+                  const scaleX = Math.max(20, this.originalBounds.width - deltaX) / this.originalBounds.width;
+                  const scaleY = Math.max(20, this.originalBounds.height + deltaY) / this.originalBounds.height;
+                  const scale = Math.min(scaleX, scaleY);
+                  
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.x = this.originalBounds.x + (this.originalBounds.width - newBounds.width);
+                } else {
+                  newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
+                  newBounds.height = Math.max(20, this.originalBounds.height + deltaY);
+                  newBounds.x = this.originalBounds.x + deltaX;
+                }
                 break;
               case 'w':
-                newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
-                newBounds.x = this.originalBounds.x + deltaX;
+                if (preserveRatio) {
+                  const scale = Math.max(20, this.originalBounds.width - deltaX) / this.originalBounds.width;
+                  newBounds.width = Math.max(20, this.originalBounds.width * scale);
+                  newBounds.height = Math.max(20, this.originalBounds.height * scale);
+                  newBounds.x = this.originalBounds.x + (this.originalBounds.width - newBounds.width);
+                  newBounds.y = this.originalBounds.y + (this.originalBounds.height - newBounds.height) / 2;
+                } else {
+                  newBounds.width = Math.max(20, this.originalBounds.width - deltaX);
+                  newBounds.x = this.originalBounds.x + deltaX;
+                }
                 break;
             }
             
-            // Apply bounds
+            // Apply bounds checking
             config.x = Math.max(0, Math.min(newBounds.x, this.canvasWidth - newBounds.width));
             config.y = Math.max(0, Math.min(newBounds.y, this.canvasHeight - newBounds.height));
             config.width = newBounds.width;
@@ -357,12 +627,15 @@
             this.render();
             RED.nodes.dirty(true);
           } else if (this.isRotating && this.selectedIndex >= 0) {
-            // Rotation handling
+            // Rotation handling - mathematical standard (counterclockwise positive)
             const config = this.node.imageConfigs[this.selectedIndex];
             const angle = Math.atan2(pos.y - this.rotationCenter.y, pos.x - this.rotationCenter.x);
+            // Convert to degrees with 0° pointing up (north), counterclockwise positive
             const degrees = (angle * 180 / Math.PI + 90) % 360;
+            // Ensure angle is always positive
+            const normalizedDegrees = degrees < 0 ? degrees + 360 : degrees;
             
-            config.rotation = Math.round(degrees);
+            config.rotation = Math.round(normalizedDegrees);
             
             this.updatePropertiesPanel();
             this.render();
@@ -376,7 +649,9 @@
           this.isRotating = false;
           this.resizeHandle = null;
           this.originalBounds = null;
+          this.snapLines = []; // Clear snap lines
           this.canvas.style.cursor = 'default';
+          this.render(); // Re-render to clear snap lines
         }
         
         handleClick(e) {
@@ -453,6 +728,12 @@
             this.drawSelectionHandles(ctx, this.node.imageConfigs[this.selectedIndex], this.selectedIndex);
           }
           
+          // Draw magnetic snap lines for visual feedback
+          this.drawSnapLines(ctx);
+          
+          // Draw aspect ratio indicator
+          this.drawAspectRatioIndicator(ctx);
+          
           ctx.restore();
         }
         
@@ -466,13 +747,24 @@
           
           ctx.save();
           
-          // Apply rotation if any
-          if (config.rotation && config.rotation !== 0) {
-            const centerX = bounds.x + bounds.width / 2;
-            const centerY = bounds.y + bounds.height / 2;
-            ctx.translate(centerX, centerY);
-            ctx.rotate((config.rotation * Math.PI) / 180);
-            ctx.translate(-centerX, -centerY);
+          // Calculate original image dimensions before rotation for visualization
+          const originalWidth = config.inputWidth || 800;
+          const originalHeight = config.inputHeight || 600;
+          
+          // Calculate resize dimensions (same logic as getImageBounds)
+          let targetWidth, targetHeight;
+          if (config.width > 0 || config.height > 0) {
+            targetWidth = config.width > 0 ? config.width : originalWidth;
+            targetHeight = config.height > 0 ? config.height : originalHeight;
+            
+            if (config.width > 0 && (config.height <= 0 || !config.height)) {
+              targetHeight = Math.round(targetWidth * originalHeight / originalWidth);
+            } else if (config.height > 0 && (config.width <= 0 || !config.width)) {
+              targetWidth = Math.round(targetHeight * originalWidth / originalHeight);
+            }
+          } else {
+            targetWidth = originalWidth;
+            targetHeight = originalHeight;
           }
           
           // Draw selection highlight background (glow effect)
@@ -493,28 +785,61 @@
             ctx.shadowOffsetY = 0;
           }
           
-          // Draw placeholder rectangle
-          ctx.fillStyle = color;
-          ctx.globalAlpha = isSelected ? 0.9 : 0.7;
+          // Draw the final bounding box (expanded for rotation)
+          ctx.fillStyle = 'rgba(128, 128, 128, 0.2)'; // Light gray background for expanded area
+          ctx.globalAlpha = 0.3;
           ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          ctx.globalAlpha = 1;
           
-          // Draw border with enhanced selection styling
+          // Draw the actual rotated image area inside the bounding box
+          if (config.rotation && Math.abs(config.rotation) > 1e-3) {
+            const centerX = bounds.x + bounds.width / 2;
+            const centerY = bounds.y + bounds.height / 2;
+            
+            ctx.translate(centerX, centerY);
+            ctx.rotate((config.rotation * Math.PI) / 180);
+            
+            // Draw the actual image rectangle (before expansion)
+            ctx.fillStyle = color;
+            ctx.globalAlpha = isSelected ? 0.9 : 0.7;
+            ctx.fillRect(-targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+            
+            // Draw border around actual image
+            ctx.strokeStyle = isSelected ? '#000' : '#333';
+            ctx.lineWidth = isSelected ? 2 : 1;
+            ctx.globalAlpha = 1;
+            ctx.strokeRect(-targetWidth / 2, -targetHeight / 2, targetWidth, targetHeight);
+            
+            ctx.resetTransform();
+            ctx.scale(this.scale, this.scale); // Restore canvas scaling
+          } else {
+            // No rotation - draw normally
+            ctx.fillStyle = color;
+            ctx.globalAlpha = isSelected ? 0.9 : 0.7;
+            ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+            
+            ctx.strokeStyle = isSelected ? '#000' : '#333';
+            ctx.lineWidth = isSelected ? 2 : 1;
+            ctx.globalAlpha = 1;
+            ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          }
+          
+          // Draw expanded bounding box border
           if (isSelected) {
-            // Double border for selection
+            // Double border for selection on the expanded area
             ctx.strokeStyle = '#FFD700';
             ctx.lineWidth = 4;
             ctx.globalAlpha = 1;
             ctx.strokeRect(bounds.x - 2, bounds.y - 2, bounds.width + 4, bounds.height + 4);
-            
-            ctx.strokeStyle = '#000';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
-          } else {
-            ctx.strokeStyle = '#333';
-            ctx.lineWidth = 1;
-            ctx.globalAlpha = 1;
-            ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
           }
+          
+          // Draw the final bounds border
+          ctx.strokeStyle = '#666';
+          ctx.lineWidth = 1;  
+          ctx.setLineDash([5, 5]); // Dashed line to show it's the expanded bounds
+          ctx.globalAlpha = 0.8;
+          ctx.strokeRect(bounds.x, bounds.y, bounds.width, bounds.height);
+          ctx.setLineDash([]); // Reset line dash
           
           // Draw labels with better contrast
           ctx.fillStyle = isSelected ? '#000' : '#333';
@@ -536,24 +861,28 @@
           ctx.fillText(
             `Image ${config.arrayIndex}`,
             bounds.x + bounds.width / 2,
-            bounds.y + bounds.height / 2 - 8
+            bounds.y + bounds.height / 2 - 16
           );
           
-          // Draw dimensions
+          // Draw dimensions - show both original and final dimensions if different
           ctx.font = isSelected ? 'bold 10px Arial' : '10px Arial';
+          
+          const dimensionText = config.rotation && Math.abs(config.rotation) > 1e-3 
+            ? `${targetWidth}×${targetHeight} → ${bounds.width}×${bounds.height}`
+            : `${bounds.width}×${bounds.height}`;
           
           if (isSelected) {
             ctx.strokeText(
-              `${bounds.width}x${bounds.height}`,
+              dimensionText,
               bounds.x + bounds.width / 2,
-              bounds.y + bounds.height / 2 + 8
+              bounds.y + bounds.height / 2
             );
           }
           
           ctx.fillText(
-            `${bounds.width}x${bounds.height}`,
+            dimensionText,
             bounds.x + bounds.width / 2,
-            bounds.y + bounds.height / 2 + 8
+            bounds.y + bounds.height / 2
           );
           
           // Draw rotation indicator
@@ -562,14 +891,14 @@
               ctx.strokeText(
                 `${config.rotation}°`,
                 bounds.x + bounds.width / 2,
-                bounds.y + bounds.height / 2 + 22
+                bounds.y + bounds.height / 2 + 16
               );
             }
             
             ctx.fillText(
               `${config.rotation}°`,
               bounds.x + bounds.width / 2,
-              bounds.y + bounds.height / 2 + 22
+              bounds.y + bounds.height / 2 + 16
             );
           }
           
@@ -640,6 +969,70 @@
           ctx.restore();
         }
         
+        // Draw magnetic snap lines for visual feedback
+        drawSnapLines(ctx) {
+          if (!this.snapLines || this.snapLines.length === 0) return;
+          
+          ctx.save();
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 5]);
+          ctx.globalAlpha = 0.8;
+          
+          this.snapLines.forEach(line => {
+            ctx.strokeStyle = line.color;
+            ctx.beginPath();
+            
+            if (line.type === 'vertical') {
+              ctx.moveTo(line.pos, 0);
+              ctx.lineTo(line.pos, this.canvasHeight);
+            } else if (line.type === 'horizontal') {
+              ctx.moveTo(0, line.pos);
+              ctx.lineTo(this.canvasWidth, line.pos);
+            }
+            
+            ctx.stroke();
+          });
+          
+          ctx.restore();
+        }
+        
+        // Draw aspect ratio preservation indicator
+        drawAspectRatioIndicator(ctx) {
+          if (!this.isResizing || this.selectedIndex < 0) return;
+          
+          ctx.save();
+          
+          // Draw indicator in top-right corner
+          const indicatorX = this.canvasWidth - 100;
+          const indicatorY = 20;
+          
+          // Background
+          ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+          ctx.roundRect = ctx.roundRect || function(x, y, w, h, r) {
+            this.beginPath();
+            this.moveTo(x + r, y);
+            this.arcTo(x + w, y, x + w, y + h, r);
+            this.arcTo(x + w, y + h, x, y + h, r);
+            this.arcTo(x, y + h, x, y, r);
+            this.arcTo(x, y, x + w, y, r);
+            this.closePath();
+          };
+          ctx.roundRect(indicatorX - 10, indicatorY - 5, 90, 25, 5);
+          ctx.fill();
+          
+          // Text
+          ctx.fillStyle = '#FFF';
+          ctx.font = '12px Arial';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          
+          const preserveRatio = this.preserveAspectRatio && !this.shiftPressed;
+          const text = preserveRatio ? '🔒 Aspect Locked' : '🔓 Free Resize';
+          ctx.fillText(text, indicatorX - 5, indicatorY + 7);
+          
+          ctx.restore();
+        }
+        
         updatePropertiesPanel() {
           const panel = $('#selected-properties');
           
@@ -663,6 +1056,38 @@
             // Position
             $('#prop-x').val(config.x || 0);
             $('#prop-y').val(config.y || 0);
+            
+            // Calculate and display computed dimensions
+            const originalWidth = config.inputWidth || 800;
+            const originalHeight = config.inputHeight || 600;
+            
+            // Step 1: Calculate resize dimensions
+            let targetWidth, targetHeight;
+            if (config.width > 0 || config.height > 0) {
+              targetWidth = config.width > 0 ? config.width : originalWidth;
+              targetHeight = config.height > 0 ? config.height : originalHeight;
+              
+              if (config.width > 0 && (config.height <= 0 || !config.height)) {
+                targetHeight = Math.round(targetWidth * originalHeight / originalWidth);
+              } else if (config.height > 0 && (config.width <= 0 || !config.width)) {
+                targetWidth = Math.round(targetHeight * originalWidth / originalHeight);
+              }
+            } else {
+              targetWidth = originalWidth;
+              targetHeight = originalHeight;
+            }
+            
+            $('#prop-computed-resize').val(`${targetWidth} × ${targetHeight}`);
+            
+            // Step 2: Calculate final dimensions after rotation
+            const bounds = this.getImageBounds(config, this.selectedIndex);
+            $('#prop-computed-final').val(`${bounds.width} × ${bounds.height}`);
+            
+            // Calculate expansion factor
+            const originalArea = targetWidth * targetHeight;
+            const finalArea = bounds.width * bounds.height;
+            const expansionFactor = (finalArea / originalArea).toFixed(2);
+            $('#prop-expansion-factor').val(`${expansionFactor}×`);
             
             $('#remove-selected-config').prop('disabled', false);
           } else {
@@ -701,73 +1126,87 @@
         }
       }
       
-      // Initialize canvas editor
-      const canvasEditor = new MosaicCanvasEditor(document.getElementById('mosaic-canvas'), node);
-      // Event handlers for canvas controls
-      $('#add-image-config').on('click', function() {
-        node.imageConfigs.push({
-          arrayIndex: node.imageConfigs.length,
-          inputWidth: 800,
-          inputHeight: 600,
-          x: 50 + (node.imageConfigs.length * 20),
-          y: 50 + (node.imageConfigs.length * 20),
-          width: 200,
-          height: 150,
-          rotation: 0,
-          zIndex: node.imageConfigs.length
-        });
-        canvasEditor.render();
-        RED.nodes.dirty(true);
-      });
-      
-      $('#remove-selected-config').on('click', function() {
-        if (canvasEditor.selectedIndex >= 0) {
-          node.imageConfigs.splice(canvasEditor.selectedIndex, 1);
-          canvasEditor.selectedIndex = -1;
-          canvasEditor.updatePropertiesPanel();
-          canvasEditor.render();
-          RED.nodes.dirty(true);
-        }
-      });
-      
-      $('#show-grid').on('change', function() {
-        canvasEditor.showGrid = $(this).is(':checked');
-        canvasEditor.render();
-      });
-      
-      $('#snap-to-grid').on('change', function() {
-        canvasEditor.snapToGrid = $(this).is(':checked');
-      });
-      
-      $('#duplicate-selected').on('click', function() {
-        if (canvasEditor.selectedIndex >= 0) {
-          const original = node.imageConfigs[canvasEditor.selectedIndex];
-          const duplicate = {
-            arrayIndex: original.arrayIndex,
-            inputWidth: original.inputWidth,
-            inputHeight: original.inputHeight,
-            x: original.x + 30,
-            y: original.y + 30,
-            width: original.width,
-            height: original.height,
-            rotation: original.rotation,
+      // Initialize canvas editor with delay to ensure container is sized
+      setTimeout(() => {
+        const canvasEditor = new MosaicCanvasEditor(document.getElementById('mosaic-canvas'), node);
+        
+        // Store reference for event handlers
+        node.canvasEditor = canvasEditor;
+        
+        // Event handlers for canvas controls
+        $('#add-image-config').on('click', function() {
+          node.imageConfigs.push({
+            arrayIndex: node.imageConfigs.length,
+            inputWidth: 800,
+            inputHeight: 600,
+            x: 50 + (node.imageConfigs.length * 20),
+            y: 50 + (node.imageConfigs.length * 20),
+            width: 200,
+            height: 150,
+            rotation: 0,
             zIndex: node.imageConfigs.length
-          };
-          node.imageConfigs.push(duplicate);
+          });
           canvasEditor.render();
           RED.nodes.dirty(true);
-        }
-      });
-      
-      // Properties panel event handlers
-      $('#selected-properties input').on('input', function() {
-        canvasEditor.updateConfigFromProperties();
-      });
-      
-      // Background color change
-      $('#node-input-backgroundColor').on('change', function() {
-        canvasEditor.render();
-      });
+        });
+        
+        $('#remove-selected-config').on('click', function() {
+          if (canvasEditor.selectedIndex >= 0) {
+            node.imageConfigs.splice(canvasEditor.selectedIndex, 1);
+            canvasEditor.selectedIndex = -1;
+            canvasEditor.updatePropertiesPanel();
+            canvasEditor.render();
+            RED.nodes.dirty(true);
+          }
+        });
+        
+        $('#show-grid').on('change', function() {
+          canvasEditor.showGrid = $(this).is(':checked');
+          canvasEditor.render();
+        });
+        
+        $('#snap-to-grid').on('change', function() {
+          canvasEditor.snapToGrid = $(this).is(':checked');
+        });
+        
+        $('#magnetic-snap').on('change', function() {
+          canvasEditor.magneticSnap = $(this).is(':checked');
+        });
+        
+        $('#preserve-aspect').on('change', function() {
+          canvasEditor.preserveAspectRatio = $(this).is(':checked');
+        });
+        
+        $('#duplicate-selected').on('click', function() {
+          if (canvasEditor.selectedIndex >= 0) {
+            const original = node.imageConfigs[canvasEditor.selectedIndex];
+            const duplicate = {
+              arrayIndex: original.arrayIndex,
+              inputWidth: original.inputWidth,
+              inputHeight: original.inputHeight,
+              x: original.x + 30,
+              y: original.y + 30,
+              width: original.width,
+              height: original.height,
+              rotation: original.rotation,
+              zIndex: node.imageConfigs.length
+            };
+            node.imageConfigs.push(duplicate);
+            canvasEditor.render();
+            RED.nodes.dirty(true);
+          }
+        });
+        
+        // Properties panel event handlers
+        $('#selected-properties input').on('input', function() {
+          canvasEditor.updateConfigFromProperties();
+        });
+        
+        // Background color change
+        $('#node-input-backgroundColor').on('change', function() {
+          canvasEditor.render();
+        });
+      }, 100);
     }
   });
 
@@ -966,11 +1405,17 @@
     <label style="display: flex; align-items: center; gap: 5px;">
       <input type="checkbox" id="snap-to-grid" checked> Snap to Grid
     </label>
+    <label style="display: flex; align-items: center; gap: 5px;">
+      <input type="checkbox" id="magnetic-snap" checked> Magnetic Snap
+    </label>
+    <label style="display: flex; align-items: center; gap: 5px;">
+      <input type="checkbox" id="preserve-aspect" checked> Lock Aspect Ratio
+    </label>
   </div>
   
   <!-- Canvas Container -->
-  <div id="canvas-container" style="border: 2px solid #ddd; background: #f9f9f9; position: relative; margin-bottom: 10px;">
-    <canvas id="mosaic-canvas" width="400" height="300" style="display: block; cursor: default;"></canvas>
+  <div id="canvas-container" style="border: 2px solid #ddd; background: #f9f9f9; position: relative; margin-bottom: 10px; width: 100%; min-height: 300px; display: flex; justify-content: center; align-items: center;">
+    <canvas id="mosaic-canvas" width="400" height="300" style="display: block; cursor: default; border: 1px solid #ccc;"></canvas>
   </div>
   
   <!-- Selected Image Properties -->
@@ -1019,6 +1464,25 @@
       </div>
     </div>
     
+    <!-- Computed Final Dimensions Section -->
+    <div style="background: #e8f5e8; padding: 8px; margin: 8px 0; border-radius: 4px;">
+      <strong style="color: #2e7d32;">Final Computed Dimensions:</strong>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
+        <div>
+          <label>After Resize:</label>
+          <input type="text" id="prop-computed-resize" readonly style="width: 100%; font-size: 11px; background: #f5f5f5;" placeholder="Computed...">
+        </div>
+        <div>
+          <label>After Rotation:</label>
+          <input type="text" id="prop-computed-final" readonly style="width: 100%; font-size: 11px; background: #f5f5f5;" placeholder="Computed...">
+        </div>
+        <div>
+          <label>Expansion Factor:</label>
+          <input type="text" id="prop-expansion-factor" readonly style="width: 100%; font-size: 11px; background: #f5f5f5;" placeholder="1.0x">
+        </div>
+      </div>
+    </div>
+    
     <!-- Position Section -->
     <div style="background: #f3e5f5; padding: 8px; margin: 8px 0; border-radius: 4px;">
       <strong style="color: #7b1fa2;">Position & Actions:</strong>
@@ -1041,14 +1505,19 @@
 </div>
 
 <div class="form-tips">
-  <b>Canvas Editor Instructions:</b>
+  <b>Enhanced Canvas Editor Instructions:</b>
   <ul>
     <li><b>Add Image:</b> Click "Add Image" to create a new placeholder rectangle</li>
-    <li><b>Select & Drag:</b> Click on any placeholder to select it, then drag to reposition</li>
-    <li><b>Properties Panel:</b> When selected, use the properties panel to set array index, dimensions, rotation, and z-index</li>
+    <li><b>Select & Drag:</b> Click on any placeholder to select it, then drag to reposition with magnetic snapping</li>
+    <li><b>Resize with Aspect Ratio:</b> Drag resize handles to resize - aspect ratio is preserved by default, hold Shift to resize freely</li>
+    <li><b>Accurate Preview:</b> The canvas shows exact dimensions matching the C++ processing pipeline</li>
+    <li><b>Rotation Visualization:</b> Rotated images show both the actual image area (colored) and expanded bounding box (dashed gray)</li>
+    <li><b>Properties Panel:</b> Shows computed dimensions after resize and rotation, plus expansion factors</li>
     <li><b>Grid Helpers:</b> Enable "Show Grid" and "Snap to Grid" for precise alignment</li>
+    <li><b>Magnetic Snapping:</b> Enable "Magnetic Snap" for automatic alignment to canvas edges and other images</li>
+    <li><b>Aspect Ratio Lock:</b> Toggle "Lock Aspect Ratio" to control default resize behavior</li>
+    <li><b>Visual Feedback:</b> Colored snap lines appear during dragging, aspect ratio indicator shows during resize</li>
     <li><b>Color Coding:</b> Each array index has a unique color for easy identification</li>
-    <li><b>Visual Feedback:</b> Placeholders show current dimensions, rotation, and array index</li>
     <li><b>Duplicate:</b> Use "Duplicate" button to copy the selected image configuration</li>
   </ul>
 </div>

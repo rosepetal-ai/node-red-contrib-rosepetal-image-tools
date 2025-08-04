@@ -115,8 +115,21 @@ public:
                 return a.zIndex < b.zIndex;
               });
     
-    // Determine the best canvas format from all input images
-    canvasChannel_ = DetermineBestCanvasFormatAdvanced(imageChannels_);
+    // Check if any images have rotation to determine if we need alpha support
+    bool hasRotation = false;
+    for (const auto& config : imageConfigs_) {
+      if (std::abs(config.rotation) > 1e-3) {
+        hasRotation = true;
+        break;
+      }
+    }
+    
+    // Determine the best canvas format, preferring RGBA if rotation is detected
+    if (hasRotation) {
+      canvasChannel_ = "RGBA"; // Force RGBA for transparent rotation padding
+    } else {
+      canvasChannel_ = DetermineBestCanvasFormatAdvanced(imageChannels_);
+    }
     
     convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
   }
@@ -251,10 +264,15 @@ private:
         rotationMatrix.at<double>(0, 2) += newSize.width / 2.0 - center.x;
         rotationMatrix.at<double>(1, 2) += newSize.height / 2.0 - center.y;
         
-        // Parse background color for rotation padding
-        cv::Scalar padColor = ParseColor(backgroundColor_, cv::Scalar(0, 0, 0));
-        if (imgChannel == "RGB" || imgChannel == "RGBA") {
-          std::swap(padColor[0], padColor[2]); // Convert RGB to BGR
+        // Use transparent padding for rotation to allow layering effects
+        // This allows background images to show through the rotation padding areas
+        cv::Scalar padColor(0, 0, 0, 0); // Transparent black (RGBA)
+        
+        // Ensure the image has an alpha channel for transparent padding
+        if (img.channels() == 3) {
+          cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
+        } else if (img.channels() == 1) {
+          cv::cvtColor(img, img, cv::COLOR_GRAY2BGRA);
         }
         
         cv::warpAffine(img, img, rotationMatrix, newSize, 
@@ -263,7 +281,16 @@ private:
     }
     
     // Step 3: Place on canvas
-    PlaceImageOnCanvas(img, config, imgChannel);
+    // Update channel format if we converted to BGRA for rotation
+    std::string finalImgChannel = imgChannel;
+    if (config.rotation && std::abs(config.rotation) > 1e-3) {
+      // After rotation with transparent padding, image is now BGRA
+      if (img.channels() == 4) {
+        finalImgChannel = "BGRA";
+      }
+    }
+    
+    PlaceImageOnCanvas(img, config, finalImgChannel);
   }
   
   // ULTRA-FAST image placement with bounds checking
@@ -380,8 +407,37 @@ private:
       }
     }
     
-    // FASTEST copy operation - zero-copy when possible
-    imgToPlace.copyTo(canvas_(dstROI));
+    // Alpha-aware image placement for transparent rotation padding
+    if (imgToPlace.channels() == 4 && canvasChannel_ == "RGBA") {
+      // Both source and destination have alpha - use proper alpha blending
+      cv::Mat canvasROI = canvas_(dstROI);
+      
+      // Custom alpha blending for maximum control
+      for (int y = 0; y < imgToPlace.rows; ++y) {
+        for (int x = 0; x < imgToPlace.cols; ++x) {
+          cv::Vec4b& srcPixel = imgToPlace.at<cv::Vec4b>(y, x);
+          cv::Vec4b& dstPixel = canvasROI.at<cv::Vec4b>(y, x);
+          
+          float srcAlpha = srcPixel[3] / 255.0f;
+          float dstAlpha = dstPixel[3] / 255.0f;
+          
+          if (srcAlpha > 0.0f) {
+            // Alpha blending formula: dst = src * srcAlpha + dst * (1 - srcAlpha) * dstAlpha
+            float outAlpha = srcAlpha + dstAlpha * (1.0f - srcAlpha);
+            
+            if (outAlpha > 0.0f) {
+              dstPixel[0] = static_cast<uchar>((srcPixel[0] * srcAlpha + dstPixel[0] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
+              dstPixel[1] = static_cast<uchar>((srcPixel[1] * srcAlpha + dstPixel[1] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
+              dstPixel[2] = static_cast<uchar>((srcPixel[2] * srcAlpha + dstPixel[2] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
+              dstPixel[3] = static_cast<uchar>(outAlpha * 255.0f);
+            }
+          }
+        }
+      }
+    } else {
+      // Standard copy operation for non-alpha images
+      imgToPlace.copyTo(canvas_(dstROI));
+    }
   }
   
   // Member variables

@@ -785,11 +785,27 @@
             ctx.shadowOffsetY = 0;
           }
           
-          // Draw the final bounding box (expanded for rotation)
-          ctx.fillStyle = 'rgba(128, 128, 128, 0.2)'; // Light gray background for expanded area
-          ctx.globalAlpha = 0.3;
-          ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
-          ctx.globalAlpha = 1;
+          // Draw the final bounding box (expanded for rotation) - now transparent padding
+          if (config.rotation && Math.abs(config.rotation) > 1e-3) {
+            // For rotated images, show transparent padding area with subtle pattern
+            ctx.fillStyle = 'rgba(200, 200, 200, 0.1)'; // Very light gray for transparent area
+            ctx.globalAlpha = 0.5;
+            ctx.fillRect(bounds.x, bounds.y, bounds.width, bounds.height);
+            ctx.globalAlpha = 1;
+            
+            // Add subtle diagonal pattern to indicate transparency
+            ctx.strokeStyle = 'rgba(200, 200, 200, 0.3)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([3, 3]);
+            const spacing = 10;
+            for (let i = -bounds.height; i < bounds.width; i += spacing) {
+              ctx.beginPath();
+              ctx.moveTo(bounds.x + i, bounds.y);
+              ctx.lineTo(bounds.x + i + bounds.height, bounds.y + bounds.height);
+              ctx.stroke();
+            }
+            ctx.setLineDash([]);
+          }
           
           // Draw the actual rotated image area inside the bounding box
           if (config.rotation && Math.abs(config.rotation) > 1e-3) {
@@ -1511,7 +1527,7 @@
     <li><b>Select & Drag:</b> Click on any placeholder to select it, then drag to reposition with magnetic snapping</li>
     <li><b>Resize with Aspect Ratio:</b> Drag resize handles to resize - aspect ratio is preserved by default, hold Shift to resize freely</li>
     <li><b>Accurate Preview:</b> The canvas shows exact dimensions matching the C++ processing pipeline</li>
-    <li><b>Rotation Visualization:</b> Rotated images show both the actual image area (colored) and expanded bounding box (dashed gray)</li>
+    <li><b>Transparent Rotation:</b> Rotated images use transparent padding (diagonal pattern) allowing layered compositions</li>
     <li><b>Properties Panel:</b> Shows computed dimensions after resize and rotation, plus expansion factors</li>
     <li><b>Grid Helpers:</b> Enable "Show Grid" and "Snap to Grid" for precise alignment</li>
     <li><b>Magnetic Snapping:</b> Enable "Magnetic Snap" for automatic alignment to canvas edges and other images</li>
@@ -1567,9 +1583,10 @@
 
 <h4>Rotation System</h4>
 <ul>
-  <li><b>Arbitrary Angles:</b> Rotate by any angle in degrees</li>
+  <li><b>Arbitrary Angles:</b> Rotate by any angle in degrees (counterclockwise positive)</li>
   <li><b>Optimized 90° Rotations:</b> Fast-path processing for 90°, 180°, 270°</li>
-  <li><b>Automatic Padding:</b> Expanded canvas prevents cropping during rotation</li>
+  <li><b>Transparent Padding:</b> Rotation expansion uses transparent padding for layered compositions</li>
+  <li><b>Alpha Blending:</b> Rotated images blend seamlessly with underlying content</li>
 </ul>
 
 <h4>Layering Control</h4>

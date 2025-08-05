@@ -23,6 +23,7 @@ module.exports = function (RED) {
         const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
 
         /* Canvas configuration */
         const canvasWidth = Number(NodeUtils.resolveDimension(node, config.canvasWidthType, config.canvasWidth, msg));
@@ -65,7 +66,8 @@ module.exports = function (RED) {
           validImageConfigs,
           normalized,
           outputFormat,
-          outputQuality
+          outputQuality,
+          pngOptimize
         );
 
         /* Set output */

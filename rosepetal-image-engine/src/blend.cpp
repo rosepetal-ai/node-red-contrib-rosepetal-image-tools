@@ -22,11 +22,12 @@ public:
               const Napi::Value& jsImg2,
               double opacity,
               std::string outputFormat,
-              int quality = 90)
+              int quality = 90,
+              bool pngOptimize = false)
     : Napi::AsyncWorker(cb),
       opacity(opacity),
       outputFormat(std::move(outputFormat)),
-      quality(quality)
+      quality(quality), pngOptimize(pngOptimize)
   {
     // Timing and conversion
     const int64 t0 = cv::getTickCount();
@@ -77,7 +78,7 @@ protected:
     // Multi-format encoding if needed
     if (outputFormat != "raw") {
       cv::Mat tmp = ToBgrForJpg(result, outputChannel);
-      encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality);
+      encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
     }
   }
 
@@ -98,6 +99,7 @@ private:
   double opacity;
   std::string outputFormat;
   int quality;
+  bool pngOptimize;
   double convertMs = 0, taskMs = 0, encodeMs = 0;
   std::vector<uchar> encodedBuf;
 };
@@ -107,8 +109,8 @@ Napi::Value Blend(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Fast parameter validation
-  if (info.Length() < 4 || info.Length() > 6 || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env, "blend(image1, image2, opacity, [outputFormat], [quality], callback)")
+  if (info.Length() < 4 || info.Length() > 7 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "blend(image1, image2, opacity, [outputFormat], [quality], [pngOptimize], callback)")
       .ThrowAsJavaScriptException();
     return env.Null();
   }
@@ -124,6 +126,7 @@ Napi::Value Blend(const Napi::CallbackInfo& info) {
   // Handle optional parameters
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   size_t cbIdx = 3;
   
   if (info.Length() >= 5) {
@@ -131,12 +134,17 @@ Napi::Value Blend(const Napi::CallbackInfo& info) {
     cbIdx = 4;
   }
   
-  if (info.Length() == 6) {
+  if (info.Length() >= 6) {
     quality = info[4].As<Napi::Number>().Int32Value();
     cbIdx = 5;
   }
+  
+  if (info.Length() == 7) {
+    pngOptimize = info[5].As<Napi::Boolean>().Value();
+    cbIdx = 6;
+  }
 
   // Create and queue worker
-  (new BlendWorker(info[cbIdx].As<Napi::Function>(), jsImg1, jsImg2, opacity, outputFormat, quality))->Queue();
+  (new BlendWorker(info[cbIdx].As<Napi::Function>(), jsImg1, jsImg2, opacity, outputFormat, quality, pngOptimize))->Queue();
   return env.Undefined();
 }

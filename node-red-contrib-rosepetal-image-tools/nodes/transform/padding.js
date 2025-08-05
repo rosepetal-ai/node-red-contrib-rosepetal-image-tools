@@ -42,6 +42,7 @@ module.exports = function (RED) {
         /* static options from editor */
         const outputFormat = cfg.outputFormat || 'raw';
         const outputQuality = cfg.outputQuality || 90;
+        const pngOptimize = cfg.pngOptimize || false;
         const padHex   = cfg.padColor || '#000000';
 
         /* numeric margins can come from msg / flow / global */
@@ -52,7 +53,7 @@ module.exports = function (RED) {
 
         /* one C++ call per image (fast, runs in parallel) */
         const tasks = imgs.map(img =>
-          CppProcessor.padding(img, tVal, bVal, lVal, rVal, padHex, outputFormat, outputQuality)
+          CppProcessor.padding(img, tVal, bVal, lVal, rVal, padHex, outputFormat, outputQuality, pngOptimize)
         );
         const results = await Promise.all(tasks);
 

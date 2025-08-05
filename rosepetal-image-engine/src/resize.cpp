@@ -18,11 +18,12 @@ ResizeWorker(Napi::Function& callback,
   std::string widthMode,  double widthValue,
   std::string heightMode, double heightValue,
   std::string outputFormat,
-  int quality = 90)
+  int quality = 90,
+  bool pngOptimize = false)
   : Napi::AsyncWorker(callback),
   widthMode(std::move(widthMode)),   widthValue(widthValue),
   heightMode(std::move(heightMode)), heightValue(heightValue),
-  outputFormat(std::move(outputFormat)), quality(quality){
+  outputFormat(std::move(outputFormat)), quality(quality), pngOptimize(pngOptimize){
 
     try {
       auto t0 = std::chrono::steady_clock::now();
@@ -93,7 +94,7 @@ protected:
                 (channelOrder == "BGR") ? resultMat
                                         : ToBgrForJpg(resultMat, channelOrder);
       
-          encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality);
+          encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality, pngOptimize);
         }
     } catch (const std::exception& e) {
         SetError(e.what());
@@ -156,6 +157,7 @@ private:
 
   std::string outputFormat;
   int quality;
+  bool pngOptimize;
   std::vector<uchar> encodedBuf;
   double encodeMs = 0.0;
 };
@@ -163,15 +165,16 @@ private:
 Napi::Value Resize(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-    if (info.Length() < 6 || info.Length() > 8 || !info[info.Length() - 1].IsFunction()) {
+    if (info.Length() < 6 || info.Length() > 9 || !info[info.Length() - 1].IsFunction()) {
       Napi::TypeError::New(env,
-        "Expected (image, widthMode, widthVal, heightMode, heightVal, [outputFormat], [quality], callback)")
+        "Expected (image, widthMode, widthVal, heightMode, heightVal, [outputFormat], [quality], [pngOptimize], callback)")
         .ThrowAsJavaScriptException();
       return env.Null();
   }
 
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   size_t cbIndex = 5;
 
   // Handle parameters
@@ -182,6 +185,11 @@ Napi::Value Resize(const Napi::CallbackInfo& info) {
     outputFormat = info[5].As<Napi::String>().Utf8Value();
     quality = info[6].As<Napi::Number>().Int32Value();
     cbIndex = 7;
+  } else if (info.Length() == 9) {
+    outputFormat = info[5].As<Napi::String>().Utf8Value();
+    quality = info[6].As<Napi::Number>().Int32Value();
+    pngOptimize = info[7].As<Napi::Boolean>().Value();
+    cbIndex = 8;
   }
 
   Napi::Function cb = info[cbIndex].As<Napi::Function>();
@@ -194,7 +202,8 @@ Napi::Value Resize(const Napi::CallbackInfo& info) {
       info[3].As<Napi::String>().Utf8Value(),     // heightMode
       info[4].As<Napi::Number>().DoubleValue(),   // heightVal
       outputFormat,                               // outputFormat
-      quality);                                   // quality
+      quality,                                    // quality
+      pngOptimize);                               // pngOptimize
 
   worker->Queue();
   return env.Undefined();

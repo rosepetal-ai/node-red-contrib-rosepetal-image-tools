@@ -166,7 +166,8 @@ inline double EncodeToJpgFast(const cv::Mat& src,
 inline double EncodeToFormat(const cv::Mat& src,
   std::vector<uchar>& out,
   const std::string& format,
-  int quality = 90)
+  int quality = 90,
+  bool pngOptimize = false)
 {
   const int64 t0 = cv::getTickCount();
   ImageFormat fmt = ParseImageFormat(format);
@@ -184,8 +185,10 @@ inline double EncodeToFormat(const cv::Mat& src,
     }
     case ImageFormat::PNG: {
       out.reserve(src.total());
+      // Use compression level 0 (fastest) when pngOptimize is false, 6 (balanced) when true
+      int compressionLevel = pngOptimize ? 6 : 0;
       std::vector<int> params{
-        cv::IMWRITE_PNG_COMPRESSION, 6,  // Balanced compression
+        cv::IMWRITE_PNG_COMPRESSION, compressionLevel,
         cv::IMWRITE_PNG_STRATEGY, cv::IMWRITE_PNG_STRATEGY_DEFAULT
       };
       cv::imencode(".png", src, out, params);

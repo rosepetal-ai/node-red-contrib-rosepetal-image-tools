@@ -10,10 +10,10 @@ public:
   CropWorker(Napi::Function cb,
              const Napi::Value& imgVal,
              double x,double y,double width,double height,
-             bool normalized,std::string outputFormat,int quality = 90)
+             bool normalized,std::string outputFormat,int quality = 90,bool pngOptimize = false)
     : Napi::AsyncWorker(cb),
       x_(x),y_(y),width_(width),height_(height),
-      normalized_(normalized),outputFormat_(std::move(outputFormat)),quality_(quality)
+      normalized_(normalized),outputFormat_(std::move(outputFormat)),quality_(quality),pngOptimize_(pngOptimize)
   {
     /* ─ medir convertMs ─ */
     const int64 t0 = cv::getTickCount();
@@ -66,7 +66,7 @@ protected:
     if(outputFormat_ != "raw"){
       const cv::Mat& srcForEncoding = (channel_=="BGR")? result_
                          : ToBgrForJpg(result_,channel_);
-      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_);
+      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
     }
   }
 
@@ -92,6 +92,7 @@ private:
   bool   normalized_;
   std::string outputFormat_;
   int quality_;
+  bool pngOptimize_;
   std::string channel_;
 
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
@@ -102,9 +103,9 @@ private:
 Napi::Value Crop(const Napi::CallbackInfo& info)
 {
   Napi::Env env = info.Env();
-  if(info.Length()<7||info.Length()>9||!info[info.Length()-1].IsFunction())
+  if(info.Length()<7||info.Length()>10||!info[info.Length()-1].IsFunction())
     return Napi::TypeError::New(env,
-      "crop(image,x,y,width,height,normalized,[outputFormat],[quality],callback)").Value();
+      "crop(image,x,y,width,height,normalized,[outputFormat],[quality],[pngOptimize],callback)").Value();
 
   int i=0;
   Napi::Value img = info[i++];
@@ -117,17 +118,22 @@ Napi::Value Crop(const Napi::CallbackInfo& info)
   // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   
   if (info.Length() >= 8) {
     outputFormat = info[i++].As<Napi::String>().Utf8Value();
   }
   
-  if (info.Length() == 9) {
+  if (info.Length() >= 9) {
     quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
+  if (info.Length() == 10) {
+    pngOptimize = info[i++].As<Napi::Boolean>().Value();
   }
   
   Napi::Function cb = info[i].As<Napi::Function>();
 
-  (new CropWorker(cb,img,x,y,width,height,norm,outputFormat,quality))->Queue();
+  (new CropWorker(cb,img,x,y,width,height,norm,outputFormat,quality,pngOptimize))->Queue();
   return env.Undefined();
 }

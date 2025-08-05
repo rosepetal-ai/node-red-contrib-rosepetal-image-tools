@@ -26,6 +26,7 @@ module.exports = function (RED) {
         /* Configuration */
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
         const minConfidence = NodeUtils.resolveDimension(node, config.minConfidenceType, config.minConfidence, msg) || 0.5;
 
         /* Get input data */
@@ -93,7 +94,7 @@ module.exports = function (RED) {
           // Convert bbox coordinates to crop parameters
           const { x, y, width, height, label, confidence, originalBbox } = bbox;
           
-          return CppProcessor.crop(image, x, y, width, height, false, outputFormat, outputQuality)
+          return CppProcessor.crop(image, x, y, width, height, false, outputFormat, outputQuality, pngOptimize)
             .then(result => ({
               crop: result.image,
               tag: {

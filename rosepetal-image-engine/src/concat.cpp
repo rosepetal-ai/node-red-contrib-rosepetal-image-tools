@@ -110,11 +110,13 @@ public:
                std::string strat,
                cv::Scalar padRGB,
                std::string outputFormat,
-               int quality = 90)
+               int quality = 90,
+               bool pngOptimize = false)
     : Napi::AsyncWorker(cb),
       padColorRGB(padRGB),
       outputFormat(std::move(outputFormat)),
-      quality(quality)
+      quality(quality),
+      pngOptimize(pngOptimize)
   {
     // Convert string enums to faster integer types
     if (dir == "right") direction = Direction::RIGHT;
@@ -242,7 +244,7 @@ protected:
     // Multi-format encoding if needed
     if (outputFormat != "raw") {
       cv::Mat tmp = ToBgrForJpg(result, outputChannel);
-      encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality);
+      encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
     }
   }
 
@@ -267,6 +269,7 @@ private:
   cv::Scalar padColorRGB, padClrImg;
   std::string outputFormat;
   int quality;
+  bool pngOptimize;
   double convertMs = 0, taskMs = 0, encodeMs = 0;
   std::vector<uchar> encodedBuf;
   int maxW = 0, maxH = 0;
@@ -277,9 +280,9 @@ Napi::Value Concat(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Fast parameter validation
-  if (info.Length() < 5 || info.Length() > 7 || !info[0].IsArray() || !info[1].IsString() ||
+  if (info.Length() < 5 || info.Length() > 8 || !info[0].IsArray() || !info[1].IsString() ||
       !info[2].IsString() || !info[3].IsString() || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env, "concat(array, direction, strategy, padHex, [outputFormat], [quality], cb)")
+    Napi::TypeError::New(env, "concat(array, direction, strategy, padHex, [outputFormat], [quality], [pngOptimize], cb)")
       .ThrowAsJavaScriptException();
     return env.Null();
   }
@@ -302,6 +305,7 @@ Napi::Value Concat(const Napi::CallbackInfo& info) {
   // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   size_t cbIdx = 4;
   
   if (info.Length() >= 6) {
@@ -309,12 +313,17 @@ Napi::Value Concat(const Napi::CallbackInfo& info) {
     cbIdx = 5;
   }
   
-  if (info.Length() == 7) {
+  if (info.Length() >= 7) {
     quality = info[5].As<Napi::Number>().Int32Value();
     cbIdx = 6;
   }
+  
+  if (info.Length() == 8) {
+    pngOptimize = info[6].As<Napi::Boolean>().Value();
+    cbIdx = 7;
+  }
 
   // Create and queue worker
-  (new ConcatWorker(info[cbIdx].As<Napi::Function>(), raw, dir, st, pad, outputFormat, quality))->Queue();
+  (new ConcatWorker(info[cbIdx].As<Napi::Function>(), raw, dir, st, pad, outputFormat, quality, pngOptimize))->Queue();
   return env.Undefined();
 }

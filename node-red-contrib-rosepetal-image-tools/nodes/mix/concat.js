@@ -37,11 +37,12 @@ module.exports = function (RED) {
         const strategy  = config.strategy;    // 'pad-start' | 'pad-end' | 'pad-both' | 'resize'
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
         const padColorHex = config.padColor    || '#000000';
 
         /* ▸ Single call to the C++ addon --------------------------------- */
         const { image, timing = {} } =
-              await Cpp.concat(imgs, direction, strategy, padColorHex, outputFormat, outputQuality);
+              await Cpp.concat(imgs, direction, strategy, padColorHex, outputFormat, outputQuality, pngOptimize);
 
         /* ▸ Write the single result back to msg -------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);

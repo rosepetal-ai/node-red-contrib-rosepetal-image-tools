@@ -11,6 +11,7 @@
             outputPathType: { value: "msg" },
             outputFormat:  { value: "raw" },
             outputQuality: { value: 90 }, 
+            pngOptimize: { value: false },
             // Debug configuration
             debugEnabled: { value: false },
             debugWidth: { value: 200 },
@@ -101,6 +102,13 @@
                     $('#quality-row').show();
                 } else {
                     $('#quality-row').hide();
+                }
+                
+                // Show PNG optimize checkbox only when PNG is selected
+                if (format === 'png') {
+                    $('#png-optimize-row').show();
+                } else {
+                    $('#png-optimize-row').hide();
                 }
             }
 
@@ -295,6 +303,11 @@
         <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
         <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
         <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+    </div>
+    <div class="form-row" id="png-optimize-row" style="display: none;">
+        <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+        <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
     </div>
     
     <!-- Debug Configuration -->

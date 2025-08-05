@@ -25,6 +25,7 @@ module.exports = function (RED) {
         const normalized = !!config.coordNorm;
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
 
         /* imagen o lista de imágenes */
         const original = RED.util.getMessageProperty(msg, inPath);
@@ -50,7 +51,7 @@ module.exports = function (RED) {
           const width = Number(NodeUtils.resolveDimension(node, config.widthType, config.width, msg));
           const height = Number(NodeUtils.resolveDimension(node, config.heightType, config.height, msg));
 
-          return CppProcessor.crop(img, x, y, width, height, normalized, outputFormat, outputQuality);
+          return CppProcessor.crop(img, x, y, width, height, normalized, outputFormat, outputQuality, pngOptimize);
         });
 
         const results = await Promise.all(jobs);

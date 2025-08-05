@@ -38,12 +38,13 @@ public:
                        const std::string& backgroundColor,
                        const Napi::Array& imageConfigsArray,
                        bool normalized, std::string outputFormat,
-                       int quality = 90)
+                       int quality = 90,
+                       bool pngOptimize = false)
     : Napi::AsyncWorker(cb),
       canvasWidth_(canvasWidth), canvasHeight_(canvasHeight),
       backgroundColor_(backgroundColor),
       normalized_(normalized), outputFormat_(std::move(outputFormat)),
-      quality_(quality)
+      quality_(quality), pngOptimize_(pngOptimize)
   {
     /* ─ SUPER FAST image conversion with timing ─ */
     const int64 t0 = cv::getTickCount();
@@ -172,7 +173,7 @@ protected:
       // Convert to BGR format for encoding if needed
       const cv::Mat& srcForEncoding = (canvasChannel_ == "BGR") ? canvas_ 
                                      : ToBgrForJpg(canvas_, canvasChannel_);
-      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_);
+      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
     }
   }
   
@@ -452,6 +453,7 @@ private:
   bool normalized_;
   std::string outputFormat_;
   int quality_;
+  bool pngOptimize_;
   
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
   std::vector<uchar> encodedBuf_;
@@ -462,9 +464,9 @@ Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Ultra-fast parameter validation
-  if (info.Length() < 7 || info.Length() > 9 || !info[info.Length()-1].IsFunction()) {
+  if (info.Length() < 7 || info.Length() > 10 || !info[info.Length()-1].IsFunction()) {
     return Napi::TypeError::New(env,
-      "advancedMosaic(imagesArray, width, height, bgColor, imageConfigs, normalized, [outputFormat], [quality], callback)")
+      "advancedMosaic(imagesArray, width, height, bgColor, imageConfigs, normalized, [outputFormat], [quality], [pngOptimize], callback)")
       .Value();
   }
   
@@ -480,6 +482,7 @@ Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   // Handle optional parameters
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   
   if (info.Length() - i >= 2) {
     outputFormat = info[i++].As<Napi::String>().Utf8Value();
@@ -487,6 +490,10 @@ Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   
   if (info.Length() - i >= 2) {
     quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
+  if (info.Length() - i >= 2) {
+    pngOptimize = info[i++].As<Napi::Boolean>().Value();
   }
   
   Napi::Function callback = info[i].As<Napi::Function>();
@@ -498,7 +505,7 @@ Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   
   // Launch ULTRA-FAST worker
   (new AdvancedMosaicWorker(callback, imagesArray, canvasWidth, canvasHeight, 
-                           backgroundColor, imageConfigs, normalized, outputFormat, quality))->Queue();
+                           backgroundColor, imageConfigs, normalized, outputFormat, quality, pngOptimize))->Queue();
   
   return env.Undefined();
 }

@@ -13,12 +13,14 @@ public:
                double angDeg,
                cv::Scalar padRGB,   // R,G,B
                std::string outputFormat,
-               int quality = 90)
+               int quality = 90,
+               bool pngOptimize = false)
     : Napi::AsyncWorker(cb),
       angleDeg(angDeg),
       padColorRGB(padRGB),
       outputFormat(std::move(outputFormat)),
-      quality(quality)
+      quality(quality),
+      pngOptimize(pngOptimize)
   {
     try {
       inputMat = ConvertToMat(imgVal);            // zero-copy RAW
@@ -91,7 +93,7 @@ protected:
               (channelOrder == "BGR") ? resultMat
                                       : ToBgrForJpg(resultMat, channelOrder);
     
-        encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality);
+        encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality, pngOptimize);
       }
     } catch (const std::exception& e) { SetError(e.what()); }
   }
@@ -118,6 +120,7 @@ private:
   cv::Scalar padColorRGB, padClrImg;
   std::string outputFormat;
   int quality;
+  bool pngOptimize;
 
   std::string channelOrder;
   double taskMs  = 0.0;
@@ -130,10 +133,10 @@ private:
 Napi::Value Rotate(const Napi::CallbackInfo& info)
 {
   Napi::Env env = info.Env();
-  if (info.Length() < 4 || info.Length() > 7 ||
+  if (info.Length() < 4 || info.Length() > 8 ||
       !info[info.Length()-1].IsFunction())
     return Napi::TypeError::New(env,
-      "rotate(image, angleDeg, [padColor], [outputFormat], [quality], callback)").Value();
+      "rotate(image, angleDeg, [padColor], [outputFormat], [quality], [pngOptimize], callback)").Value();
 
   int i = 0;
   Napi::Value img   = info[i++];
@@ -145,6 +148,7 @@ Napi::Value Rotate(const Napi::CallbackInfo& info)
   // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   
   if (info.Length() - i >= 2) {
     outputFormat = info[i++].As<Napi::String>().Utf8Value();
@@ -152,6 +156,10 @@ Napi::Value Rotate(const Napi::CallbackInfo& info)
   
   if (info.Length() - i >= 2) {
     quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
+  if (info.Length() - i >= 2) {
+    pngOptimize = info[i++].As<Napi::Boolean>().Value();
   }
 
   Napi::Function cb = info[i].As<Napi::Function>();
@@ -162,7 +170,8 @@ Napi::Value Rotate(const Napi::CallbackInfo& info)
       angleDeg,
       ParseColor(padColorStr),   // RGB
       outputFormat,
-      quality);
+      quality,
+      pngOptimize);
   worker->Queue();
   return env.Undefined();
 }

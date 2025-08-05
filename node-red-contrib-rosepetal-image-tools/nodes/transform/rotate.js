@@ -20,6 +20,7 @@ module.exports = function (RED) {
         const outputPath  = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
         const padColorHex = config.padColor    || '#000000';
 
         const original = RED.util.getMessageProperty(msg, inputPath);
@@ -45,7 +46,7 @@ module.exports = function (RED) {
             node, config.angleType, config.angleValue, msg);
           angle = angle === null || angle === '' ? 0 : Number(angle);
 
-          return CppProcessor.rotate(img, angle, padColorHex, outputFormat, outputQuality);
+          return CppProcessor.rotate(img, angle, padColorHex, outputFormat, outputQuality, pngOptimize);
         });
 
         const results = await Promise.all(promises);

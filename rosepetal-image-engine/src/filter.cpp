@@ -15,13 +15,15 @@ public:
                int kernelSize,
                double intensity,
                std::string outputFormat,
-               int quality = 90)
+               int quality = 90,
+               bool pngOptimize = false)
     : Napi::AsyncWorker(cb),
       filterType_(filterType),
       kernelSize_(kernelSize),
       intensity_(intensity),
       outputFormat_(std::move(outputFormat)),
-      quality_(quality)
+      quality_(quality),
+      pngOptimize_(pngOptimize)
   {
     // Convert input image and measure timing
     const int64 t0 = cv::getTickCount();
@@ -76,7 +78,7 @@ protected:
       if (outputFormat_ != "raw") {
         const cv::Mat& srcForEncoding = (channel_ == "BGR") ? result_ 
                                        : ToBgrForJpg(result_, channel_);
-        encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_);
+        encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
       }
     } catch (const std::exception& e) {
       SetError(e.what());
@@ -106,6 +108,7 @@ private:
   double intensity_;
   std::string outputFormat_;
   int quality_;
+  bool pngOptimize_;
   std::string channel_;
   
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
@@ -180,14 +183,14 @@ private:
   }
 };
 
-/*──────── binding: filter(image, filterType, kernelSize, intensity, [outputFormat], [quality], callback) ─*/
+/*──────── binding: filter(image, filterType, kernelSize, intensity, [outputFormat], [quality], [pngOptimize], callback) ─*/
 Napi::Value Filter(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
   // Validate arguments
-  if (info.Length() < 5 || info.Length() > 7 || !info[info.Length() - 1].IsFunction()) {
+  if (info.Length() < 5 || info.Length() > 8 || !info[info.Length() - 1].IsFunction()) {
     return Napi::TypeError::New(env,
-        "filter(image, filterType, kernelSize, intensity, [outputFormat], [quality], callback)").Value();
+        "filter(image, filterType, kernelSize, intensity, [outputFormat], [quality], [pngOptimize], callback)").Value();
   }
 
   int i = 0;
@@ -199,6 +202,7 @@ Napi::Value Filter(const Napi::CallbackInfo& info) {
   // Handle parameters
   std::string outputFormat = "raw";
   int quality = 90;
+  bool pngOptimize = false;
   
   if (info.Length() - i >= 2) {
     outputFormat = info[i++].As<Napi::String>().Utf8Value();
@@ -206,6 +210,10 @@ Napi::Value Filter(const Napi::CallbackInfo& info) {
   
   if (info.Length() - i >= 2) {
     quality = info[i++].As<Napi::Number>().Int32Value();
+  }
+  
+  if (info.Length() - i >= 2) {
+    pngOptimize = info[i++].As<Napi::Boolean>().Value();
   }
   
   Napi::Function cb = info[i].As<Napi::Function>();
@@ -217,6 +225,6 @@ Napi::Value Filter(const Napi::CallbackInfo& info) {
   kernelSize = std::max(3, std::min(kernelSize, 15)); // Clamp to reasonable range
 
   // Create and queue worker
-  (new FilterWorker(cb, img, filterType, kernelSize, intensity, outputFormat, quality))->Queue();
+  (new FilterWorker(cb, img, filterType, kernelSize, intensity, outputFormat, quality, pngOptimize))->Queue();
   return env.Undefined();
 }

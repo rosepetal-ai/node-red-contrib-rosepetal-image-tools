@@ -21,6 +21,7 @@ module.exports = function (RED) {
         const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
 
         const originalPayload = RED.util.getMessageProperty(msg, inputPath);
         const inputList = Array.isArray(originalPayload)
@@ -59,13 +60,14 @@ module.exports = function (RED) {
           wVal = wVal === null || wVal === '' ? NaN : Number(wVal);
           hVal = hVal === null || hVal === '' ? NaN : Number(hVal);
 
-          // Direct call to addon: (image, wMode, wVal, hMode, hVal, outputFormat, quality)
+          // Direct call to addon: (image, wMode, wVal, hMode, hVal, outputFormat, quality, pngOptimize)
           return CppProcessor.resize(
             inputImage,
             config.widthMode,  wVal,
             config.heightMode, hVal,
             outputFormat,
-            outputQuality
+            outputQuality,
+            pngOptimize
           );
         });
         const results = await Promise.all(promises);

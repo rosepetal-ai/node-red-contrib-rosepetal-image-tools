@@ -23,6 +23,7 @@ module.exports = function (RED) {
         const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
 
         // Filter parameters
         const filterType = config.filterType || 'blur';
@@ -75,7 +76,8 @@ module.exports = function (RED) {
             kernelSize,
             intensity,
             outputFormat,
-            outputQuality
+            outputQuality,
+            pngOptimize
           );
         });
 

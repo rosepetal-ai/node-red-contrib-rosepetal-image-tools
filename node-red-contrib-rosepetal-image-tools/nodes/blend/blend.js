@@ -43,10 +43,11 @@ module.exports = function (RED) {
         const opacity = Math.max(0, Math.min(100, parseInt(config.opacity) || 50)) / 100.0;
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = config.outputQuality || 90;
+        const pngOptimize = config.pngOptimize || false;
 
         /* ▸ Single call to the C++ addon --------------------------------- */
         const { image, timing = {} } =
-              await Cpp.blend(img1, img2, opacity, outputFormat, outputQuality);
+              await Cpp.blend(img1, img2, opacity, outputFormat, outputQuality, pngOptimize);
 
         /* ▸ Write the result back to msg ---------------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);

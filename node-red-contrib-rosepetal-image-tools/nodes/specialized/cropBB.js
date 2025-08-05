@@ -25,7 +25,7 @@ module.exports = function (RED) {
 
         /* Configuration */
         const outputFormat = config.outputFormat || 'raw';
-        const outputQuality = config.outputQuality || 90;
+        const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
         const minConfidence = NodeUtils.resolveDimension(node, config.minConfidenceType, config.minConfidence, msg) || 0.5;
 

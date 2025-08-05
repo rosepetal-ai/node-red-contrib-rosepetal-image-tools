@@ -41,7 +41,7 @@ module.exports = function (RED) {
 
         /* static options from editor */
         const outputFormat = cfg.outputFormat || 'raw';
-        const outputQuality = cfg.outputQuality || 90;
+        const outputQuality = parseInt(cfg.outputQuality) || 90;
         const pngOptimize = cfg.pngOptimize || false;
         const padHex   = cfg.padColor || '#000000';
 

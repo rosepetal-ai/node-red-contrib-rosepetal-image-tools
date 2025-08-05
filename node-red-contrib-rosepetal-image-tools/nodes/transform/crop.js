@@ -24,7 +24,7 @@ module.exports = function (RED) {
         /* flags */
         const normalized = !!config.coordNorm;
         const outputFormat = config.outputFormat || 'raw';
-        const outputQuality = config.outputQuality || 90;
+        const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
 
         /* imagen o lista de imágenes */

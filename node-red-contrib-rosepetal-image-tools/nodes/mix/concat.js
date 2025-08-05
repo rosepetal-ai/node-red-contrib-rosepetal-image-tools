@@ -36,7 +36,7 @@ module.exports = function (RED) {
         const direction = config.direction;   // 'right' | 'left' | 'down' | 'up'
         const strategy  = config.strategy;    // 'pad-start' | 'pad-end' | 'pad-both' | 'resize'
         const outputFormat = config.outputFormat || 'raw';
-        const outputQuality = config.outputQuality || 90;
+        const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
         const padColorHex = config.padColor    || '#000000';
 

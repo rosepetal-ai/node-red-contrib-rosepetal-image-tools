@@ -42,7 +42,7 @@ module.exports = function (RED) {
         /* ▸ Options from the editor -------------------------------------- */
         const opacity = Math.max(0, Math.min(100, parseInt(config.opacity) || 50)) / 100.0;
         const outputFormat = config.outputFormat || 'raw';
-        const outputQuality = config.outputQuality || 90;
+        const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
 
         /* ▸ Single call to the C++ addon --------------------------------- */

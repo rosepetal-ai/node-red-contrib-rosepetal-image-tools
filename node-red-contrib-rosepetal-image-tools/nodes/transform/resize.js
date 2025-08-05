@@ -20,7 +20,7 @@ module.exports = function (RED) {
         const inputPath  = config.inputPath  || 'payload';
         const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
-        const outputQuality = config.outputQuality || 90;
+        const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
 
         const originalPayload = RED.util.getMessageProperty(msg, inputPath);

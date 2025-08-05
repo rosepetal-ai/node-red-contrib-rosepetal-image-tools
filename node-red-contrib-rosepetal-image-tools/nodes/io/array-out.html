@@ -10,7 +10,7 @@
             outputPathType: { value: "msg" }
         },
         inputs: 1,
-        outputs: 1,
+        outputs: 2,
         icon: "font-awesome/fa-sign-out",
         label: function() {
             return this.name || `Array Out (${this.expectedCount} items)`;
@@ -51,7 +51,7 @@
     </div>
     
     <div class="form-tips">
-        <b>Timeout:</b> Maximum time to wait for all array elements after the first message arrives. If timeout occurs, no message is sent.<br>
+        <b>Timeout:</b> Maximum time to wait for all array elements after the first message arrives. If timeout occurs, collected data and missing position info are sent to output 2.<br>
         <b>Expected Count:</b> Number of array elements required before outputting the assembled array.
     </div>
 </script>
@@ -65,7 +65,7 @@
     <h3>Properties</h3>
     <dl class="message-properties">
         <dt>Timeout <span class="property-type">number</span></dt>
-        <dd>Maximum time in milliseconds to wait for all array elements after the first message arrives. Default: 5000ms. If timeout occurs, no message is sent and collection resets.</dd>
+        <dd>Maximum time in milliseconds to wait for all array elements after the first message arrives. Default: 5000ms. If timeout occurs, collected data and missing position info are sent to output 2.</dd>
         <dt>Expected Count <span class="property-type">number</span></dt>
         <dd>Number of array elements required before outputting the assembled array. Must match the number of array-in nodes connected. Required field, minimum value: 1.</dd>
         <dt>Output to <span class="property-type">string</span></dt>
@@ -84,8 +84,10 @@
 
     <h3>Outputs</h3>
     <dl class="message-properties">
-        <dt>payload <span class="property-type">array</span></dt>
-        <dd>The assembled array containing data from all array-in nodes, ordered by position indices [data0, data1, data2...]</dd>
+        <dt>Output 1 - Complete Array <span class="property-type">array</span></dt>
+        <dd>The complete assembled array when all expected elements are received: [data0, data1, data2...]</dd>
+        <dt>Output 2 - Timeout Data <span class="property-type">object</span></dt>
+        <dd>On timeout: collected data array (with nulls for missing) plus metadata about missing positions</dd>
     </dl>
 
     <h3>Operation Flow</h3>
@@ -94,7 +96,7 @@
         <li><strong>Collection:</strong> Gathers messages from array-in nodes, validates positions</li>
         <li><strong>Assembly:</strong> Places data at specified array positions based on meta.arrayPosition</li>
         <li><strong>Success:</strong> Outputs assembled array when all expected elements received</li>
-        <li><strong>Timeout:</strong> Resets collection, no message sent</li>
+        <li><strong>Timeout:</strong> Sends collected data + missing info to output 2</li>
         <li><strong>Reset:</strong> Ready for next collection cycle</li>
     </ol>
 

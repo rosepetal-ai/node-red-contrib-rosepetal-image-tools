@@ -54,12 +54,52 @@ module.exports = function (RED) {
 
     function handleTimeout() {
       const elapsed = Date.now() - node.collectionStartTime;
-      resetCollection();
+      
+      /* Build timeout message with collected data + missing info */
+      const collectedPositions = Object.keys(node.collection).map(k => parseInt(k)).sort((a, b) => a - b);
+      const missingPositions = [];
+      for (let i = 0; i < node.expectedCount; i++) {
+        if (!node.collection.hasOwnProperty(i)) {
+          missingPositions.push(i);
+        }
+      }
+      
+      /* Build the partial array (same logic as normal completion) */
+      const result = Array.from({ length: node.expectedCount }, (_, i) =>
+        node.collection.hasOwnProperty(i) ? node.collection[i] : null
+      );
+      
+      /* Create timeout message */
+      const timeoutMsg = {
+        meta: {
+          timeout: true,
+          missingPositions: missingPositions,
+          collectedPositions: collectedPositions,
+          expectedCount: node.expectedCount,
+          collectedCount: collectedPositions.length,
+          elapsed: elapsed
+        }
+      };
+      
+      /* Place the partial array where the user wants it */
+      if (node.outputPathType === 'msg') {
+        RED.util.setMessageProperty(timeoutMsg, node.outputPath, result, true);
+      } else if (node.outputPathType === 'flow') {
+        node.context().flow.set(node.outputPath, result);
+      } else if (node.outputPathType === 'global') {
+        node.context().global.set(node.outputPath, result);
+      }
+      
+      /* Send to output 2 only */
+      node.send([null, timeoutMsg]);
+      
       node.status({
-        fill: 'red',
+        fill: 'yellow',
         shape: 'ring',
-        text: `Timeout after ${elapsed} ms – discarded`
+        text: `Timeout: sent ${collectedPositions.length}/${node.expectedCount} to output 2`
       });
+      
+      resetCollection();
       setTimeout(setStatusReady, 3000);
     }
 
@@ -86,7 +126,7 @@ module.exports = function (RED) {
         shape: 'dot',
         text: `Complete: ${result.length} (${elapsed} ms)`
       });
-      node.send(outMsg);
+      node.send([outMsg, null]);
 
       /* Return to ready after a short pause */
       setTimeout(setStatusReady, 2000);

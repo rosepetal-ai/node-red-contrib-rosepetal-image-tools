@@ -126,12 +126,15 @@
           this.showGrid = true;
           this.snapToGrid = true;
           this.gridSize = 20;
-          this.handleSize = 8;
+          this.handleSize = 14; // Increased from 8px for better usability
+          this.hitAreaSize = 24; // Expanded hit detection area
           
           // Enhanced magnetic grid features
           this.magneticSnap = true;
-          this.magneticDistance = 10; // pixels
+          this.magneticDistance = 18; // Increased from 10px for better snapping
           this.snapLines = []; // Visual feedback for snapping
+          this.snapLineThickness = 3; // Enhanced visual feedback
+          this.edgeMargins = [0, 5, 10, 20]; // Canvas edge snap margins
           
           // Aspect ratio preservation
           this.shiftPressed = false;
@@ -174,6 +177,21 @@
           this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
           this.canvas.addEventListener('click', (e) => this.handleClick(e));
           
+          // Global mouse tracking for resize operations outside canvas
+          this.globalMouseMoveHandler = (e) => {
+            if (this.isResizing || this.isDragging || this.isRotating) {
+              this.handleMouseMove(e);
+            }
+          };
+          this.globalMouseUpHandler = (e) => {
+            if (this.isResizing || this.isDragging || this.isRotating) {
+              this.handleMouseUp(e);
+            }
+          };
+          
+          document.addEventListener('mousemove', this.globalMouseMoveHandler);
+          document.addEventListener('mouseup', this.globalMouseUpHandler);
+          
           // Canvas size change listeners
           $("#node-input-canvasWidth, #node-input-canvasHeight").on('input', () => {
             this.updateCanvasSize();
@@ -204,9 +222,20 @@
         
         getMousePos(e) {
           const rect = this.canvas.getBoundingClientRect();
+          
+          // Enhanced mouse position calculation for operations outside canvas bounds
+          const rawX = (e.clientX - rect.left) / this.scale;
+          const rawY = (e.clientY - rect.top) / this.scale;
+          
+          // During resize operations, allow coordinates outside canvas for easier edge-to-edge resizing
+          if (this.isResizing || this.isDragging || this.isRotating) {
+            return { x: rawX, y: rawY }; // Don't clamp during active operations
+          }
+          
+          // For normal interactions, keep within reasonable bounds
           return {
-            x: (e.clientX - rect.left) / this.scale,
-            y: (e.clientY - rect.top) / this.scale
+            x: Math.max(-50, Math.min(rawX, this.canvasWidth + 50)), // Allow 50px buffer
+            y: Math.max(-50, Math.min(rawY, this.canvasHeight + 50))
           };
         }
         
@@ -227,27 +256,71 @@
           const snapLines = [];
           const dist = this.magneticDistance;
           
-          // Canvas boundary snapping
-          // Left edge
-          if (Math.abs(x) < dist) {
-            snappedX = 0;
-            snapLines.push({ type: 'vertical', pos: 0, color: '#FF6B6B' });
-          }
-          // Right edge
-          else if (Math.abs(x + width - this.canvasWidth) < dist) {
-            snappedX = this.canvasWidth - width;
-            snapLines.push({ type: 'vertical', pos: this.canvasWidth, color: '#FF6B6B' });
+          // Enhanced canvas boundary and margin snapping
+          let verticalSnapped = false, horizontalSnapped = false;
+          
+          // Canvas edge and margin snapping (left side)
+          for (let margin of this.edgeMargins) {
+            if (Math.abs(x - margin) < dist) {
+              snappedX = margin;
+              snapLines.push({ type: 'vertical', pos: margin, color: margin === 0 ? '#FF6B6B' : '#FF9F43' });
+              verticalSnapped = true;
+              break;
+            }
           }
           
-          // Top edge
-          if (Math.abs(y) < dist) {
-            snappedY = 0;
-            snapLines.push({ type: 'horizontal', pos: 0, color: '#FF6B6B' });
+          // Canvas edge and margin snapping (right side)
+          if (!verticalSnapped) {
+            for (let margin of this.edgeMargins) {
+              if (Math.abs(x + width - (this.canvasWidth - margin)) < dist) {
+                snappedX = this.canvasWidth - width - margin;
+                snapLines.push({ type: 'vertical', pos: this.canvasWidth - margin, color: margin === 0 ? '#FF6B6B' : '#FF9F43' });
+                verticalSnapped = true;
+                break;
+              }
+            }
           }
-          // Bottom edge
-          else if (Math.abs(y + height - this.canvasHeight) < dist) {
-            snappedY = this.canvasHeight - height;
-            snapLines.push({ type: 'horizontal', pos: this.canvasHeight, color: '#FF6B6B' });
+          
+          // Canvas center-line snapping (vertical)
+          if (!verticalSnapped) {
+            const centerX = this.canvasWidth / 2;
+            const imageCenterX = x + width / 2;
+            if (Math.abs(imageCenterX - centerX) < dist) {
+              snappedX = centerX - width / 2;
+              snapLines.push({ type: 'vertical', pos: centerX, color: '#00D2D3' });
+            }
+          }
+          
+          // Canvas edge and margin snapping (top)
+          for (let margin of this.edgeMargins) {
+            if (Math.abs(y - margin) < dist) {
+              snappedY = margin;
+              snapLines.push({ type: 'horizontal', pos: margin, color: margin === 0 ? '#FF6B6B' : '#FF9F43' });
+              horizontalSnapped = true;
+              break;
+            }
+          }
+          
+          // Canvas edge and margin snapping (bottom)
+          if (!horizontalSnapped) {
+            for (let margin of this.edgeMargins) {
+              if (Math.abs(y + height - (this.canvasHeight - margin)) < dist) {
+                snappedY = this.canvasHeight - height - margin;
+                snapLines.push({ type: 'horizontal', pos: this.canvasHeight - margin, color: margin === 0 ? '#FF6B6B' : '#FF9F43' });
+                horizontalSnapped = true;
+                break;
+              }
+            }
+          }
+          
+          // Canvas center-line snapping (horizontal)
+          if (!horizontalSnapped) {
+            const centerY = this.canvasHeight / 2;
+            const imageCenterY = y + height / 2;
+            if (Math.abs(imageCenterY - centerY) < dist) {
+              snappedY = centerY - height / 2;
+              snapLines.push({ type: 'horizontal', pos: centerY, color: '#00D2D3' });
+            }
           }
           
           // Grid line snapping to canvas borders - enhanced magnetic grid
@@ -335,6 +408,24 @@
               snappedY = otherBounds.y - height;
               snapLines.push({ type: 'horizontal', pos: otherBounds.y, color: '#45B7D1' });
             }
+            
+            // Center-to-center snapping (enhanced feature)
+            const currentCenterX = x + width / 2;
+            const currentCenterY = y + height / 2;
+            const otherCenterX = otherBounds.x + otherBounds.width / 2;
+            const otherCenterY = otherBounds.y + otherBounds.height / 2;
+            
+            // Horizontal center alignment
+            if (Math.abs(currentCenterX - otherCenterX) < dist) {
+              snappedX = otherCenterX - width / 2;
+              snapLines.push({ type: 'vertical', pos: otherCenterX, color: '#E74C3C' });
+            }
+            
+            // Vertical center alignment
+            if (Math.abs(currentCenterY - otherCenterY) < dist) {
+              snappedY = otherCenterY - height / 2;
+              snapLines.push({ type: 'horizontal', pos: otherCenterY, color: '#E74C3C' });
+            }
           }
           
           return { x: snappedX, y: snappedY, snapLines };
@@ -408,17 +499,18 @@
           
           const config = this.node.imageConfigs[this.selectedIndex];
           const bounds = this.getImageBounds(config, this.selectedIndex);
-          const h = this.handleSize;
+          const h = this.handleSize; // Visual handle size
+          const hitArea = this.hitAreaSize; // Larger hit detection area
           
-          // Test rotation handle first
+          // Test rotation handle first (use larger hit area)
           const rotHandleX = bounds.x + bounds.width/2;
           const rotHandleY = bounds.y - 25;
           const rotDist = Math.sqrt((x - rotHandleX)**2 + (y - rotHandleY)**2);
-          if (rotDist <= h) {
+          if (rotDist <= hitArea/2) {
             return 'rotate';
           }
           
-          // Test resize handles
+          // Test resize handles (use expanded hit areas for easier clicking)
           const handles = {
             'nw': { x: bounds.x - h/2, y: bounds.y - h/2 },
             'n':  { x: bounds.x + bounds.width/2 - h/2, y: bounds.y - h/2 },
@@ -431,8 +523,11 @@
           };
           
           for (let [handleType, handle] of Object.entries(handles)) {
-            if (x >= handle.x && x <= handle.x + h &&
-                y >= handle.y && y <= handle.y + h) {
+            // Use expanded hit area for easier clicking while keeping visual handle small
+            const hitX = handle.x + h/2 - hitArea/2; // Center the larger hit area on the visual handle
+            const hitY = handle.y + h/2 - hitArea/2;
+            if (x >= hitX && x <= hitX + hitArea &&
+                y >= hitY && y <= hitY + hitArea) {
               return handleType;
             }
           }
@@ -696,22 +791,114 @@
         }
         
         updateCursor(e) {
-          if (this.isDragging || this.isResizing || this.isRotating) return;
-          
           const pos = this.getMousePos(e);
           const hit = this.hitTest(pos.x, pos.y);
           
+          // Enhanced cursor feedback during active operations
+          if (this.isDragging) {
+            // Show different cursors based on snapping state during drag
+            if (this.snapLines && this.snapLines.length > 0) {
+              this.canvas.style.cursor = 'grabbing'; // Indicates active snapping
+            } else {
+              this.canvas.style.cursor = 'move'; // Standard dragging
+            }
+            return;
+          } else if (this.isResizing) {
+            // Maintain resize cursor during active resize operation
+            const cursors = {
+              'nw': 'nw-resize', 'n': 'n-resize', 'ne': 'ne-resize',
+              'e': 'e-resize', 'se': 'se-resize', 's': 's-resize',
+              'sw': 'sw-resize', 'w': 'w-resize'
+            };
+            this.canvas.style.cursor = cursors[this.resizeHandle] || 'pointer';
+            return;
+          } else if (this.isRotating) {
+            this.canvas.style.cursor = 'crosshair';
+            return;
+          }
+          
+          // Enhanced static cursor feedback based on hit detection
           if (hit && hit.type === 'handle') {
             const cursors = {
               'nw': 'nw-resize', 'n': 'n-resize', 'ne': 'ne-resize',
               'e': 'e-resize', 'se': 'se-resize', 's': 's-resize',
               'sw': 'sw-resize', 'w': 'w-resize', 'rotate': 'crosshair'
             };
-            this.canvas.style.cursor = cursors[hit.handle] || 'pointer';
+            
+            // Enhanced cursor with visual feedback for different handle types
+            const cursor = cursors[hit.handle];
+            if (cursor) {
+              this.canvas.style.cursor = cursor;
+              // Add subtle visual hint - could be enhanced with canvas tooltip
+              this.canvas.title = this.getHandleTooltip(hit.handle);
+            } else {
+              this.canvas.style.cursor = 'pointer';
+              this.canvas.title = 'Click to interact';
+            }
           } else if (hit && hit.type === 'image') {
-            this.canvas.style.cursor = 'move';
+            // Enhanced feedback for image hover
+            this.canvas.style.cursor = 'grab'; // Better than 'move', indicates draggable
+            this.canvas.title = `Image ${hit.index + 1} - Click and drag to move, click to select`;
           } else {
+            // Enhanced empty canvas feedback
             this.canvas.style.cursor = 'default';
+            
+            // Provide contextual hints based on canvas state
+            if (this.selectedIndex >= 0) {
+              this.canvas.title = 'Click empty area to deselect image';
+            } else if (this.node.imageConfigs && this.node.imageConfigs.length === 0) {
+              this.canvas.title = 'Click "Add Image" to start building your mosaic';
+            } else {
+              this.canvas.title = 'Click on an image to select it';
+            }
+          }
+          
+          // Additional cursor feedback for proximity to snap zones
+          this.updateSnapProximityCursor(pos);
+        }
+        
+        // Helper method to get tooltip text for handle types
+        getHandleTooltip(handleType) {
+          const tooltips = {
+            'nw': 'Resize from top-left corner',
+            'n': 'Resize height from top',
+            'ne': 'Resize from top-right corner',
+            'e': 'Resize width from right',
+            'se': 'Resize from bottom-right corner',
+            's': 'Resize height from bottom',
+            'sw': 'Resize from bottom-left corner',
+            'w': 'Resize width from left',
+            'rotate': 'Click and drag to rotate image'
+          };
+          return tooltips[handleType] || 'Resize handle';
+        }
+        
+        // Enhanced cursor feedback for proximity to snap zones
+        updateSnapProximityCursor(pos) {
+          if (this.isDragging || this.isResizing || this.isRotating) return;
+          if (!this.magneticSnap) return;
+          
+          const snapProximity = this.magneticDistance * 1.5; // Larger detection area
+          let nearSnapZone = false;
+          
+          // Check proximity to canvas edges
+          if (pos.x <= snapProximity || pos.x >= this.canvasWidth - snapProximity ||
+              pos.y <= snapProximity || pos.y >= this.canvasHeight - snapProximity) {
+            nearSnapZone = true;
+          }
+          
+          // Check proximity to canvas center lines
+          const centerX = this.canvasWidth / 2;
+          const centerY = this.canvasHeight / 2;
+          if (Math.abs(pos.x - centerX) <= snapProximity || Math.abs(pos.y - centerY) <= snapProximity) {
+            nearSnapZone = true;
+          }
+          
+          // Subtle cursor enhancement for snap zones (only when no image is under cursor)
+          const hit = this.hitTest(pos.x, pos.y);
+          if (nearSnapZone && !hit && this.canvas.style.cursor === 'default') {
+            this.canvas.style.cursor = 'crosshair';
+            this.canvas.title = 'Near snap zone - drag images here for precise alignment';
           }
         }
         
@@ -1070,24 +1257,67 @@
           if (!this.snapLines || this.snapLines.length === 0) return;
           
           ctx.save();
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          ctx.globalAlpha = 0.8;
+          ctx.lineWidth = this.snapLineThickness; // Use configured thickness (3px)
+          ctx.globalAlpha = 0.9; // Increased opacity for better visibility
+          
+          // Group lines by type for optimized rendering
+          const verticalLines = [];
+          const horizontalLines = [];
           
           this.snapLines.forEach(line => {
-            ctx.strokeStyle = line.color;
-            ctx.beginPath();
-            
             if (line.type === 'vertical') {
-              ctx.moveTo(line.pos, 0);
-              ctx.lineTo(line.pos, this.canvasHeight);
+              verticalLines.push(line);
             } else if (line.type === 'horizontal') {
-              ctx.moveTo(0, line.pos);
-              ctx.lineTo(this.canvasWidth, line.pos);
+              horizontalLines.push(line);
             }
-            
-            ctx.stroke();
           });
+          
+          // Enhanced visual styling based on snap type
+          const drawLineGroup = (lines, isVertical) => {
+            lines.forEach(line => {
+              ctx.save();
+              
+              // Set line style based on color/type for better visual distinction
+              if (line.color === '#E74C3C') { // Center-to-center snapping (red)
+                ctx.setLineDash([8, 4]); // Distinctive dash pattern
+                ctx.strokeStyle = line.color;
+                ctx.shadowBlur = 2;
+                ctx.shadowColor = 'rgba(231, 76, 60, 0.3)';
+              } else if (line.color === '#F39C12') { // Canvas edges (orange)
+                ctx.setLineDash([6, 3]); // Medium dash pattern
+                ctx.strokeStyle = line.color;
+                ctx.shadowBlur = 1;
+                ctx.shadowColor = 'rgba(243, 156, 18, 0.2)';
+              } else if (line.color === '#3498DB') { // Canvas center-lines (blue)
+                ctx.setLineDash([10, 2]); // Long dash pattern for center-lines
+                ctx.strokeStyle = line.color;
+                ctx.shadowBlur = 2;
+                ctx.shadowColor = 'rgba(52, 152, 219, 0.3)';
+              } else { // Default/other snap types
+                ctx.setLineDash([5, 5]); // Standard dash pattern
+                ctx.strokeStyle = line.color || '#27AE60'; // Default green
+                ctx.shadowBlur = 1;
+                ctx.shadowColor = 'rgba(39, 174, 96, 0.2)';
+              }
+              
+              ctx.beginPath();
+              
+              if (isVertical) {
+                ctx.moveTo(line.pos, 0);
+                ctx.lineTo(line.pos, this.canvasHeight);
+              } else {
+                ctx.moveTo(0, line.pos);
+                ctx.lineTo(this.canvasWidth, line.pos);
+              }
+              
+              ctx.stroke();
+              ctx.restore();
+            });
+          };
+          
+          // Draw vertical and horizontal lines with optimized grouping
+          drawLineGroup(verticalLines, true);
+          drawLineGroup(horizontalLines, false);
           
           ctx.restore();
         }

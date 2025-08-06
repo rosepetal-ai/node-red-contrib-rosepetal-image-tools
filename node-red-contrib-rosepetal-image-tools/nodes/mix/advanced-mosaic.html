@@ -1196,10 +1196,8 @@
           if (this.selectedIndex >= 0) {
             const config = this.node.imageConfigs[this.selectedIndex];
             
-            // Input dimensions
-            config.arrayIndex = parseInt($('#prop-array-index').val()) || 0;
-            config.inputWidth = parseInt($('#prop-input-width').val()) || 800;
-            config.inputHeight = parseInt($('#prop-input-height').val()) || 600;
+            // Input dimensions are now locked - skip updating them
+            // config.arrayIndex, config.inputWidth, config.inputHeight are read-only
             
             // Resize dimensions
             const widthVal = $('#prop-width').val();
@@ -1231,17 +1229,54 @@
         
         // Event handlers for canvas controls
         $('#add-image-config').on('click', function() {
+          // Use native JavaScript prompts to collect input dimensions
+          const arrayIndex = prompt('Enter Array Index (which image from input array to use):', node.imageConfigs.length);
+          if (arrayIndex === null) return; // User cancelled
+          
+          const inputWidth = prompt('Enter Input Width (original image width in pixels):', '800');
+          if (inputWidth === null) return; // User cancelled
+          
+          const inputHeight = prompt('Enter Input Height (original image height in pixels):', '600');
+          if (inputHeight === null) return; // User cancelled
+          
+          // Validate inputs
+          const parsedArrayIndex = parseInt(arrayIndex) || 0;
+          const parsedInputWidth = parseInt(inputWidth) || 800;
+          const parsedInputHeight = parseInt(inputHeight) || 600;
+          
+          // Get current canvas dimensions for proportional scaling (1/6 scale)
+          const canvasWidth = parseInt($("#node-input-canvasWidth").val()) || 800;
+          const canvasHeight = parseInt($("#node-input-canvasHeight").val()) || 600;
+          
+          // Calculate 1/6 scale with aspect ratio preservation
+          const scaleSize = Math.min(canvasWidth, canvasHeight) / 6;
+          const aspectRatio = parsedInputWidth / parsedInputHeight;
+          
+          let displayWidth, displayHeight;
+          if (aspectRatio >= 1) {
+            // Wide/square - fit to scale width
+            displayWidth = Math.round(scaleSize);
+            displayHeight = Math.round(scaleSize / aspectRatio);
+          } else {
+            // Tall - fit to scale height
+            displayHeight = Math.round(scaleSize);
+            displayWidth = Math.round(scaleSize * aspectRatio);
+          }
+          
+          // Create new image config with user-provided values
           node.imageConfigs.push({
-            arrayIndex: node.imageConfigs.length,
-            inputWidth: 800,
-            inputHeight: 600,
+            arrayIndex: parsedArrayIndex,
+            inputWidth: parsedInputWidth,
+            inputHeight: parsedInputHeight,
             x: 50 + (node.imageConfigs.length * 20),
             y: 50 + (node.imageConfigs.length * 20),
-            width: 200,
-            height: 150,
+            width: displayWidth,
+            height: displayHeight,
             rotation: 0,
-            zIndex: node.imageConfigs.length
+            zIndex: node.imageConfigs.length,
+            locked: true  // Mark as locked
           });
+          
           canvasEditor.render();
           RED.nodes.dirty(true);
         });
@@ -1603,16 +1638,22 @@
       <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-top: 8px;">
         <div>
           <label>Array Index:</label>
-          <input type="number" id="prop-array-index" min="0" style="width: 100%; font-size: 11px;">
+          <input type="number" id="prop-array-index" min="0" style="width: 100%; font-size: 11px; background-color: #f5f5f5;" readonly>
+          <small style="color: #999; font-size: 9px;">🔒 Locked</small>
         </div>
         <div>
           <label>Input Width:</label>
-          <input type="number" id="prop-input-width" min="1" style="width: 100%; font-size: 11px;" placeholder="800">
+          <input type="number" id="prop-input-width" min="1" style="width: 100%; font-size: 11px; background-color: #f5f5f5;" placeholder="800" readonly>
+          <small style="color: #999; font-size: 9px;">🔒 Locked</small>
         </div>
         <div>
           <label>Input Height:</label>
-          <input type="number" id="prop-input-height" min="1" style="width: 100%; font-size: 11px;" placeholder="600">
+          <input type="number" id="prop-input-height" min="1" style="width: 100%; font-size: 11px; background-color: #f5f5f5;" placeholder="600" readonly>
+          <small style="color: #999; font-size: 9px;">🔒 Locked</small>
         </div>
+      </div>
+      <div style="margin-top: 5px;">
+        <small style="color: #999; font-style: italic;">These values are locked after creation. Delete and recreate the image to change them.</small>
       </div>
     </div>
     

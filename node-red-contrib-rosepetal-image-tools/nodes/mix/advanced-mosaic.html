@@ -749,11 +749,26 @@
                 break;
             }
             
-            // Apply bounds checking
-            config.x = Math.max(0, Math.min(newBounds.x, this.canvasWidth - newBounds.width));
-            config.y = Math.max(0, Math.min(newBounds.y, this.canvasHeight - newBounds.height));
-            config.width = newBounds.width;
-            config.height = newBounds.height;
+            // All-or-nothing boundary checking - stop entire resize when hitting any edge
+            const wouldExceedBounds = (
+              newBounds.x < 0 || 
+              newBounds.y < 0 || 
+              newBounds.x + newBounds.width > this.canvasWidth || 
+              newBounds.y + newBounds.height > this.canvasHeight ||
+              newBounds.width < 20 ||
+              newBounds.height < 20
+            );
+            
+            if (wouldExceedBounds) {
+              // Hit any boundary - stop resize completely, keep current dimensions
+              // Don't change config at all to preserve aspect ratio
+            } else {
+              // All boundaries respected - apply resize
+              config.x = newBounds.x;
+              config.y = newBounds.y;
+              config.width = newBounds.width;
+              config.height = newBounds.height;
+            }
             
             this.updatePropertiesPanel();
             this.render();

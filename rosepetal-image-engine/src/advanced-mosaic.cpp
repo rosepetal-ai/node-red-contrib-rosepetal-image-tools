@@ -270,11 +270,17 @@ private:
         cv::Scalar padColor(0, 0, 0, 0); // Transparent black (RGBA)
         
         // Ensure the image has an alpha channel for transparent padding
+        // Respect original colorSpace format to prevent channel inversion
         if (img.channels() == 3) {
-          cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
+          if (imgChannel == "RGB") {
+            cv::cvtColor(img, img, cv::COLOR_RGB2RGBA);
+          } else { // BGR format
+            cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
+          }
         } else if (img.channels() == 1) {
           cv::cvtColor(img, img, cv::COLOR_GRAY2BGRA);
         }
+        // 4-channel images (RGBA/BGRA) already have alpha - no conversion needed
         
         cv::warpAffine(img, img, rotationMatrix, newSize, 
                       cv::INTER_LINEAR, cv::BORDER_CONSTANT, padColor);
@@ -282,12 +288,20 @@ private:
     }
     
     // Step 3: Place on canvas
-    // Update channel format if we converted to BGRA for rotation
+    // Update channel format if we converted for rotation
     std::string finalImgChannel = imgChannel;
     if (config.rotation && std::abs(config.rotation) > 1e-3) {
-      // After rotation with transparent padding, image is now BGRA
+      // After rotation with transparent padding, track correct format
       if (img.channels() == 4) {
-        finalImgChannel = "BGRA";
+        // Preserve original color order for all input formats
+        if (imgChannel == "RGB") {
+          finalImgChannel = "RGBA";
+        } else if (imgChannel == "BGR") {
+          finalImgChannel = "BGRA"; 
+        } else if (imgChannel == "GRAY") {
+          finalImgChannel = "BGRA"; // GRAY converts to BGRA
+        }
+        // RGBA and BGRA inputs remain unchanged
       }
     }
     

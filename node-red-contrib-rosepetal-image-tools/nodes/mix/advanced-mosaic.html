@@ -1343,6 +1343,32 @@
         $('#node-input-backgroundColor').on('change', function() {
           canvasEditor.render();
         });
+        
+        // Actualize Canvas button handler
+        $('#actualize-canvas-btn').on('click', function() {
+          // Get current input values
+          const currentWidth = $("#node-input-canvasWidth").val();
+          const currentHeight = $("#node-input-canvasHeight").val();
+          
+          // Update node config directly
+          node.canvasWidth = currentWidth;
+          node.canvasHeight = currentHeight;
+          
+          // Mark node as dirty for saving
+          RED.nodes.dirty(true);
+          
+          // Update visual canvas
+          canvasEditor.updateCanvasSize();
+          canvasEditor.render();
+          
+          // User feedback
+          const btn = $(this);
+          const originalText = btn.text();
+          btn.text('✅ Applied!').css('background', '#45a049');
+          setTimeout(() => {
+            btn.text(originalText).css('background', '#4CAF50');
+          }, 1500);
+        });
       }, 100);
     }
   });
@@ -1524,6 +1550,13 @@
   <label for="node-input-canvasHeight"><i class="fa fa-arrows-v"></i> Canvas Height</label>
   <input type="text" id="node-input-canvasHeight" style="width: 70%;" placeholder="600">
   <input type="hidden" id="node-input-canvasHeightType">
+</div>
+<div class="form-row">
+  <label></label>
+  <button type="button" id="actualize-canvas-btn" style="background: #4CAF50; color: white; border: none; padding: 8px 16px; cursor: pointer; border-radius: 4px; font-size: 12px;">
+    Apply Canvas Size
+  </button>
+  <span style="margin-left: 10px; color: #666; font-size: 11px;">Click to apply canvas dimension changes</span>
 </div>
 <div class="form-row">
   <label for="node-input-backgroundColor"><i class="fa fa-paint-brush"></i> Background Color</label>

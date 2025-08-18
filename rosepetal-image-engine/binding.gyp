@@ -12,7 +12,8 @@
         "src/filter.cpp",
         "src/mosaic.cpp",
         "src/advanced-mosaic.cpp",
-        "src/blend.cpp"
+        "src/blend.cpp",
+        "src/add-mask.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

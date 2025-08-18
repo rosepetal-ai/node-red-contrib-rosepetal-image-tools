@@ -32,6 +32,7 @@ npm install /path/to/node-red-contrib-rosepetal-image-tools
 - OpenCV 4.x (auto-detected via pkg-config)
 - C++ compiler with C++17 support
 - Platform support: Linux (Debian/Ubuntu, Fedora/CentOS, Arch), macOS
+- Dependencies: Sharp (for image decoding), node-addon-api (for C++ bridge)
 
 ## Architecture Overview
 
@@ -71,6 +72,13 @@ The system uses a **standardized image object format**:
 **Mix Nodes** (`nodes/mix/`): Multi-image composition  
 - `concat`: Horizontal/vertical combination
 - `mosaic`: Grid layouts with positioning
+- `advanced-mosaic`: Advanced grid layouts with more configuration options
+
+**Blend Nodes** (`nodes/blend/`): Image blending operations
+- `blend`: Combine images with various blending modes
+
+**Specialized Nodes** (`nodes/specialized/`): Specific use cases
+- `cropBB`: Crop images using bounding box coordinates
 
 ## Development Patterns
 
@@ -122,6 +130,12 @@ The system uses a **standardized image object format**:
    }
    ```
 
+6. **Rebuild C++ addon after adding sources**:
+   ```bash
+   cd rosepetal-image-engine
+   npm run rebuild
+   ```
+
 ### Image Validation and Error Handling
 
 **Always use standardized utilities**:
@@ -159,14 +173,17 @@ utils.setSuccessStatus(node, count, totalTime, { convertMs, taskMs, encodeMs });
 
 ## Common Development Tasks
 
-### Testing Image Operations
+### Testing Commands
 ```bash
 # Test C++ engine directly  
 cd rosepetal-image-engine
 node test-formats.js
 
+# Run specific format tests
+node test-formats.js  # Tests raw, jpg, png, webp formats with resize operation
+
 # Test Node-RED integration
-# Use Node-RED debug nodes with test images
+# Use Node-RED debug nodes with test images in Node-RED editor
 ```
 
 ### Performance Optimization

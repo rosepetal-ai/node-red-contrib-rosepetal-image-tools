@@ -3,15 +3,6 @@
 #include "utils.h"
 
 
-// Helper function to determine the best output channel format from two inputs
-std::string DetermineOutputFormat(const std::string& format1, const std::string& format2) {
-  // Priority: RGBA > BGRA > RGB > BGR > GRAY
-  if (format1 == "RGBA" || format2 == "RGBA") return "RGBA";
-  if (format1 == "BGRA" || format2 == "BGRA") return "BGRA";
-  if (format1 == "RGB" || format2 == "RGB") return "RGB";
-  if (format1 == "BGR" || format2 == "BGR") return "BGR";
-  return "GRAY";
-}
 
 
 /*------------------------------------------------------------------------*/

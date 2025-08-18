@@ -1,0 +1,449 @@
+<!-- nodes/blend/add-mask.html -->
+
+<script type="text/javascript">
+    RED.nodes.registerType('add-mask',{
+      category:'RP Image',
+      color:'#DDA0DD',
+      icon:'font-awesome/fa-mask',
+      defaults:{
+        name:{value:""},
+        imagePath:{value:"payload.image"}, imagePathType:{value:"msg"},
+        polygonPath:{value:"payload.default.masks[0].mask[0]"}, polygonPathType:{value:"msg"},
+        outputPath:{value:"payload"},outputPathType:{value:"msg"},
+        outputFormat:{value:"raw"},
+        outputQuality:{value:90},
+        pngOptimize:{value:false},
+        // Debug configuration
+        debugEnabled:{value:false},
+        debugWidth:{value:200},
+        debugWidthType:{value:"num"},
+        maskStrength:{value:50},              // 0-100%, default 50%
+        fillColor:{value:"#ffffff"}          // Default white for polygon fill
+      },
+      inputs:1,outputs:1,
+      label:function(){return this.name||"add-mask";},
+      oneditprepare:function(){
+        /* path typedInputs */
+        $("#node-input-imagePath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-imagePathType"});
+        $("#node-input-polygonPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-polygonPathType"});
+        $("#node-input-outputPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-outputPathType"});
+
+        /* mask strength slider functionality */
+        const $strengthSlider = $("#node-input-maskStrength");
+        const $strengthValue = $("#strength-value");
+        const $strengthLabel = $("#strength-label");
+        
+        function updateStrengthDisplay() {
+          const value = parseInt($strengthSlider.val());
+          $strengthValue.text(value + "%");
+          
+          // Update label to show effect
+          if (value === 0) {
+            $strengthLabel.text("No mask effect - original image only");
+          } else if (value === 100) {
+            $strengthLabel.text("Full mask effect - maximum blending");
+          } else if (value === 50) {
+            $strengthLabel.text("Balanced mask application");
+          } else {
+            $strengthLabel.text(value + "% mask strength");
+          }
+        }
+        
+        $strengthSlider.on("input", updateStrengthDisplay);
+        updateStrengthDisplay(); // initial state
+
+        
+        function updateQualityVisibility(){
+          const format = $("#node-input-outputFormat").val();
+          $("#quality-row").toggle(format === "jpg" || format === "webp");
+          $("#png-optimize-row").toggle(format === "png");
+        }
+        $("#node-input-outputFormat").on("change", updateQualityVisibility);
+        updateQualityVisibility(); // initial state
+
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        const debugWidthRow = $('#debug-width-row');
+        
+        // Initialize debug width TypedInput
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+        
+        // Function to toggle debug width visibility
+        function updateDebugWidthVisibility() {
+            if (debugCheckbox.is(':checked')) {
+                debugWidthRow.show();
+            } else {
+                debugWidthRow.hide();
+            }
+        }
+        
+        // Initialize debug state on node open
+        updateDebugWidthVisibility();
+        
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            updateDebugWidthVisibility();
+            // Store debug state for runtime access
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
+      }
+    });
+
+    // Debug image display renderer - shared across all image processing nodes
+    if (!window.debugImageRendererInitialized) {
+        window.debugImageRendererInitialized = true;
+        
+        (function() {
+            var isSubscribed = false;
+            
+            function subscribeToDebugImages() {
+                if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+                isSubscribed = true;
+                
+                RED.comms.subscribe('debug-image', function(event, data) {
+                    if (!data || !data.id) return;
+                    
+                    try {
+                        renderDebugImage(data);
+                    } catch (err) {
+                        console.warn('Debug image render error:', err);
+                    }
+                });
+            }
+            
+            function renderDebugImage(data) {
+                const nodeId = data.id;
+                const base64Data = data.data;
+                const format = data.format || 'unknown';
+                const mimeType = data.mimeType || 'jpeg';
+                
+                if (!base64Data) {
+                    removeDebugImage(nodeId);
+                    return;
+                }
+                
+                const nodeElement = document.getElementById(nodeId);
+                if (!nodeElement) return;
+                
+                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                
+                if (!debugContainer) {
+                    // Create SVG foreignObject to embed HTML content in SVG
+                    debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    debugContainer.id = 'debug-img-container-' + nodeId;
+                    debugContainer.setAttribute('x', '70');
+                    debugContainer.setAttribute('y', '5');
+                    debugContainer.setAttribute('width', '120');
+                    debugContainer.setAttribute('height', '120');
+                    debugContainer.style.overflow = 'visible';
+                    
+                    // Create simple image directly inside foreignObject
+                    const img = document.createElement('img');
+                    img.id = 'debug-img-' + nodeId;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    img.style.cursor = 'pointer';
+                    img.style.maxHeight = '100px';
+                    img.style.maxWidth = '100px';
+                    
+                    img.onclick = function() {
+                        removeDebugImage(nodeId);
+                    };
+                    
+                    debugContainer.appendChild(img);
+                    nodeElement.appendChild(debugContainer);
+                }
+                
+                const img = document.getElementById('debug-img-' + nodeId);
+                
+                if (img) {
+                    img.src = `data:image/${mimeType};base64,${base64Data}`;
+                    img.title = 'Debug image (click to hide)';
+                }
+            }
+            
+            function removeDebugImage(nodeId) {
+                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                if (debugContainer) {
+                    debugContainer.remove();
+                }
+            }
+            
+            function initializeWhenReady() {
+                if (typeof RED !== 'undefined' && RED.comms) {
+                    subscribeToDebugImages();
+                    
+                    // Clean up orphaned debug images periodically
+                    setInterval(function() {
+                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(container => {
+                            const nodeId = container.id.replace('debug-img-container-', '');
+                            const nodeElement = document.getElementById(nodeId);
+                            if (!nodeElement) {
+                                container.remove();
+                            }
+                        });
+                    }, 5000);
+                } else {
+                    setTimeout(initializeWhenReady, 100);
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeWhenReady);
+            } else {
+                initializeWhenReady();
+            }
+        })();
+    }
+</script>
+
+<script type="text/x-red" data-template-name="add-mask">
+  <div class="form-row">
+    <label><i class="fa fa-picture-o"></i> Image</label>
+    <input type="text" id="node-input-imagePath" style="width:70%;">
+    <input type="hidden" id="node-input-imagePathType">
+  </div>
+  
+  <div class="form-row">
+    <label><i class="fa fa-draw-polygon"></i> Polygon Path</label>
+    <input type="text" id="node-input-polygonPath" style="width:70%;">
+    <input type="hidden" id="node-input-polygonPathType">
+  </div>
+  
+  <div class="form-row">
+    <label><i class="fa fa-sign-out"></i> Output</label>
+    <input type="text" id="node-input-outputPath" style="width:70%;">
+    <input type="hidden" id="node-input-outputPathType">
+  </div>
+  
+  <div class="form-row">
+    <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+    <select id="node-input-outputFormat" style="width: 200px;">
+      <option value="raw">Raw (fastest)</option>
+      <option value="jpg">JPEG</option>
+      <option value="png">PNG</option>
+      <option value="webp">WebP</option>
+    </select>
+  </div>
+  
+  <div class="form-row" id="quality-row">
+    <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+    <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+  </div>
+  
+  <div class="form-row" id="png-optimize-row" style="display: none;">
+    <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+    <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+  </div>
+  
+  <!-- Debug Configuration -->
+  <div class="form-row">
+      <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+      <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+      <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+  </div>
+  <div class="form-row" id="debug-width-row" style="display: none;">
+      <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+      <input type="text" id="node-input-debugWidth" style="width: 120px;">
+      <input type="hidden" id="node-input-debugWidthType">
+      <span style="margin-left: 10px; color: #666;">pixels</span>
+  </div>
+  
+  <hr/>
+  
+  <div class="form-row">
+    <label for="node-input-maskStrength"><i class="fa fa-adjust"></i> Mask Strength</label>
+    <input type="range" id="node-input-maskStrength" min="0" max="100" value="50" style="width: 200px;">
+    <span id="strength-value" style="margin-left: 10px; font-weight: bold;">50%</span>
+    <div style="margin-top: 5px; font-size: 11px; color: #666;" id="strength-label">
+      Balanced mask application
+    </div>
+    <div style="margin-top: 5px; font-size: 10px; color: #999;">
+      0% = No mask effect | 50% = Balanced | 100% = Full mask effect
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-fillColor"><i class="fa fa-eyedropper"></i> Fill Color</label>
+    <input type="color" id="node-input-fillColor" value="#ffffff" style="width: 60px; height: 30px;">
+    <span style="margin-left: 10px; color: #666;">Color to fill polygon mask</span>
+  </div>
+</script>
+
+<script type="text/x-red" data-help-name="add-mask">
+  <p><b>rosepetal-add-mask</b> applies a polygon-based mask to a base image using weighted blending with configurable mask strength and fill color. This node generates masks from polygon coordinates (from object detection results) and blends them with the original image.</p>
+
+  <h3>Details</h3>
+  <p>This node performs high-performance polygon-based blending using OpenCV. A binary mask is generated from polygon coordinates using OpenCV's fillPoly function, then applied to the base image as blending weights. The polygon coordinates are expected to be normalized (0-1 range) and are automatically scaled to match the image dimensions.</p>
+
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Image <span class="property-type">string</span></dt>
+    <dd>Message property path containing the base image to which the mask will be applied. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    
+    <dt>Polygon Path <span class="property-type">string</span></dt>
+    <dd>Message property path containing the polygon coordinates array. Expected format: array of [x, y] coordinate pairs with normalized values (0.0-1.0 range). Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>Message property path where the masked image will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    
+    <dt>Output Format <span class="property-type">string</span></dt>
+    <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+    
+    <dt>Quality <span class="property-type">number</span></dt>
+    <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
+    
+    <dt>Mask Strength <span class="property-type">number</span></dt>
+    <dd>Intensity of mask application from 0% to 100%. Controls how strongly the mask affects the final result.</dd>
+
+    <dt>Fill Color <span class="property-type">color</span></dt>
+    <dd>Color to fill the polygon mask (default: white #ffffff). This becomes the mask color for blending with the original image.</dd>
+  </dl>
+
+  <h3>Inputs</h3>
+  <p>Requires a base image and polygon coordinates from the specified message property paths:</p>
+  <ul>
+    <li><b>Base Image:</b> From the path specified in "Image" field (default: <code>msg.payload.image</code>)</li>
+    <li><b>Polygon Coordinates:</b> From the path specified in "Polygon Path" field (default: <code>msg.payload.default.masks[0].mask[0]</code>)</li>
+  </ul>
+  
+  <p>The base image should follow the standard format:</p>
+  <pre>{
+  data: Buffer,        // Raw pixel data or encoded file buffer
+  width: number,       // Image width in pixels
+  height: number,      // Image height in pixels
+  channels: number,    // Channel count (1=grayscale, 3=RGB, 4=RGBA)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
+  dtype: string        // "uint8", "uint16", "float32"
+}</pre>
+  <p>File buffers (JPEG, PNG, WebP, BMP) are automatically detected and decoded.</p>
+  
+  <p>The polygon coordinates should be an array of [x, y] coordinate pairs:</p>
+  <pre>[
+  [0.30859375, 0.5797164440155029],
+  [0.314453125, 0.5797164440155029],
+  [0.31640625, 0.5818142294883728],
+  // ... more coordinate pairs
+]</pre>
+  <p>All coordinates must be normalized to 0.0-1.0 range (percentage of image dimensions).</p>
+
+  <h3>Outputs</h3>
+  <p>Produces a single masked image in the specified format:</p>
+  <ul>
+    <li><b>Raw format:</b> Complete image object with pixel data and metadata</li>
+    <li><b>Encoded formats (JPG/PNG/WebP):</b> File buffer ready for storage or transmission</li>
+  </ul>
+  <p>Output dimensions match the input image dimensions. The generated mask is automatically sized to match the base image.</p>
+
+  <h3>Masking Behavior</h3>
+  <h4>Polygon-to-Mask Conversion Process</h4>
+  <ol>
+    <li><b>Coordinate Scaling:</b> Converts normalized coordinates (0-1) to pixel coordinates</li>
+    <li><b>Mask Generation:</b> Uses OpenCV fillPoly to create binary mask from polygon</li>
+    <li><b>Color Application:</b> Fills polygon area with the specified fill color</li>
+    <li><b>Blending:</b> Applies the mask as blending weights scaled by mask strength</li>
+  </ol>
+
+  <h4>Mathematical Formula</h4>
+  <p>The masking operation uses weighted blending:</p>
+  <pre>pixel_coords = polygon_coords × [image_width, image_height]
+binary_mask = fillPoly(pixel_coords, fill_color)
+blend_weights = mask_strength × normalized_mask
+result = image × (1 - blend_weights) + mask_color × blend_weights</pre>
+
+  <h3>Automatic Image Processing</h3>
+  <h4>Dimension Handling</h4>
+  <ul>
+    <li><b>Same Size:</b> Direct processing with no resizing</li>
+    <li><b>Different Sizes:</b> Both images resized to max(width1, width2) × max(height1, height2)</li>
+    <li><b>Aspect Ratio:</b> Preserved during resize operations to prevent distortion</li>
+  </ul>
+
+  <h4>Color Space Conversion</h4>
+  <ul>
+    <li><b>Automatic Detection:</b> Color spaces detected from image metadata or inferred from channel count</li>
+    <li><b>Smart Conversion:</b> Images converted to compatible format for processing</li>
+    <li><b>Quality Preservation:</b> Lossless conversions maintain image quality throughout processing</li>
+  </ul>
+
+  <h3>Examples</h3>
+  <h4>Logo Watermarking</h4>
+  <p>Apply a logo with transparent background:</p>
+  <ul>
+    <li>Image: Main content</li>
+    <li>Mask: Logo with black background</li>
+    <li>Background Color: Black (#000000)</li>
+    <li>Mask Strength: 80-90% for strong branding</li>
+    <li>Tolerance: 5-15% for clean edges</li>
+  </ul>
+
+  <h4>Artistic Overlays</h4>
+  <p>Create artistic effects with texture masks:</p>
+  <ul>
+    <li>Image: Photo or artwork</li>
+    <li>Mask: Texture or pattern with background</li>
+    <li>Background Color: Dominant background color</li>
+    <li>Mask Strength: 30-60% for subtle effects</li>
+    <li>Tolerance: 20-40% for smooth blending</li>
+  </ul>
+
+  <h4>Selective Enhancement</h4>
+  <p>Apply effects to specific image regions:</p>
+  <ul>
+    <li>Image: Original photo</li>
+    <li>Mask: Region selector (white areas to enhance)</li>
+    <li>Background Color: Black (#000000)</li>
+    <li>Mask Strength: 70-100% for strong effects</li>
+    <li>Tolerance: 5-10% for precise control</li>
+  </ul>
+
+  <h3>Node Interactions</h3>
+  <ul>
+    <li><b>Upstream:</b> Works with <code>image-in</code>, <code>array-in</code>, or any nodes producing image/mask pairs</li>
+    <li><b>Downstream:</b> Connect to image writers, further processing nodes, or display components</li>
+    <li><b>Chaining:</b> Can be chained for complex multi-layer masking effects</li>
+    <li><b>Flow Integration:</b> Supports flow and global context for cross-node data sharing</li>
+  </ul>
+
+  <h3>Error Handling</h3>
+  <ul>
+    <li><b>Missing Images:</b> Clear warnings when either input image is missing or invalid</li>
+    <li><b>Dimension Mismatch:</b> Automatic resizing with performance-optimized interpolation</li>
+    <li><b>Color Space Issues:</b> Intelligent conversion with format preservation</li>
+    <li><b>Memory Management:</b> Efficient processing of large images with automatic cleanup</li>
+    <li><b>Parameter Validation:</b> Range checking for all numeric parameters</li>
+  </ul>
+
+  <h3>Performance</h3>
+  <ul>
+    <li><b>C++ Backend:</b> High-performance OpenCV implementation with SIMD optimizations</li>
+    <li><b>Memory Efficient:</b> Minimal memory allocation with intelligent buffer reuse</li>
+    <li><b>Parallel Processing:</b> Multi-threaded operations for large images</li>
+    <li><b>Status Timing:</b> Real-time metrics showing conversion, processing, and encoding times</li>
+    <li><b>Optimized Builds:</b> Compiled with <code>-O3</code>, <code>-march=native</code> for maximum performance</li>
+  </ul>
+
+  <h3>Advanced Features</h3>
+  <ul>
+    <li><b>Live Preview:</b> Debug mode shows masked result in real-time</li>
+    <li><b>Color Precision:</b> Advanced color matching with configurable tolerance</li>
+    <li><b>Batch Processing:</b> Efficient handling of multiple image/mask pairs</li>
+    <li><b>Context Integration:</b> Full support for flow and global context storage</li>
+    <li><b>Format Flexibility:</b> Seamless conversion between raw and encoded formats</li>
+  </ul>
+</script>

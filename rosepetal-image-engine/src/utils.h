@@ -357,4 +357,14 @@ inline cv::Mat ConvertToTargetFormatShared(const cv::Mat& src, const std::string
   return dst;
 }
 
+// Helper function to determine the best output channel format from two inputs (shared between blend and add-mask)
+inline std::string DetermineOutputFormat(const std::string& format1, const std::string& format2) {
+  // Priority: RGBA > BGRA > RGB > BGR > GRAY
+  if (format1 == "RGBA" || format2 == "RGBA") return "RGBA";
+  if (format1 == "BGRA" || format2 == "BGRA") return "BGRA";
+  if (format1 == "RGB" || format2 == "RGB") return "RGB";
+  if (format1 == "BGR" || format2 == "BGR") return "BGR";
+  return "GRAY";
+}
+
 #endif // UTILS_H

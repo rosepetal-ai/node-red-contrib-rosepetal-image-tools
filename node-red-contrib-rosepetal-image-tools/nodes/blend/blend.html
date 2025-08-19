@@ -17,7 +17,12 @@
         debugEnabled:{value:false},
         debugWidth:{value:200},
         debugWidthType:{value:"num"},
-        opacity:{value:50}              // 0-100%, default 50% (equal blend)
+        opacity:{value:50},              // 0-100%, default 50% (equal blend)
+        // Alpha compositing configuration
+        alphaCompositing:{value:false},  // Enable alpha compositing mode
+        removeBackground:{value:false},  // Enable background removal
+        backgroundColor:{value:"#ffffff"}, // Background color to remove
+        colorTolerance:{value:10}        // Color tolerance 0-100%
       },
       inputs:1,outputs:1,
       label:function(){return this.name||"blend";},
@@ -40,26 +45,72 @@
         
         function updateOpacityDisplay() {
           const value = parseInt($opacitySlider.val());
+          const isAlphaMode = $("#node-input-alphaCompositing").is(':checked');
           $opacityValue.text(value + "%");
           
-          // Calculate complementary percentage ensuring exact 100% total
-          const img1Percent = value;
-          const img2Percent = 100 - value;
-          
-          // Update label to show blend ratio
-          if (value === 0) {
-            $opacityLabel.text("0% Image 1, 100% Image 2");
-          } else if (value === 100) {
-            $opacityLabel.text("100% Image 1, 0% Image 2");
-          } else if (value === 50) {
-            $opacityLabel.text("50% each image");
+          // Update label based on compositing mode
+          if (isAlphaMode) {
+            // Alpha compositing mode: Image 1 is base, Image 2 is overlay with opacity
+            if (value === 0) {
+              $opacityLabel.text("Base image only (overlay fully transparent)");
+            } else if (value === 100) {
+              $opacityLabel.text("Full overlay opacity on base");
+            } else {
+              $opacityLabel.text("Base + " + value + "% overlay opacity");
+            }
           } else {
-            $opacityLabel.text(img1Percent + "% Image 1, " + img2Percent + "% Image 2");
+            // Traditional blending mode
+            const img1Percent = value;
+            const img2Percent = 100 - value;
+            
+            if (value === 0) {
+              $opacityLabel.text("0% Image 1, 100% Image 2");
+            } else if (value === 100) {
+              $opacityLabel.text("100% Image 1, 0% Image 2");
+            } else if (value === 50) {
+              $opacityLabel.text("50% each image");
+            } else {
+              $opacityLabel.text(img1Percent + "% Image 1, " + img2Percent + "% Image 2");
+            }
           }
         }
         
         $opacitySlider.on("input", updateOpacityDisplay);
         updateOpacityDisplay(); // initial state
+        
+        // Alpha compositing mode toggle
+        const $alphaCheckbox = $("#node-input-alphaCompositing");
+        const $backgroundRemovalRow = $("#background-removal-row");
+        const $backgroundColorRow = $("#background-color-row");
+        const $toleranceRow = $("#tolerance-row");
+        
+        function updateAlphaModeVisibility() {
+          const alphaEnabled = $alphaCheckbox.is(':checked');
+          $backgroundRemovalRow.toggle(alphaEnabled);
+          
+          const bgRemovalEnabled = alphaEnabled && $("#node-input-removeBackground").is(':checked');
+          $backgroundColorRow.toggle(bgRemovalEnabled);
+          $toleranceRow.toggle(bgRemovalEnabled);
+          
+          // Update opacity display when mode changes
+          updateOpacityDisplay();
+        }
+        
+        $alphaCheckbox.on("change", updateAlphaModeVisibility);
+        $("#node-input-removeBackground").on("change", updateAlphaModeVisibility);
+        updateAlphaModeVisibility(); // initial state
+        
+        // Color tolerance slider functionality
+        const $toleranceSlider = $("#node-input-colorTolerance");
+        const $toleranceValue = $("#tolerance-value");
+        
+        function updateToleranceDisplay() {
+          const value = parseInt($toleranceSlider.val());
+          $toleranceValue.text(value + "%");
+        }
+        
+        $toleranceSlider.on("input", updateToleranceDisplay);
+        updateToleranceDisplay(); // initial state
         
         function updateQualityVisibility(){
           const format = $("#node-input-outputFormat").val();
@@ -268,6 +319,38 @@
   
   <hr/>
   
+  <!-- Alpha Compositing Mode -->
+  <div class="form-row">
+    <label for="node-input-alphaCompositing"><i class="fa fa-layers"></i> Alpha Compositing</label>
+    <input type="checkbox" id="node-input-alphaCompositing" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-alphaCompositing" style="width:auto; margin-left:5px;">Use Image 1 as base layer</label>
+    <div style="margin-top: 5px; font-size: 10px; color: #999;">
+      When enabled: Image 1 = base, Image 2 = overlay with proper transparency support
+    </div>
+  </div>
+
+  <!-- Background Removal (only visible when alpha compositing enabled) -->
+  <div class="form-row" id="background-removal-row" style="display: none;">
+    <label for="node-input-removeBackground"><i class="fa fa-eraser"></i> Background Removal</label>
+    <input type="checkbox" id="node-input-removeBackground" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-removeBackground" style="width:auto; margin-left:5px;">Remove background from overlay image</label>
+  </div>
+  
+  <div class="form-row" id="background-color-row" style="display: none;">
+    <label for="node-input-backgroundColor"><i class="fa fa-eyedropper"></i> Background Color</label>
+    <input type="color" id="node-input-backgroundColor" value="#ffffff" style="width: 60px; height: 30px;">
+    <span style="margin-left: 10px; color: #666;">Color to remove from overlay image</span>
+  </div>
+
+  <div class="form-row" id="tolerance-row" style="display: none;">
+    <label for="node-input-colorTolerance"><i class="fa fa-crosshairs"></i> Color Tolerance</label>
+    <input type="range" id="node-input-colorTolerance" min="0" max="100" value="10" style="width: 200px;">
+    <span id="tolerance-value" style="margin-left: 10px; font-weight: bold;">10%</span>
+    <div style="margin-top: 5px; font-size: 10px; color: #999;">
+      0% = Exact match | 50% = Moderate tolerance | 100% = Maximum tolerance
+    </div>
+  </div>
+
   <div class="form-row">
     <label for="node-input-opacity"><i class="fa fa-adjust"></i> Opacity</label>
     <input type="range" id="node-input-opacity" min="0" max="100" value="50" style="width: 200px;">
@@ -275,17 +358,23 @@
     <div style="margin-top: 5px; font-size: 11px; color: #666;" id="opacity-label">
       50% each image
     </div>
-    <div style="margin-top: 5px; font-size: 10px; color: #999;">
-      0% = Image 2 only | 50% = Equal blend | 100% = Image 1 only
+    <div style="margin-top: 5px; font-size: 10px; color: #999;" id="opacity-help">
+      Traditional: 0% = Image 2 only | 50% = Equal blend | 100% = Image 1 only<br/>
+      Alpha Compositing: 0% = Base only | 100% = Full overlay on base
     </div>
   </div>
 </script>
 
 <script type="text/x-red" data-help-name="blend">
-  <p><b>rosepetal-blend</b> combines two images using alpha blending with adjustable opacity. This node creates smooth transitions and artistic effects by mixing pixel values from both input images.</p>
+  <p><b>rosepetal-blend</b> combines two images using traditional blending or advanced alpha compositing with adjustable opacity. This node supports both mathematical blending and true layered compositing with transparency support and optional background removal.</p>
 
   <h3>Details</h3>
-  <p>This node performs high-performance alpha blending using OpenCV's optimized <code>addWeighted</code> function. The opacity slider controls the contribution of each image to the final result, allowing for precise control over the blending effect. Images with different dimensions are automatically resized to match, and color space conversions are handled transparently.</p>
+  <p>This node offers two distinct blending modes:</p>
+  <ul>
+    <li><b>Traditional Blending:</b> Mathematical mixing using OpenCV's <code>addWeighted</code> function</li>
+    <li><b>Alpha Compositing:</b> True layered compositing with transparency support, background removal, and proper alpha channel handling</li>
+  </ul>
+  <p>The opacity slider controls the contribution of each image to the final result. Images with different dimensions are automatically resized to match, and color space conversions are handled transparently. Alpha compositing mode enables proper PNG transparency handling and color-based background removal.</p>
 
   <h3>Properties</h3>
   <dl class="message-properties">
@@ -305,7 +394,19 @@
     <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
     
     <dt>Opacity <span class="property-type">number</span></dt>
-    <dd>Blend ratio from 0% to 100%. Controls the contribution of each image to the final result.</dd>
+    <dd>Blend ratio from 0% to 100%. In traditional mode: controls mix ratio. In alpha compositing mode: controls overlay opacity on base image.</dd>
+    
+    <dt>Alpha Compositing <span class="property-type">boolean</span></dt>
+    <dd>Enable alpha compositing mode where Image 1 becomes the base layer and Image 2 becomes the overlay with proper transparency support.</dd>
+    
+    <dt>Background Removal <span class="property-type">boolean</span></dt>
+    <dd>Remove specified background color from the overlay image (Image 2) before compositing. Only available in alpha compositing mode.</dd>
+    
+    <dt>Background Color <span class="property-type">color</span></dt>
+    <dd>Color to remove from the overlay image. Uses HSV color space matching with configurable tolerance.</dd>
+    
+    <dt>Color Tolerance <span class="property-type">number</span></dt>
+    <dd>Tolerance for background color matching (0-100%). Higher values remove more similar colors.</dd>
   </dl>
 
   <h3>Inputs</h3>
@@ -335,18 +436,34 @@
   <p>Output dimensions match the larger of the two input images. Smaller images are automatically resized to prevent dimension mismatches.</p>
 
   <h3>Blending Behavior</h3>
-  <h4>Opacity Control</h4>
+  
+  <h4>Traditional Blending Mode</h4>
+  <p>Mathematical mixing using OpenCV's <code>addWeighted</code> function:</p>
   <ul>
-    <li><b>0% (Far Left):</b> 100% Image 2, 0% Image 1 - Shows only the second image</li>
-    <li><b>25%:</b> 25% Image 1, 75% Image 2 - Second image dominates with first image visible</li>
-    <li><b>50% (Center):</b> 50% each image - Equal contribution from both images</li>
-    <li><b>75%:</b> 75% Image 1, 25% Image 2 - First image dominates with second image visible</li>
-    <li><b>100% (Far Right):</b> 100% Image 1, 0% Image 2 - Shows only the first image</li>
+    <li><b>0%:</b> 100% Image 2, 0% Image 1</li>
+    <li><b>50%:</b> Equal contribution from both images</li>
+    <li><b>100%:</b> 100% Image 1, 0% Image 2</li>
   </ul>
-
-  <h4>Mathematical Formula</h4>
-  <p>The blend operation uses OpenCV's <code>addWeighted</code> function:</p>
   <pre>result = image1 × (opacity/100) + image2 × (1 - opacity/100)</pre>
+  
+  <h4>Alpha Compositing Mode</h4>
+  <p>True layered compositing with transparency support:</p>
+  <ul>
+    <li><b>0%:</b> Base image only (overlay fully transparent)</li>
+    <li><b>50%:</b> Base image with 50% opacity overlay</li>
+    <li><b>100%:</b> Base image with full opacity overlay</li>
+  </ul>
+  <pre>result = overlay × (overlay_alpha × opacity) + base × (1 - overlay_alpha × opacity)</pre>
+  
+  <h4>Background Removal Process</h4>
+  <p>When background removal is enabled in alpha compositing mode:</p>
+  <ol>
+    <li>Convert overlay image to HSV color space</li>
+    <li>Calculate color distance from target background color</li>
+    <li>Create alpha mask where matching pixels become transparent</li>
+    <li>Apply Gaussian blur for smooth edges</li>
+    <li>Perform alpha compositing with transparency</li>
+  </ol>
 
   <h3>Automatic Image Processing</h3>
   <h4>Dimension Handling</h4>

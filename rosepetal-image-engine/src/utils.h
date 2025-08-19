@@ -367,4 +367,197 @@ inline std::string DetermineOutputFormat(const std::string& format1, const std::
   return "GRAY";
 }
 
+// Background removal function - removes specified color with tolerance
+inline cv::Mat removeColorBackground(const cv::Mat& src, const cv::Scalar& bgColor, double tolerance) {
+  cv::Mat result;
+  cv::Mat hsv_src, hsv_bg;
+  
+  // Validate input image channels
+  int srcChannels = src.channels();
+  if (srcChannels > 4) {
+    throw std::runtime_error("Invalid image: too many channels (" + std::to_string(srcChannels) + "). Expected 1, 3, or 4 channels.");
+  }
+  
+  // Convert source to HSV for better color matching
+  if (srcChannels == 4) {
+    // BGRA to HSV (ignore alpha channel for color matching)
+    cv::cvtColor(src, hsv_src, cv::COLOR_BGRA2BGR);
+    cv::cvtColor(hsv_src, hsv_src, cv::COLOR_BGR2HSV);
+  } else if (srcChannels == 3) {
+    // BGR to HSV
+    cv::cvtColor(src, hsv_src, cv::COLOR_BGR2HSV);
+  } else if (srcChannels == 1) {
+    // Grayscale to HSV
+    cv::Mat gray_bgr;
+    cv::cvtColor(src, gray_bgr, cv::COLOR_GRAY2BGR);
+    cv::cvtColor(gray_bgr, hsv_src, cv::COLOR_BGR2HSV);
+  } else {
+    throw std::runtime_error("Invalid image: unsupported channel count (" + std::to_string(srcChannels) + ")");
+  }
+  
+  // Convert background color to HSV
+  cv::Mat bg_mat = cv::Mat::ones(1, 1, CV_8UC3);
+  bg_mat.at<cv::Vec3b>(0, 0) = cv::Vec3b((uchar)bgColor[2], (uchar)bgColor[1], (uchar)bgColor[0]); // BGR
+  cv::cvtColor(bg_mat, hsv_bg, cv::COLOR_BGR2HSV);
+  cv::Vec3b target_hsv = hsv_bg.at<cv::Vec3b>(0, 0);
+  
+  // Create mask based on color distance in HSV space
+  cv::Mat mask = cv::Mat::zeros(hsv_src.size(), CV_8UC1);
+  
+  // Calculate tolerance thresholds
+  double h_tolerance = tolerance * 180; // Hue range: 0-180
+  double s_tolerance = tolerance * 255; // Saturation range: 0-255
+  double v_tolerance = tolerance * 255; // Value range: 0-255
+  
+  for (int y = 0; y < hsv_src.rows; y++) {
+    for (int x = 0; x < hsv_src.cols; x++) {
+      cv::Vec3b pixel_hsv = hsv_src.at<cv::Vec3b>(y, x);
+      
+      // Calculate distance in HSV space
+      double h_diff = std::abs(pixel_hsv[0] - target_hsv[0]);
+      double s_diff = std::abs(pixel_hsv[1] - target_hsv[1]);
+      double v_diff = std::abs(pixel_hsv[2] - target_hsv[2]);
+      
+      // Handle hue wraparound (0 and 180 are close)
+      if (h_diff > 90) h_diff = 180 - h_diff;
+      
+      // Check if pixel matches background color within tolerance
+      if (h_diff <= h_tolerance && s_diff <= s_tolerance && v_diff <= v_tolerance) {
+        mask.at<uchar>(y, x) = 255; // Mark for removal
+      }
+    }
+  }
+  
+  // Apply Gaussian blur to mask edges for smooth transitions
+  if (tolerance > 0.01) {
+    cv::GaussianBlur(mask, mask, cv::Size(5, 5), 1.0);
+  }
+  
+  // Create BGRA result with proper channel handling
+  std::vector<cv::Mat> channels;
+  
+  if (srcChannels == 1) {
+    // Grayscale input - convert to BGR first
+    cv::Mat bgr_src;
+    cv::cvtColor(src, bgr_src, cv::COLOR_GRAY2BGR);
+    cv::split(bgr_src, channels);
+  } else if (srcChannels == 3) {
+    // BGR input - use directly
+    cv::split(src, channels);
+  } else if (srcChannels == 4) {
+    // BGRA input - use first 3 channels, ignore existing alpha
+    cv::split(src, channels);
+    channels.resize(3); // Keep only BGR channels
+  }
+  
+  // Create alpha channel (inverse of mask - transparent where mask is white)
+  cv::Mat alpha;
+  cv::bitwise_not(mask, alpha);
+  channels.push_back(alpha);
+  
+  // Merge to BGRA (should always have exactly 4 channels)
+  cv::merge(channels, result);
+  
+  return result;
+}
+
+// Alpha compositing function - proper layered compositing
+inline cv::Mat alphaComposite(const cv::Mat& base, const cv::Mat& overlay, double overlayOpacity) {
+  cv::Mat result;
+  
+  // Validate input images
+  if (base.channels() > 4 || overlay.channels() > 4) {
+    throw std::runtime_error("Invalid images for alpha compositing: too many channels. Base: " + 
+                            std::to_string(base.channels()) + ", Overlay: " + 
+                            std::to_string(overlay.channels()));
+  }
+  
+  // Ensure both images are in BGRA format for alpha compositing
+  cv::Mat base_bgra, overlay_bgra;
+  
+  if (base.channels() == 4) {
+    base_bgra = base;
+  } else if (base.channels() == 3) {
+    cv::cvtColor(base, base_bgra, cv::COLOR_BGR2BGRA);
+  } else if (base.channels() == 1) {
+    cv::cvtColor(base, base_bgra, cv::COLOR_GRAY2BGRA);
+  } else {
+    throw std::runtime_error("Unsupported base image channel count: " + std::to_string(base.channels()));
+  }
+  
+  if (overlay.channels() == 4) {
+    overlay_bgra = overlay;
+  } else if (overlay.channels() == 3) {
+    cv::cvtColor(overlay, overlay_bgra, cv::COLOR_BGR2BGRA);
+  } else if (overlay.channels() == 1) {
+    cv::cvtColor(overlay, overlay_bgra, cv::COLOR_GRAY2BGRA);
+  } else {
+    throw std::runtime_error("Unsupported overlay image channel count: " + std::to_string(overlay.channels()));
+  }
+  
+  // Ensure same dimensions
+  if (base_bgra.size() != overlay_bgra.size()) {
+    cv::Size targetSize(std::max(base_bgra.cols, overlay_bgra.cols), 
+                       std::max(base_bgra.rows, overlay_bgra.rows));
+    if (base_bgra.size() != targetSize) {
+      cv::resize(base_bgra, base_bgra, targetSize);
+    }
+    if (overlay_bgra.size() != targetSize) {
+      cv::resize(overlay_bgra, overlay_bgra, targetSize);
+    }
+  }
+  
+  result = cv::Mat::zeros(base_bgra.size(), CV_8UC4);
+  
+  // Perform alpha compositing pixel by pixel
+  for (int y = 0; y < result.rows; y++) {
+    for (int x = 0; x < result.cols; x++) {
+      cv::Vec4b base_pixel = base_bgra.at<cv::Vec4b>(y, x);
+      cv::Vec4b overlay_pixel = overlay_bgra.at<cv::Vec4b>(y, x);
+      
+      // Normalize alpha values [0, 1]
+      double base_alpha = base_pixel[3] / 255.0;
+      double overlay_alpha = (overlay_pixel[3] / 255.0) * overlayOpacity;
+      
+      // Alpha compositing formula: result = overlay * overlay_alpha + base * (1 - overlay_alpha)
+      // But we need to handle the case where overlay is transparent
+      double result_alpha = overlay_alpha + base_alpha * (1.0 - overlay_alpha);
+      
+      cv::Vec4b result_pixel;
+      
+      if (result_alpha > 0.001) { // Avoid division by very small numbers
+        for (int c = 0; c < 3; c++) { // BGR channels
+          double result_color = (overlay_pixel[c] * overlay_alpha + 
+                               base_pixel[c] * base_alpha * (1.0 - overlay_alpha)) / result_alpha;
+          result_pixel[c] = cv::saturate_cast<uchar>(result_color);
+        }
+        result_pixel[3] = cv::saturate_cast<uchar>(result_alpha * 255);
+      } else {
+        // Fully transparent
+        result_pixel = cv::Vec4b(0, 0, 0, 0);
+      }
+      
+      result.at<cv::Vec4b>(y, x) = result_pixel;
+    }
+  }
+  
+  return result;
+}
+
+// Parse color string to cv::Scalar, supporting hex colors
+inline cv::Scalar parseColorString(const std::string& colorStr) {
+  if (colorStr.empty()) {
+    return cv::Scalar(255, 255, 255); // Default white
+  }
+  
+  if (colorStr[0] == '#' && colorStr.length() == 7) {
+    // Hex color #RRGGBB
+    unsigned long rgb = std::stoul(colorStr.substr(1), nullptr, 16);
+    return cv::Scalar((rgb & 0xFF), ((rgb >> 8) & 0xFF), ((rgb >> 16) & 0xFF)); // BGR
+  }
+  
+  // Default fallback
+  return cv::Scalar(255, 255, 255);
+}
+
 #endif // UTILS_H

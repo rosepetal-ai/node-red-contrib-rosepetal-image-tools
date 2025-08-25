@@ -27,7 +27,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 ### 🔄 I/O Nodes - Data Flow Management
 | Node | Purpose | Key Features |
 |------|---------|-------------|
-| **[image-in](docs/nodes/io/image-in.md)** | Load images from filesystem | JPEG/PNG/WebP support, metadata extraction |
+| **[image-in](docs/nodes/io/image-in.md)** | Load images from filesystem | JPEG/PNG/WebP/etc. support, Sharp backend |
 | **[array-in](docs/nodes/io/array-in.md)** | Collect data into positioned arrays | Dynamic positioning, batch collection |
 | **[array-out](docs/nodes/io/array-out.md)** | Assemble arrays from multiple sources | Timeout protection, ordered assembly |
 | **[array-select](docs/nodes/io/array-select.md)** | Extract elements with flexible selection | Python-like slicing, range selection |
@@ -38,21 +38,21 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | **[resize](docs/nodes/transform/resize.md)** | Scale images with aspect ratio control | Proportional scaling, multiple modes |
 | **[rotate](docs/nodes/transform/rotate.md)** | Rotate images with custom padding | Sub-pixel precision, background colors |
 | **[crop](docs/nodes/transform/crop.md)** | Extract regions with pixel/normalized coords | Dynamic coordinates, bounds checking |
-| **[padding](docs/nodes/transform/padding.md)** | Add configurable margins | Color customization, transparent support |
+| **[padding](docs/nodes/transform/padding.md)** | Add configurable margins | Color customization, flexible sizing |
 | **[filter](docs/nodes/transform/filter.md)** | Apply enhancement filters | Blur, sharpen, edge, emboss, Gaussian |
 
 ### 🎨 Mix Nodes - Image Composition
 | Node | Purpose | Key Features |
 |------|---------|-------------|
-| **[concat](docs/nodes/mix/concat.md)** | Combine images horizontally/vertically | Flexible alignment, gap control |
-| **[mosaic](docs/nodes/mix/mosaic.md)** | Create grid layouts | Auto-sizing, uniform cells |
+| **[concat](docs/nodes/mix/concat.md)** | Combine images horizontally/vertically | Direction control, padding strategies |
+| **[mosaic](docs/nodes/mix/mosaic.md)** | Position images on canvas | Coordinate positioning, manual placement |
 | **[advanced-mosaic](docs/nodes/mix/advanced-mosaic.md)** | Complex layouts with custom positioning | Pixel-perfect control, layering |
 
 ### 🌈 Blend Nodes - Advanced Compositing  
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[blend](docs/nodes/blend/blend.md)** | Alpha blend two images with opacity | Background removal, color tolerance |
-| **[add-mask](docs/nodes/blend/add-mask.md)** | Apply alpha masks for transparency | Edge smoothing, mask inversion |
+| **[add-mask](docs/nodes/blend/add-mask.md)** | Apply polygon-based masks to regions | Coordinate arrays, mask strength control |
 
 ### 🤖 Specialized Nodes - AI/ML Integration
 | Node | Purpose | Key Features |
@@ -109,7 +109,7 @@ C++ backend delivers professional-grade speed for production workflows.
 Dynamic path configuration supports `msg`, `flow`, and `global` contexts for complex workflows.
 
 ### 📐 **Professional Quality**
-Multiple output formats (Raw/JPEG/PNG/WebP) with quality control and transparency support.
+Multiple output formats (Raw/JPEG/PNG/WebP) with quality control.
 
 ### 🔗 **Workflow Integration**
 Designed for Node-RED patterns with array processing, error handling, and status display.

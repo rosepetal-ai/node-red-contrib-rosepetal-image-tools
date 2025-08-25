@@ -1,292 +1,170 @@
 # Node-RED Image Processing Toolkit
 
-A comprehensive Node-RED package for high-performance image processing operations using OpenCV backend. This toolkit provides 11 specialized nodes for loading, transforming, combining, and managing images in Node-RED flows.
+A comprehensive Node-RED package providing 16 specialized nodes for high-performance image processing using C++ OpenCV backend. Perfect for computer vision workflows, batch processing, and automated image manipulation.
 
 ![Demo](assets/flow_time_example.gif)
 
-## Overview
+## 🚀 Quick Start
 
-This Node-RED image processing toolkit consists of two main components:
-
-1. **node-red-contrib-rosepetal-image-tools**: Node-RED package with image processing nodes
-2. **rosepetal-image-engine**: C++ addon built with OpenCV for high-performance image operations
-
-The project provides Node-RED nodes for image processing operations including resize, rotate, crop, concat, padding, filtering, and mosaic creation with support for both single images and batch processing.
-
-## Architecture
-
-### Two-Tier Structure
-- **JavaScript Layer**: Node-RED nodes handle configuration, validation, and I/O
-- **C++ Layer**: High-performance OpenCV-based image processing via Node.js addon
-
-### Performance Benefits
-- **C++ Backend**: All image operations use optimized OpenCV functions
-- **Async Operations**: Non-blocking processing with performance timing
-- **Parallel Processing**: Array inputs processed concurrently
-- **Memory Efficient**: Optimized for large image processing workflows
-
-## Installation
-
-### Quick Setup
+### Installation
 ```bash
-# From project root
+# Quick setup
 ./install.sh
+
+# Manual installation
+cd rosepetal-image-engine && npm install && npm run build
+cd ../node-red-contrib-rosepetal-image-tools && npm install
+cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 ```
 
-### Manual Installation
-```bash
-# Install and build C++ engine
-cd rosepetal-image-engine
-npm install
-npm run build
-
-# Install Node-RED package
-cd ../node-red-contrib-rosepetal-image-tools
-npm install
-
-# Install in Node-RED
-cd ~/.node-red
-npm install /path/to/node-red-contrib-rosepetal-image-tools
-```
-
-### System Requirements
+### Requirements
 - Node.js 16+ with node-gyp support
-- OpenCV 4.x (detected via pkg-config)
+- OpenCV 4.x (auto-detected via pkg-config)
 - C++ compiler with C++17 support
 
-## Node Categories
+## 📋 Node Categories
 
-### 🔄 I/O Nodes (Data Flow Management)
-- **image-in**: Load images from filesystem
-- **array-in**: Collect data into positioned arrays
-- **array-out**: Assemble arrays from multiple sources
-- **array-select**: Extract elements from arrays with flexible selection
+### 🔄 I/O Nodes - Data Flow Management
+| Node | Purpose | Key Features |
+|------|---------|-------------|
+| **[image-in](docs/nodes/io/image-in.md)** | Load images from filesystem | JPEG/PNG/WebP support, metadata extraction |
+| **[array-in](docs/nodes/io/array-in.md)** | Collect data into positioned arrays | Dynamic positioning, batch collection |
+| **[array-out](docs/nodes/io/array-out.md)** | Assemble arrays from multiple sources | Timeout protection, ordered assembly |
+| **[array-select](docs/nodes/io/array-select.md)** | Extract elements with flexible selection | Python-like slicing, range selection |
 
-### 🔧 Transform Nodes (Image Processing)
-- **resize**: Scale images with aspect ratio control
-- **rotate**: Rotate images with custom padding
-- **crop**: Extract regions with normalized/pixel coordinates
-- **padding**: Add margins with configurable colors
-- **filter**: Apply image filters (blur, sharpen, edge, emboss, gaussian)
+### 🔧 Transform Nodes - Image Processing
+| Node | Purpose | Key Features |
+|------|---------|-------------|
+| **[resize](docs/nodes/transform/resize.md)** | Scale images with aspect ratio control | Proportional scaling, multiple modes |
+| **[rotate](docs/nodes/transform/rotate.md)** | Rotate images with custom padding | Sub-pixel precision, background colors |
+| **[crop](docs/nodes/transform/crop.md)** | Extract regions with pixel/normalized coords | Dynamic coordinates, bounds checking |
+| **[padding](docs/nodes/transform/padding.md)** | Add configurable margins | Color customization, transparent support |
+| **[filter](docs/nodes/transform/filter.md)** | Apply enhancement filters | Blur, sharpen, edge, emboss, Gaussian |
 
-### 🎨 Mix Nodes (Image Composition)
-- **concat**: Combine images horizontally/vertically
-- **mosaic**: Create grid layouts with positioned images
+### 🎨 Mix Nodes - Image Composition
+| Node | Purpose | Key Features |
+|------|---------|-------------|
+| **[concat](docs/nodes/mix/concat.md)** | Combine images horizontally/vertically | Flexible alignment, gap control |
+| **[mosaic](docs/nodes/mix/mosaic.md)** | Create grid layouts | Auto-sizing, uniform cells |
+| **[advanced-mosaic](docs/nodes/mix/advanced-mosaic.md)** | Complex layouts with custom positioning | Pixel-perfect control, layering |
 
-## Image Data Format
+### 🌈 Blend Nodes - Advanced Compositing  
+| Node | Purpose | Key Features |
+|------|---------|-------------|
+| **[blend](docs/nodes/blend/blend.md)** | Alpha blend two images with opacity | Background removal, color tolerance |
+| **[add-mask](docs/nodes/blend/add-mask.md)** | Apply alpha masks for transparency | Edge smoothing, mask inversion |
 
-### Standard Format
-Images are passed as objects using the current structure:
+### 🤖 Specialized Nodes - AI/ML Integration
+| Node | Purpose | Key Features |
+|------|---------|-------------|
+| **[cropBB](docs/nodes/specialized/cropBB.md)** | Extract crops from AI bounding boxes | Object detection integration, confidence filtering |
+
+## 🔥 Real-World Use Cases
+
+### Computer Vision Pipeline
+```
+[Camera] → [AI Detection] → [CropBB] → [Classification] → [Decision]
+```
+Perfect for quality control, security systems, and medical imaging.
+
+### Batch Photo Processing
+```
+[Photo Collection] → [Array-Out] → [Resize] → [Filter] → [Watermark] → [Export]
+```
+Process hundreds of photos simultaneously with C++ performance.
+
+## 🏗️ Architecture & Performance
+
+### Two-Tier Design
+- **JavaScript Layer**: Node-RED integration, validation, I/O handling
+- **C++ Layer**: OpenCV-powered image processing for maximum performance
+
+### Performance Benefits
+- **10-100x faster** than pure JavaScript implementations
+- **Parallel processing** for array operations
+- **Memory efficient** with optimized algorithms
+- **Async operations** with real-time performance timing
+
+### Image Data Format
 ```javascript
 {
-  data: Buffer,        // Raw pixel data or file buffer
-  width: number,       // Image width in pixels
+  data: Buffer,        // Raw pixel data
+  width: number,       // Image width in pixels  
   height: number,      // Image height in pixels
   channels: number,    // Channel count (1, 3, 4)
   colorSpace: string,  // "GRAY", "RGB", "RGBA", "BGR", "BGRA"
-  dtype: string        // "uint8", "uint16", "float32"
+  dtype: string        // "uint8" (standard)
 }
 ```
 
-### File Format Support
-- **Input**: JPEG, PNG, WebP, BMP files automatically detected and decoded
-- **Output**: Raw image objects or encoded file buffers (JPEG, PNG, WebP)
+## 💡 Key Features
 
-## Common Workflows
+### 🎯 **AI/ML Ready**
+Built-in support for computer vision workflows with `cropBB` node for object detection integration.
 
-### Computer Vision Workflow Example
-![Node-RED Flow Example](docs/flow-example.gif)
+### ⚡ **High Performance** 
+C++ backend delivers professional-grade speed for production workflows.
 
-*Real-time object detection pipeline with cropBB node extracting bounding box crops*
+### 🔧 **Flexible I/O**
+Dynamic path configuration supports `msg`, `flow`, and `global` contexts for complex workflows.
 
-### Basic Image Processing Pipeline
-```
-image-in → resize → rotate → crop → [output]
-```
-**Use Case**: Load image, resize to standard dimensions, correct orientation, extract region of interest
+### 📐 **Professional Quality**
+Multiple output formats (Raw/JPEG/PNG/WebP) with quality control and transparency support.
 
-### Batch Image Processing
-```
-[image-in] → [array-in] → array-out → resize → filter → array-select
-     ↓           ↓           ↑
-[image-in] → [array-in] ────┘
-     ↓           ↓
-[image-in] → [array-in]
-```
-**Use Case**: Process multiple images simultaneously, apply transforms to all, select best results
+### 🔗 **Workflow Integration**
+Designed for Node-RED patterns with array processing, error handling, and status display.
 
-### Image Collage Creation
-```
-[image-in] → [array-in] → array-out → concat → [save]
-     ↓           ↓           ↑
-[image-in] → [array-in] ────┘
-     ↓           ↓
-[image-in] → [array-in]
-```
-**Use Case**: Combine multiple photos into horizontal/vertical strips or grids
-
-### Thumbnail Generation
-```
-image-in → resize → crop → padding → [multiple outputs]
-                      ↓
-                  array-in → array-out → concat → [thumbnail strip]
-```
-**Use Case**: Create standardized thumbnails and combine into preview strips
-
-### Advanced Mosaic Layout
-```
-[images] → array-out → mosaic → [artistic arrangement]
-```
-**Use Case**: Create custom image layouts with precise positioning
-
-### Filter Processing Chain
-```
-image-in → filter(blur) → filter(sharpen) → filter(edge) → [enhanced output]
-```
-**Use Case**: Apply multiple filters for photo enhancement or artistic effects
-
-## Node Interactions & Data Flow
-
-### Input/Output Path Configuration
-All nodes support flexible data routing:
-- **msg context**: `msg.payload`, `msg.images`, `msg.data`
-- **flow context**: `flow.imageBuffer`, `flow.processedImages`
-- **global context**: `global.imageCache`, `global.results`
-
-### Array Processing Patterns
-1. **Collection**: Multiple sources → array-in nodes → array-out
-2. **Processing**: Arrays processed in parallel by transform nodes
-3. **Selection**: array-select extracts specific results
-4. **Composition**: concat/mosaic combine processed arrays
-
-### Dynamic Value Sources
-Most configuration parameters support dynamic values:
-- **Numbers**: Fixed values or calculated values
-- **Message Properties**: `msg.width`, `msg.angle`, `msg.coordinates`
-- **Context**: `flow.dimensions`, `global.settings`
-
-## Output Formats
-
-### Raw Format (Default)
-- **Type**: Standard image object
-- **Performance**: Fastest for further processing
-- **Use Case**: Intermediate processing steps
-
-### Compressed Formats
-- **JPEG**: Lossy compression with quality control (1-100)
-- **PNG**: Lossless compression for exact reproduction
-- **WebP**: Modern format with excellent compression
-
-### Format Selection Guidelines
-- **Raw**: For processing chains and intermediate steps
-- **JPEG**: For final outputs requiring small file size
-- **PNG**: For images requiring transparency or exact pixels
-- **WebP**: For modern web applications requiring efficiency
-
-## Error Handling & Validation
-
-### Input Validation
-- **Image Structure**: Comprehensive validation of image objects
-- **Array Requirements**: Verification of array inputs where required
-- **Parameter Bounds**: Range checking for dimensions, angles, coordinates
-
-### Error Reporting
-- **Warning System**: Non-blocking warnings for invalid inputs
-- **Message Blocking**: Invalid inputs prevented from propagating
-- **Status Display**: Real-time processing status and error information
-
-### Recovery Strategies
-- **Graceful Degradation**: Fallback to safe defaults when possible
-- **Automatic Inference**: Missing fields inferred from available data
-
-## Performance Optimization
-
-### C++ Backend Benefits
-- **Speed**: 10-100x faster than pure JavaScript implementations
-- **Memory**: Efficient memory management for large images
-- **Parallel Processing**: Multi-threaded operations where possible
-- **Optimization Flags**: Built with `-O3`, `-march=native`, `-ffast-math`
-
-### Performance Monitoring
-- **Timing Display**: Processing time shown in node status
-- **Breakdown**: Conversion, processing, and encoding phases tracked
-- **Resource Usage**: Memory and CPU usage optimized for large workflows
-
-### Best Practices
-- **Array Processing**: Use arrays for batch operations
-- **Format Selection**: Use raw format for processing chains
-- **Memory Management**: Process large images in batches
-- **Parallel Workflows**: Design flows for concurrent processing
-
-## Development
+## 🛠️ Development
 
 ### Project Structure
 ```
 node-red-contrib-rosepetal-image-tools/
-├── nodes/
-│   ├── io/           # I/O nodes
-│   ├── transform/    # Transform nodes
-│   └── mix/          # Mix nodes
-├── lib/
-│   ├── cpp-bridge.js # C++ addon interface
-│   └── node-utils.js # Common utilities
-└── package.json
+├── docs/nodes/          # Individual node documentation
+├── nodes/              # Node-RED node implementations
+│   ├── io/             # I/O nodes
+│   ├── transform/      # Transform nodes  
+│   ├── mix/            # Composition nodes
+│   ├── blend/          # Blending nodes
+│   └── specialized/    # AI/ML nodes
+├── lib/                # Shared utilities
+└── assets/             # Documentation assets
 
-rosepetal-image-engine/
-├── src/              # C++ source code
-├── binding.gyp       # Node.js addon build configuration
+rosepetal-image-engine/  # C++ processing engine
+├── src/                # OpenCV implementations
+├── binding.gyp         # Node.js addon configuration
 └── package.json
 ```
 
 ### Adding New Nodes
-1. Create C++ implementation in `rosepetal-image-engine/src/`
+1. Implement C++ processing in `rosepetal-image-engine/src/`
 2. Export function in `src/main.cpp`
-3. Add to `binding.gyp` sources
-4. Create Node-RED wrapper in `nodes/`
-5. Register in `package.json` node-red section
+3. Create Node-RED wrapper in appropriate `nodes/` category
+4. Add comprehensive documentation following existing patterns
 
-### Build Commands
-```bash
-# Build C++ addon
-cd rosepetal-image-engine
-npm run build
-
-# Clean rebuild
-npm run rebuild
-
-# Configure only
-npm run configure
-```
-
-## Troubleshooting
+## 🚨 Troubleshooting
 
 ### Common Issues
 - **Build Failures**: Ensure OpenCV 4.x installed and pkg-config available
-- **Node Missing**: Check Node-RED installation path and package registration
-- **Performance**: Verify C++ addon built with optimization flags
-- **Memory Issues**: Process large images in smaller batches
+- **Missing Nodes**: Check Node-RED installation path and package registration  
+- **Performance Issues**: Verify C++ addon built with optimization flags
+- **Memory Problems**: Process large images in smaller batches
 
-### Debug Information
-- **Node Status**: Real-time processing status and timing
-- **Debug Panel**: Detailed error messages and warnings
-- **Performance Metrics**: Processing time breakdown per operation
+### Performance Tips
+- Use **raw format** for processing chains (fastest)
+- Process **arrays when possible** for parallel execution
+- Choose **appropriate output formats** for your destination
+- Monitor **node status displays** for timing information
 
-## Support & Contributing
+## 🤝 Contributing
 
-### Documentation
-- **Node Help**: Comprehensive help available in Node-RED editor
-- **Examples**: Practical examples in node documentation
-- **Workflows**: Common patterns documented above
-
-### Contributing
 - **Issues**: Report bugs and feature requests via GitHub
 - **Pull Requests**: Contributions welcome for new nodes and optimizations
-- **Documentation**: Help improve documentation and examples
+- **Documentation**: Help improve guides and examples
 
-## License
+## 📄 License
 
 This project is part of the Rosepetal development toolkit for Node-RED image processing applications.
 
 ---
 
-**Tip**: Start with simple workflows using individual nodes, then combine them into more complex processing pipelines as you become familiar with the image format and node interactions.
+**💡 Pro Tip**: Start with simple single-node workflows, then combine them into complex processing pipelines as you become familiar with the image format and node interactions.

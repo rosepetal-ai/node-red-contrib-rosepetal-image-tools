@@ -88,14 +88,13 @@ Messages from `array-in` nodes containing:
 - **Collection Progress**: Shows number of items collected vs expected
 - **Success Timing**: Displays total assembly time on completion
 - **Timeout Warning**: Indicates when timeout occurs with diagnostic info
-- **Performance Metrics**: Collection efficiency and timing data
 
 ## Real-World Examples
 
 ### Basic Image Array Assembly
 ```
 [Image-In: img1.jpg] → [Array-In: pos=0] ┐
-[Image-In: img2.jpg] → [Array-In: pos=1] ├→ [Array-Out: count=3] → [Resize: All Images]
+[Image-In: img2.jpg] → [Array-In: pos=1] ├→ [Array-Out: count=3, timeout=500] → [Resize: All Images]
 [Image-In: img3.jpg] → [Array-In: pos=2] ┘
 ```
 Collect three images for batch resizing.
@@ -103,7 +102,7 @@ Collect three images for batch resizing.
 ### Multi-Camera Frame Collection
 ```
 [Camera 1] → [Array-In: pos=0] ┐
-[Camera 2] → [Array-In: pos=1] ├→ [Array-Out: count=4, timeout=1000] → [Sync Analysis]
+[Camera 2] → [Array-In: pos=1] ├→ [Array-Out: count=4, timeout=100] → [Sync Analysis]
 [Camera 3] → [Array-In: pos=2] │
 [Camera 4] → [Array-In: pos=3] ┘
 ```
@@ -111,9 +110,9 @@ Synchronize frames from multiple cameras with tight timing.
 
 ### Parallel Processing Merge
 ```
-[Data Split] → [Process A] → [Array-In: pos=0] ┐
-            → [Process B] → [Array-In: pos=1] ├→ [Array-Out] → [Combine Results]
-            → [Process C] → [Array-In: pos=2] ┘
+→ [Process A] → [Array-In: pos=0] ┐
+→ [Process B] → [Array-In: pos=1] ├→ [Array-Out: count=3, timeout=500] → [Combine Results]
+→ [Process C] → [Array-In: pos=2] ┘
 ```
 Merge results from parallel processing pipelines.
 
@@ -149,71 +148,3 @@ Collect quality control results with extended timeout.
 - **Issue**: Messages arriving without proper meta.arrayPosition
 - **Result**: Messages ignored, incomplete arrays
 - **Solution**: Verify all input messages come from array-in nodes
-
-## Integration Patterns
-
-### Standard Collection Pattern
-```
-[Sources] → [Array-In Nodes] → [Array-Out] → [Array Processing]
-```
-Basic pattern for ordered data collection.
-
-### Timeout Handling Pattern  
-```
-[Array-Out] → [Success Path]
-           → [Timeout Handler] → [Error Recovery]
-```
-Handle both success and timeout scenarios.
-
-### Dynamic Count Pattern
-```
-[Counter] → [Set flow.expectedCount] → [Array-Out: count=flow.expectedCount]
-```
-Dynamic array sizing based on runtime conditions.
-
-### Nested Assembly Pattern
-```
-[Sub-Arrays] → [Array-Out] → [Array-In: pos=0] ┐
-                                              ├→ [Array-Out] → [Complex Structure]
-[Sub-Arrays] → [Array-Out] → [Array-In: pos=1] ┘
-```
-Build complex nested data structures.
-
-## Advanced Usage
-
-### Sparse Array Handling
-- **Scenario**: Some positions may not have data
-- **Result**: Array contains null/undefined at missing positions
-- **Downstream**: Process arrays knowing about potential gaps
-
-### Performance Optimization
-- **Fast Collection**: Minimize timeout for time-critical applications
-- **Reliable Collection**: Increase timeout for unreliable networks
-- **Memory Efficiency**: Use flow/global context for large arrays
-
-### Error Recovery
-- **Timeout Data**: Use output 2 to handle partial collections
-- **Retry Logic**: Implement retry mechanisms for failed collections
-- **Graceful Degradation**: Process partial data when complete collection fails
-
-### Monitoring & Debugging
-- **Collection Status**: Monitor node status for performance insights
-- **Debug Messages**: Use debug nodes on both outputs
-- **Performance Metrics**: Track assembly times for optimization
-
-## Best Practices
-
-### Configuration
-- Set expected count to match connected array-in nodes exactly
-- Use reasonable timeouts based on your processing speed requirements
-- Choose appropriate output location based on downstream usage
-
-### Error Handling
-- Always handle timeout scenario using output 2
-- Implement retry logic for critical applications
-- Log timeout events for system monitoring
-
-### Performance
-- Use shortest acceptable timeout for responsive systems
-- Monitor assembly times to identify bottlenecks
-- Consider using flow/global context for large datasets

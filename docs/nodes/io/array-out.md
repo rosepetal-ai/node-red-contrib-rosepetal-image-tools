@@ -12,7 +12,6 @@ The `array-out` node serves as the collection point for multiple `array-in` node
 - **Quality Control**: Collect inspection results from multiple checkpoints
 
 ![Array-Out Demo](../../../assets/nodes/io/array-out-demo.gif)
-*[PLACEHOLDER - Add GIF showing data collection from multiple sources with timeout and assembly]*
 
 ## Input/Output Specification
 

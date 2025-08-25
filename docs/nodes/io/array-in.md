@@ -12,7 +12,6 @@ The `array-in` node collects data from various sources and tags it with position
 - **Multi-Camera Systems**: Collect images from multiple cameras in correct sequence
 
 ![Array-In Demo](../../../assets/nodes/io/array-in-demo.gif)
-*[PLACEHOLDER - Add GIF showing multiple data sources being collected into ordered positions]*
 
 ## Input/Output Specification
 

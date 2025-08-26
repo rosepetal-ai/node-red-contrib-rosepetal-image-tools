@@ -8,15 +8,23 @@ const sharp = require('sharp');
 const fs = require('fs').promises;
 
 module.exports = function(RED) {
+  const NodeUtils = require('../../lib/node-utils.js')(RED);
+  
   function ImageInNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
 
     node.on('input', async function(msg, send, done) {
       try {
-        const filePath = config.filePath || msg.filePath;
+        let filePath;
+        if (config.filePathType === 'msg' || config.filePathType === 'flow' || config.filePathType === 'global') {
+          filePath = RED.util.evaluateNodeProperty(config.filePath, config.filePathType, node, msg);
+        } else {
+          filePath = config.filePath; // str type
+        }
+        
         if (!filePath) {
-          node.warn("File path is not configured or provided in msg.filePath.");
+          node.warn("File path is not configured or resolved.");
           return;
         }
 
@@ -54,6 +62,54 @@ module.exports = function(RED) {
           dtype: "uint8"
         };
         
+        // Debug image display if enabled
+        if (config.debugEnabled) {
+          try {
+            // Resolve debug width
+            let debugWidth = NodeUtils.resolveDimension(
+              node,
+              config.debugWidthType || "num",
+              config.debugWidth || 200,
+              msg
+            );
+            debugWidth = Math.max(1, parseInt(debugWidth) || 200);
+            
+            // Since we already have the image loaded, reuse it for debug display
+            // Convert to JPEG buffer for debug display using the Sharp instance
+            const debugBuffer = await sharp(data, {
+              raw: { width: info.width, height: info.height, channels: info.channels }
+            })
+            .resize(debugWidth, null, {
+              withoutEnlargement: false,
+              fit: 'inside'
+            })
+            .jpeg({ quality: 90 })
+            .toBuffer();
+            
+            // Create debug result manually since we're using Sharp directly
+            const base64 = debugBuffer.toString('base64');
+            const debugMetadata = await sharp(debugBuffer).metadata();
+            
+            // Send image to frontend via WebSocket for inline display
+            try {
+              RED.comms.publish("debug-image", {
+                id: node.id,
+                data: base64,
+                format: 'jpg debug',
+                mimeType: 'jpeg',
+                size: debugBuffer.length,
+                debugWidth: debugMetadata.width || debugWidth,
+                debugHeight: debugMetadata.height || debugWidth
+              });
+            } catch (wsError) {
+              node.warn(`Debug WebSocket error: ${wsError.message}`);
+            }
+            
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
+        
         const outputPath = config.outputPath || "payload";
         const outputPathType = config.outputPathType || "msg";
 
@@ -65,7 +121,12 @@ module.exports = function(RED) {
           node.context().global.set(outputPath, outputImageObject);
         }
         
-        node.status({ fill: "green", shape: "dot", text: `${info.width}x${info.height} to ${outputPathType}.${outputPath}` });
+        // Update status with debug info if enabled
+        let statusText = `${info.width}x${info.height} to ${outputPathType}.${outputPath}`;
+        if (config.debugEnabled) {
+          statusText += ' | jpg debug';
+        }
+        node.status({ fill: "green", shape: "dot", text: statusText });
         
         send(msg);
         if (done) { done(); }

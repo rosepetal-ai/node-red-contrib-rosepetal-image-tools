@@ -5,9 +5,14 @@
         defaults: {
             name: { value: "" },
             filePath: { value: "", required: true },
+            filePathType: { value: "str" },
             // Nuevas propiedades para el destino de salida
             outputPath: { value: "payload" },
-            outputPathType: { value: "msg" }
+            outputPathType: { value: "msg" },
+            // Debug configuration
+            debugEnabled: { value: false },
+            debugWidth: { value: 200 },
+            debugWidthType: { value: "num" }
         },
         inputs: 1,
         outputs: 1,
@@ -16,12 +21,49 @@
             return this.name || this.filePath.split('/').pop() || "image in";
         },
         oneditprepare: function() {
+            // Inicializamos el widget TypedInput para el archivo de entrada
+            $("#node-input-filePath").typedInput({
+                default: 'str',
+                types: ['str', 'msg', 'flow', 'global'],
+                typeField: "#node-input-filePathType"
+            });
+            
             // Inicializamos el widget TypedInput para el campo de salida
             $("#node-input-outputPath").typedInput({
                 default: 'msg', // Por defecto, la salida va al 'msg'
                 types: ['msg', 'flow', 'global'], // Opciones disponibles
                 typeField: "#node-input-outputPathType" // Campo oculto para guardar el tipo
             });
+            
+            // === Debug Display Logic ===
+            const debugCheckbox = $('#node-input-debugEnabled');
+            const debugWidthRow = $('#debug-width-row');
+            
+            // Initialize debug width TypedInput
+            $("#node-input-debugWidth").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-debugWidthType"
+            });
+            
+            // Show/hide debug width based on checkbox
+            function updateDebugWidthVisibility() {
+                if (debugCheckbox.prop('checked')) {
+                    debugWidthRow.show();
+                } else {
+                    debugWidthRow.hide();
+                }
+            }
+            
+            debugCheckbox.change(function() {
+                const enabled = $(this).prop('checked');
+                updateDebugWidthVisibility();
+                // Store debug state for runtime access
+                $('#node-input-debugEnabled').data('debug-enabled', enabled);
+            });
+            
+            // Initialize visibility
+            updateDebugWidthVisibility();
         }
     });
 </script>
@@ -33,13 +75,26 @@
     </div>
     <div class="form-row">
         <label for="node-input-filePath"><i class="fa fa-folder-open"></i> File Path</label>
-        <input type="text" id="node-input-filePath" placeholder="/path/to/your/image.jpg">
+        <input type="text" id="node-input-filePath" style="width: 70%;" placeholder="/path/to/your/image.jpg">
+        <input type="hidden" id="node-input-filePathType">
     </div>
     <hr>
     <div class="form-row">
         <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
         <input type="text" id="node-input-outputPath" style="width: 70%;">
         <input type="hidden" id="node-input-outputPathType">
+    </div>
+    
+    <!-- Debug Configuration -->
+    <div class="form-row">
+        <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+        <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show loaded image</label>
+    </div>
+    <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
     </div>
 </script>
 
@@ -51,8 +106,8 @@
     
     <h3>Properties</h3>
     <dl class="message-properties">
-        <dt>File Path <span class="property-type">string</span></dt>
-        <dd>The full absolute or relative path to the image file on the server filesystem. Supports common image formats: JPEG, PNG, WebP, BMP.</dd>
+        <dt>File Path <span class="property-type">string | msg | flow | global</span></dt>
+        <dd>The path to the image file on the server filesystem. Can be a static string (absolute or relative path) or dynamically resolved from message properties, flow context, or global context. Supports common image formats: JPEG, PNG, WebP, BMP.</dd>
         <dt>Output to <span class="property-type">string</span></dt>
         <dd>The location where the resulting image object will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
     </dl>
@@ -76,7 +131,9 @@
 
     <h3>Examples</h3>
     <ul>
-        <li><strong>Basic Usage:</strong> Set File Path to <code>/path/to/image.jpg</code> and Output to <code>msg.payload</code></li>
+        <li><strong>Static Path:</strong> Set File Path to <code>/path/to/image.jpg</code> (string type) and Output to <code>msg.payload</code></li>
+        <li><strong>Dynamic Path from Message:</strong> Set File Path from <code>msg.imagePath</code> to load different images based on message content</li>
+        <li><strong>Flow Context Path:</strong> Set File Path from <code>flow.currentImageFile</code> to use a path stored in flow context</li>
         <li><strong>Multiple Images:</strong> Connect to an array-out node to work with image collections</li>
         <li><strong>Processing Pipeline:</strong> Connect to transform nodes like resize, rotate, or crop for image manipulation</li>
     </ul>

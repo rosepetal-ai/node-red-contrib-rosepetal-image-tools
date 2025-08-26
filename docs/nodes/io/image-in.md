@@ -18,7 +18,6 @@ The `image-in` node is the primary entry point for loading images from the files
 
 ### Inputs
 - **msg.payload** (any): Input message that triggers the node (content ignored)
-- **msg.filePath** (string, optional): Dynamic file path override
 
 ### Outputs
 The node outputs a standardized image object to the configured location:
@@ -37,11 +36,14 @@ The node outputs a standardized image object to the configured location:
 ## Configuration Options
 
 ### File Path
-- **Type**: String (required)
-- **Description**: Absolute or relative path to the image file
+- **Type**: String | msg | flow | global (required)
+- **Description**: Path to the image file on the server filesystem
+- **Options**:
+  - **String**: Static absolute or relative path (e.g., `/home/user/photos/image.jpg`)
+  - **msg.***: Dynamic path from message properties (e.g., `msg.imagePath`)
+  - **flow.***: Dynamic path from flow context (e.g., `flow.currentImageFile`)
+  - **global.***: Dynamic path from global context (e.g., `global.basePath`)
 - **Supported Formats**: All formats supported by Sharp (JPEG, PNG, WebP, BMP, TIFF, GIF, SVG, and more)
-- **Example**: `/home/user/photos/image.jpg` or `./images/photo.png`
-- **Dynamic**: Can be overridden via `msg.filePath`
 
 ### Output Location
 - **Default**: `msg.payload`
@@ -50,6 +52,12 @@ The node outputs a standardized image object to the configured location:
   - `flow.*` - Store in flow context 
   - `global.*` - Store in global context
 - **Use Case**: Choose based on how you want to access the image downstream
+
+### Debug Options
+- **Show Loaded Image**: Visual preview of loaded image in Node-RED editor
+- **Debug Width**: Preview image width in pixels (default: 200)
+- **Dynamic Width**: Can be resolved from msg, flow, or global context
+- **Interactive**: Preview appears in Node-RED editor with timing information
 
 ## Performance Notes
 
@@ -75,15 +83,21 @@ Load a single photo and inspect its properties.
 
 ### Dynamic File Loading
 ```
-[File List] → [Image-In: msg.filePath] → [Resize] → [Save]
+[File List] → [Image-In: File Path from msg.imagePath] → [Resize] → [Save]
 ```
-Process multiple files by passing file paths through messages.
+Process multiple files by configuring File Path to use `msg.imagePath` for dynamic file selection.
 
 ### Computer Vision Pipeline
 ```
 [Image-In] → [CropBB] → [Filter] → [Analysis]
 ```
 Load images for object detection and post-processing.
+
+### Visual Development
+```
+[Image-In: Debug enabled] → [Transform] → [Output]
+```
+Enable debug preview to visually verify image loading and dimensions.
 
 ### Batch Processing Setup
 ```
@@ -109,9 +123,14 @@ Collect multiple images into arrays for parallel processing.
 - **Optimization**: Use flow/global context for sharing large images
 
 ### Path Configuration
-- **Static Path**: Set in node configuration for fixed file locations
-- **Dynamic Path**: Use `msg.filePath` for runtime file selection
-- **Best Practice**: Validate paths before processing
+- **Static Path**: Set File Path to string type for fixed file locations
+- **Dynamic Path**: Configure File Path from msg, flow, or global context for runtime file selection
+- **Best Practice**: Validate dynamic path sources provide valid file paths
+
+### Debug Display Issues
+- **Issue**: Debug preview not appearing
+- **Solution**: Ensure debug checkbox is enabled and Node-RED editor is active
+- **Performance**: Large debug widths may impact editor performance
 
 ## Integration Patterns
 

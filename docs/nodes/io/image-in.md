@@ -9,7 +9,6 @@ The `image-in` node is the primary entry point for loading images from the files
 - **Computer Vision Pipelines**: Import images for AI/ML analysis and object detection
 - **Web Content Processing**: Load user-uploaded images for processing before storage
 - **Surveillance Systems**: Import images from cameras or storage for analysis
-- **Medical Imaging**: Load diagnostic images for processing and analysis
 
 ![Image-In Demo](../../../assets/nodes/io/image-in-demo.gif)
 *[PLACEHOLDER - Add GIF showing image loading with different file formats]*
@@ -17,7 +16,7 @@ The `image-in` node is the primary entry point for loading images from the files
 ## Input/Output Specification
 
 ### Inputs
-- **msg.payload** (any): Input message that triggers the node (content ignored)
+- (any): Input message that triggers the node (content ignored)
 
 ### Outputs
 The node outputs a standardized image object to the configured location:
@@ -27,8 +26,8 @@ The node outputs a standardized image object to the configured location:
   data: Buffer,        // Raw pixel data  
   width: number,       // Image width in pixels
   height: number,      // Image height in pixels
-  channels: number,    // Channel count (1=grayscale, 3=RGB, 4=RGBA)
-  colorSpace: string,  // "GRAY", "RGB", "RGBA"
+  channels: number,    // Channel count (1, 3, 4)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA", ...
   dtype: string        // "uint8" (standard)
 }
 ```
@@ -43,7 +42,7 @@ The node outputs a standardized image object to the configured location:
   - **msg.***: Dynamic path from message properties (e.g., `msg.imagePath`)
   - **flow.***: Dynamic path from flow context (e.g., `flow.currentImageFile`)
   - **global.***: Dynamic path from global context (e.g., `global.basePath`)
-- **Supported Formats**: All formats supported by Sharp (JPEG, PNG, WebP, BMP, TIFF, GIF, SVG, and more)
+- **Supported Formats**: All formats supported by Sharp (JPEG, PNG, WebP, ...)
 
 ### Output Location
 - **Default**: `msg.payload`
@@ -131,29 +130,3 @@ Collect multiple images into arrays for parallel processing.
 - **Issue**: Debug preview not appearing
 - **Solution**: Ensure debug checkbox is enabled and Node-RED editor is active
 - **Performance**: Large debug widths may impact editor performance
-
-## Integration Patterns
-
-### With Transform Nodes
-```
-Image-In → Resize → Rotate → Crop → Filter
-```
-Standard image processing pipeline.
-
-### With Array Management
-```
-Image-In → Array-In (collect) → Array-Out → Batch Process
-```
-Aggregate multiple images for batch operations.
-
-### With Computer Vision
-```
-Image-In → AI Detection → CropBB → Analysis
-```
-Load images for machine learning workflows.
-
-### With Output Nodes
-```
-Image-In → Process → Encode → File Write
-```
-Complete image processing and save workflow.

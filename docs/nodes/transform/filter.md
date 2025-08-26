@@ -12,7 +12,6 @@ The `filter` node applies various image processing filters for enhancement, arti
 - **Preprocessing**: Prepare images for AI analysis with noise reduction and enhancement
 
 ![Filter Demo](../../../assets/nodes/transform/filter-demo.gif)
-*[PLACEHOLDER - Add GIF showing before/after results of different filter types]*
 
 ## Input/Output Specification
 

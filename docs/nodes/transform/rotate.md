@@ -12,7 +12,6 @@ The `rotate` node provides precise image rotation with customizable padding and 
 - **Medical Imaging**: Orient medical scans for proper analysis
 
 ![Rotate Demo](../../../assets/nodes/transform/rotate-demo.gif)
-*[PLACEHOLDER - Add GIF showing rotation with different angles and padding options]*
 
 ## Input/Output Specification
 

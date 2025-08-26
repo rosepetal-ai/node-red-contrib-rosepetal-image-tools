@@ -12,7 +12,6 @@ The `resize` node provides high-performance image scaling with flexible dimensio
 - **Performance Enhancement**: Optimize image sizes for faster loading
 
 ![Resize Demo](../../../assets/nodes/transform/resize-demo.gif)
-*[PLACEHOLDER - Add GIF showing various resize operations including aspect ratio preservation]*
 
 ## Input/Output Specification
 

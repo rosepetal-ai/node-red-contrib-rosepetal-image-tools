@@ -12,7 +12,6 @@ The `crop` node extracts rectangular regions from images with support for both n
 - **Art Composition**: Extract interesting portions of artwork or photography
 
 ![Crop Demo](../../../assets/nodes/transform/crop-demo.gif)
-*[PLACEHOLDER - Add GIF showing crop operations with both normalized and pixel coordinates]*
 
 ## Input/Output Specification
 

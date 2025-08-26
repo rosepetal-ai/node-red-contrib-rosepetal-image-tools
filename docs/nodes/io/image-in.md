@@ -11,7 +11,6 @@ The `image-in` node is the primary entry point for loading images from the files
 - **Surveillance Systems**: Import images from cameras or storage for analysis
 
 ![Image-In Demo](../../../assets/nodes/io/image-in-demo.gif)
-*[PLACEHOLDER - Add GIF showing image loading with different file formats]*
 
 ## Input/Output Specification
 

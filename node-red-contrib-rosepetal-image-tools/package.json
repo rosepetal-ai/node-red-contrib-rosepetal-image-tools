@@ -3,7 +3,6 @@
     "version": "0.1.0",
     "description": "C++ powered image processing nodes for Node-RED.",
     "scripts": {
-        "postinstall": "npm install --prefix ./node_modules/rosepetal-image-engine"
     },
     "keywords": [
         "node-red",

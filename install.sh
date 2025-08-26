@@ -1,7 +1,7 @@
 #!/bin/bash
 
 #=============================================================================
-# Node-RED Rosepetal Image Tools - Universal Installation Script
+# Node-RED Rosepetal Image Tools - Universal Installation Script (Corrected)
 #=============================================================================
 # Installs system dependencies and builds the package for Node-RED.
 # Supports Debian/Ubuntu, Fedora/CentOS/RHEL, Arch Linux, and macOS.
@@ -98,15 +98,21 @@ main() {
     detect_os_and_pm
     install_dependencies
 
-    print_step "Building the Node-RED package and C++ engine..."
-    cd "$SCRIPT_DIR/node-red-contrib-rosepetal-image-tools"
-    
-    # A single npm install here will trigger the postinstall script,
-    # which in turn installs and builds the C++ engine.
+    print_step "Building the C++ image engine..."
+    cd "$SCRIPT_DIR/rosepetal-image-engine"
     if npm install; then
-        print_success "Package and C++ engine built successfully!"
+        print_success "C++ engine dependencies installed and built successfully."
     else
-        print_error "Build failed. Please check the logs above for errors."
+        print_error "Failed to build the C++ engine."
+        exit 1
+    fi
+
+    print_step "Installing the Node-RED package..."
+    cd "$SCRIPT_DIR/node-red-contrib-rosepetal-image-tools"
+    if npm install; then
+        print_success "Node-RED package installed successfully."
+    else
+        print_error "Failed to install the Node-RED package."
         exit 1
     fi
 

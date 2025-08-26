@@ -6,6 +6,8 @@
             name: { value: "" },
             inputPath: { value: "payload" },
             inputPathType: { value: "msg" },
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" },
             selection: { value: "0" },
             asArray: { value: false }
         },
@@ -23,6 +25,13 @@
                 types: ['msg', 'flow', 'global'],
                 typeField: "#node-input-inputPathType"
             });
+            
+            // Set up TypedInput for output path
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
         }
     });
 </script>
@@ -39,6 +48,12 @@
         <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
         <input type="text" id="node-input-inputPath" style="width: 70%;">
         <input type="hidden" id="node-input-inputPathType">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
     </div>
     
     <div class="form-row">
@@ -73,6 +88,8 @@
     <dl class="message-properties">
         <dt>Input from <span class="property-type">string</span></dt>
         <dd>The location to read the input array from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+        <dt>Output to <span class="property-type">string</span></dt>
+        <dd>The location where to write the selected element(s). You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
         <dt>Selection <span class="property-type">string</span></dt>
         <dd>Specify which array elements to select using various formats: single indices, comma-separated lists, ranges, or step patterns.</dd>
         <dt>Force Array <span class="property-type">boolean</span></dt>
@@ -87,8 +104,8 @@
 
     <h3>Outputs</h3>
     <dl class="message-properties">
-        <dt>payload <span class="property-type">any | array</span></dt>
-        <dd>Selected element(s). Single elements output directly unless "Force Array" is enabled. Multiple elements always output as array.</dd>
+        <dt>configured output <span class="property-type">any | array</span></dt>
+        <dd>Selected element(s) written to the configured output path. Single elements output directly unless "Force Array" is enabled. Multiple elements always output as array.</dd>
     </dl>
 
     <h3>Selection Syntax</h3>

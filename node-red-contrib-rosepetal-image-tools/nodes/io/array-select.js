@@ -11,6 +11,8 @@ module.exports = function(RED) {
     // Store configuration
     node.inputPath = config.inputPath || 'payload';
     node.inputPathType = config.inputPathType || 'msg';
+    node.outputPath = config.outputPath || 'payload';
+    node.outputPathType = config.outputPathType || 'msg';
     node.selection = config.selection || '0';
     node.asArray = config.asArray || false;
 
@@ -123,14 +125,21 @@ module.exports = function(RED) {
         if (indices && indices.length > 0) {
           const selectedItems = indices.map(idx => inputArray[idx]);
           
-          // Create output message
-          const outputMsg = { ...msg }; // Clone original message
-          
           // Determine output format
-          if (node.asArray || selectedItems.length > 1) {
-            outputMsg.payload = selectedItems;
-          } else {
-            outputMsg.payload = selectedItems[0];
+          const result = (node.asArray || selectedItems.length > 1) ? selectedItems : selectedItems[0];
+          
+          // Create clean output message with only the selected result
+          let outputMsg = {};
+          
+          // Set output based on configured path
+          if (node.outputPathType === 'msg') {
+            RED.util.setMessageProperty(outputMsg, node.outputPath, result, true);
+          } else if (node.outputPathType === 'flow') {
+            node.context().flow.set(node.outputPath, result);
+            // For flow context, send minimal message (no payload)
+          } else if (node.outputPathType === 'global') {
+            node.context().global.set(node.outputPath, result);
+            // For global context, send minimal message (no payload)
           }
           
           node.status({ 

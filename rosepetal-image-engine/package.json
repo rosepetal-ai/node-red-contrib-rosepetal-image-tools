@@ -4,7 +4,7 @@
     "private": true,
     "main": "index.js",
     "scripts": {
-        "postinstall": "node-gyp rebuild",
+        "install": "node-gyp rebuild",
         "build": "node-gyp build",
         "configure": "node-gyp configure",
         "rebuild": "node-gyp rebuild"

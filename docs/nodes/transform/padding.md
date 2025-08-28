@@ -12,7 +12,6 @@ The `padding` node adds margins around images with configurable colors and dimen
 - **Document Layout**: Add margins for text overlay or annotations
 
 ![Padding Demo](../../../assets/nodes/transform/padding-demo.gif)
-*[PLACEHOLDER - Add GIF showing various padding operations with different colors and dimensions]*
 
 ## Input/Output Specification
 
@@ -58,11 +57,8 @@ The `padding` node adds margins around images with configurable colors and dimen
 
 #### Padding Color
 - **Formats Supported**:
-  - Hex: `#FF0000` (red), `#FFFFFF` (white)
   - RGB: `rgb(255,0,0)`, `rgb(255,255,255)`
-  - Named Colors: `red`, `white`, `black`, `blue`, `transparent`
-- **Default**: Black (`#000000`)
-- **Transparency**: Use `transparent` for PNG output with transparent padding
+- **Default**: Black
 
 ### Output Format Options
 - **Raw**: Standard image object (fastest for processing chains)
@@ -81,7 +77,6 @@ The `padding` node adds margins around images with configurable colors and dimen
 ### Dimension Calculations
 - **New Width**: Original width + left padding + right padding
 - **New Height**: Original height + top padding + bottom padding
-- **Position**: Original image positioned at (left_padding, top_padding)
 
 ## Real-World Examples
 
@@ -105,9 +100,9 @@ Create consistent framing for image galleries.
 
 ### Logo Watermarking Prep
 ```
-[Product Image] → [Padding: Bottom=80, Transparent] → [Ready for Logo Overlay]
+[Product Image] → [Padding: Bottom=80, White] → [Ready for Logo Overlay]
 ```
-Add space for logo placement with transparent background.
+Add space for logo placement with white background.
 
 ### Document Border Creation
 ```
@@ -129,111 +124,10 @@ Add subtle borders to scanned documents.
 
 ### Color Matching Problems
 - **Issue**: Padding color doesn't match expected appearance  
-- **Solution**: Use exact color specifications (hex codes)
+- **Solution**: Use exact color specifications (RGB codes)
 - **Testing**: Use debug mode to verify color appearance
 
 ### Dynamic Dimension Errors
 - **Issue**: Invalid padding values from message properties
 - **Solution**: Validate that dynamic sources contain positive integers
 - **Safety**: Add bounds checking in upstream nodes
-
-## Integration Patterns
-
-### Social Media Pipeline
-```
-Image-In → Resize (Square) → Padding (Brand border) → JPEG → Upload
-```
-Standardize images for social media posting.
-
-### Print Production
-```
-Image → Crop (Content) → Padding (Margins) → PNG → Print Queue
-```
-Prepare images for professional printing.
-
-### Gallery Processing
-```
-Array-Out → Padding (Uniform) → Resize (Standard) → Gallery Display
-```
-Create consistent gallery layouts.
-
-### Overlay Preparation
-```
-Base Image → Padding (Space for overlay) → Transparent PNG → Overlay Composite
-```
-Prepare base images for overlay composition.
-
-## Advanced Usage
-
-### Proportional Padding
-```javascript
-// In a function node before padding:
-const paddingPercent = 0.1; // 10% padding
-msg.paddingSize = Math.round(Math.max(msg.image.width, msg.image.height) * paddingPercent);
-
-// Use msg.paddingSize for all padding dimensions
-```
-
-### Aspect Ratio Correction with Padding
-```javascript
-// Add padding to make image square
-const width = msg.image.width;
-const height = msg.image.height;
-
-if (width > height) {
-  const diff = width - height;
-  msg.topPadding = Math.floor(diff / 2);
-  msg.bottomPadding = Math.ceil(diff / 2);
-  msg.leftPadding = 0;
-  msg.rightPadding = 0;
-} else if (height > width) {
-  const diff = height - width;
-  msg.leftPadding = Math.floor(diff / 2);
-  msg.rightPadding = Math.ceil(diff / 2);
-  msg.topPadding = 0;
-  msg.bottomPadding = 0;
-}
-```
-
-### Dynamic Color Selection
-```javascript
-// Select padding color based on image analysis
-if (msg.imageType === 'photo') {
-  msg.paddingColor = '#FFFFFF'; // White for photos
-} else if (msg.imageType === 'graphic') {
-  msg.paddingColor = 'transparent'; // Transparent for graphics
-} else {
-  msg.paddingColor = '#F5F5F5'; // Light gray for documents
-}
-```
-
-## Best Practices
-
-### Dimension Planning
-- Consider final output dimensions when planning padding
-- Use consistent padding across image sets for uniform appearance
-- Account for padding in downstream processing size calculations
-
-### Color Strategy
-- Use white padding for photos and documents
-- Use transparent padding for overlays and graphics (PNG required)
-- Match brand colors for marketing materials
-- Use subtle colors (light gray) for professional presentations
-
-### Format Selection
-- **PNG**: When transparency is needed
-- **JPEG**: For photos with opaque padding (smaller files)
-- **WebP**: Best compression with transparency support
-- **Raw**: For continued processing chains
-
-### Performance Optimization
-- Use minimal padding necessary for your use case
-- Process arrays when possible for batch efficiency
-- Consider memory implications of significantly expanded dimensions
-- Use appropriate output format based on final destination
-
-### Quality Considerations
-- Add padding early in processing chain to establish final dimensions
-- Ensure padding color complements your content
-- Test padding appearance in final display context
-- Consider accessibility (contrast) when choosing padding colors

@@ -1,5 +1,5 @@
 {
-  "name": "@rosepetal/red-contrib-rosepetal-image-tools",
+  "name": "@rosepetal/node-red-contrib-rosepetal-image-tools",
   "version": "1.0.1",
   "description": "Node-RED Image Processing Toolkit",
   "main": "install.sh",

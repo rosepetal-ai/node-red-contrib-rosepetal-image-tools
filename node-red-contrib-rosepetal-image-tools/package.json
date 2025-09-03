@@ -9,7 +9,10 @@
         "image",
         "image-processing",
         "opencv",
-        "computer-vision"
+        "computer-vision",
+        "image-alignment",
+        "ai-integration",
+        "high-performance"
     ],
     "author": {
         "name": "Rosepetal"
@@ -32,6 +35,7 @@
             "array-out": "nodes/io/array-out.js",
             "array-select": "nodes/io/array-select.js",
             "cropBB": "nodes/specialized/cropBB.js",
+            "image-align": "nodes/specialized/image-align.js",
             "resize": "nodes/transform/resize.js",
             "rotate": "nodes/transform/rotate.js",
             "crop": "nodes/transform/crop.js",

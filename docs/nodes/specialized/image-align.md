@@ -47,7 +47,21 @@ Both images should follow the standard image object format:
       taskMs: number,       // Alignment processing time
       encodeMs: number      // Output encoding time (if not raw)
     },
-    preset: string          // Alignment preset used
+    preset: string,         // Alignment preset used
+    transformMatrix: {      // Optional: only when returnMatrix enabled
+      dx: number,           // Horizontal translation in pixels
+      dy: number,           // Vertical translation in pixels
+      matrix2x3: [          // OpenCV 2x3 affine matrix format
+        a, b, dx,           // [a b dx]
+        c, d, dy            // [c d dy] where typically a=d=1, b=c=0 for translation
+      ],
+      matrix3x3: [          // Standard 3x3 homogeneous transformation matrix
+        a, b, dx,           // [a  b  dx]
+        c, d, dy,           // [c  d  dy]
+        0, 0, 1             // [0  0  1 ] (homogeneous coordinates)
+      ],
+      transform: []         // Alias for matrix3x3 (backward compatibility)
+    }
   }
 }
 ```
@@ -98,7 +112,15 @@ The node offers four carefully tuned presets balancing speed and accuracy:
 - **Use Case**: High precision alignment for critical applications
 - **Processing Time**: ~40-100ms per image pair
 
+**Custom**
+- **Scale**: User-defined (0.1-1.0) - Image downscale factor for alignment calculation
+- **Max Iterations**: User-defined (1-200) - Maximum number of ECC iterations
+- **Termination Epsilon**: User-defined (0.000001-0.1) - Convergence threshold
+- **Use Case**: Fine-tuned performance for specific image types or requirements
+- **Processing Time**: Depends on parameters chosen
+
 ### Advanced Options
+- **Return Matrix**: Enable transformation matrix output for analysis
 - **Debug Mode**: Enable image preview display for development
 - **Debug Width**: Preview image width (default: 200 pixels)
 
@@ -245,6 +267,33 @@ if (imageSize > 2000000) { // Large images
 }
 ```
 
+### Custom Parameters for Fine-Tuning
+```javascript
+// Configure image-align node with custom preset for specific use case
+const nodeConfig = {
+  preset: 'custom',
+  customScale: 0.4,           // Medium resolution for balance
+  customMaxIterations: 25,    // Moderate iterations
+  customTerminationEps: 5e-3  // Balanced convergence threshold
+};
+
+// Example: High-precision alignment for microscopy images
+const microscopeConfig = {
+  preset: 'custom',
+  customScale: 0.8,           // High resolution to capture fine details
+  customMaxIterations: 75,    // More iterations for precision
+  customTerminationEps: 1e-5  // Very strict convergence
+};
+
+// Example: Ultra-fast alignment for video frames
+const videoConfig = {
+  preset: 'custom',
+  customScale: 0.15,          // Very low resolution for speed
+  customMaxIterations: 5,     // Minimal iterations
+  customTerminationEps: 0.05  // Loose convergence for speed
+};
+```
+
 ### Batch Processing Pattern
 ```javascript
 // Process multiple image pairs with consistent reference
@@ -292,6 +341,51 @@ msg.performanceStats = {
   successRate: stats.successful / stats.total,
   averageTime: stats.avgTime
 };
+```
+
+### Transformation Matrix Analysis
+```javascript
+// After image-align node with returnMatrix enabled:
+if (msg.alignment.success && msg.alignment.transformMatrix) {
+  const matrix = msg.alignment.transformMatrix;
+  
+  // Simple translation values
+  node.log(`Image shifted by dx: ${matrix.dx}, dy: ${matrix.dy} pixels`);
+  
+  // Access different matrix formats
+  const opencv2x3 = matrix.matrix2x3;  // [a, b, dx, c, d, dy]
+  const homogeneous3x3 = matrix.matrix3x3;  // [a, b, dx, c, d, dy, 0, 0, 1]
+  const transform = matrix.transform;  // Same as matrix3x3
+  
+  // Analyze alignment quality
+  const totalShift = Math.sqrt(matrix.dx * matrix.dx + matrix.dy * matrix.dy);
+  if (totalShift < 5) {
+    msg.alignmentQuality = 'excellent';
+  } else if (totalShift < 20) {
+    msg.alignmentQuality = 'good';
+  } else {
+    msg.alignmentQuality = 'poor';
+  }
+  
+  // Store for applying to other images
+  flow.set('lastAlignment', matrix);
+}
+```
+
+### Applying Transformation to Other Images
+```javascript
+// Use stored transformation matrix to align additional images
+const storedMatrix = flow.get('lastAlignment');
+if (storedMatrix && msg.additionalImages) {
+  msg.additionalImages.forEach((image, index) => {
+    // Note: You would need a custom transformation function or another alignment node
+    // The matrix provides the exact translation values needed
+    msg.transformationNeeded = {
+      dx: storedMatrix.dx,
+      dy: storedMatrix.dy
+    };
+  });
+}
 ```
 
 ## Best Practices

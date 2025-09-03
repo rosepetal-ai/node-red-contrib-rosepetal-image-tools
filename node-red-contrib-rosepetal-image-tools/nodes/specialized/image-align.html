@@ -19,7 +19,12 @@
             debugWidth: { value: 200 },
             debugWidthType: { value: "num" },
             // Alignment configuration
-            preset: { value: "ultra-fast" }
+            preset: { value: "ultra-fast" },
+            returnMatrix: { value: false },
+            // Custom parameters
+            customScale: { value: 0.2 },
+            customMaxIterations: { value: 10 },
+            customTerminationEps: { value: 0.1 }
         },
         inputs: 1,
         outputs: 1,
@@ -87,23 +92,32 @@
             updateDebugWidthVisibility();
             debugCheckbox.on('change', updateDebugWidthVisibility);
 
-            // Preset description update
+            // Preset description and custom parameters visibility
             function updatePresetDescription() {
                 const preset = $('#node-input-preset').val();
                 let description = '';
+                const customParams = $('#custom-parameters');
                 
                 switch(preset) {
                     case 'ultra-fast':
                         description = 'Maximum speed, basic accuracy (scale: 0.2, iter: 10)';
+                        customParams.hide();
                         break;
                     case 'fast':
                         description = 'Good speed, decent accuracy (scale: 0.3, iter: 20)';
+                        customParams.hide();
                         break;
                     case 'balanced':
                         description = 'Balanced speed and accuracy (scale: 0.5, iter: 30)';
+                        customParams.hide();
                         break;
                     case 'quality':
                         description = 'Best accuracy, slower processing (scale: 0.7, iter: 50)';
+                        customParams.hide();
+                        break;
+                    case 'custom':
+                        description = 'Custom parameters - configure scale, iterations, and convergence';
+                        customParams.show();
                         break;
                 }
                 
@@ -273,6 +287,13 @@
         <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
     </div>
     
+    <!-- Return Matrix Option -->
+    <div class="form-row">
+        <label for="node-input-returnMatrix"><i class="fa fa-calculator"></i> Transform Matrix</label>
+        <input type="checkbox" id="node-input-returnMatrix" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-returnMatrix" style="width:auto; margin-left:5px;">Return transformation matrix</label>
+    </div>
+    
     <!-- Debug Configuration -->
     <div class="form-row">
         <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
@@ -295,6 +316,7 @@
             <option value="fast">Fast</option>
             <option value="balanced">Balanced</option>
             <option value="quality">Quality</option>
+            <option value="custom">Custom</option>
         </select>
     </div>
     <div class="form-row">
@@ -302,10 +324,30 @@
         <div id="preset-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
     </div>
     
+    <!-- Custom Parameters (only visible when Custom preset selected) -->
+    <div id="custom-parameters" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-customScale"><i class="fa fa-search"></i> Scale</label>
+            <input type="number" id="node-input-customScale" min="0.1" max="1.0" step="0.1" style="width: 80px;">
+            <span style="margin-left: 10px; color: #666;">0.1-1.0 (image downscale factor)</span>
+        </div>
+        <div class="form-row">
+            <label for="node-input-customMaxIterations"><i class="fa fa-repeat"></i> Max Iterations</label>
+            <input type="number" id="node-input-customMaxIterations" min="1" max="200" step="1" style="width: 80px;">
+            <span style="margin-left: 10px; color: #666;">1-200 (alignment iterations)</span>
+        </div>
+        <div class="form-row">
+            <label for="node-input-customTerminationEps"><i class="fa fa-bullseye"></i> Termination Eps</label>
+            <input type="number" id="node-input-customTerminationEps" min="0.000001" max="0.1" step="0.001" style="width: 80px;">
+            <span style="margin-left: 10px; color: #666;">0.000001-0.1 (convergence threshold)</span>
+        </div>
+    </div>
+    
     <div class="form-tips">
         <b>Flexible Paths:</b> Configure where to find reference and target images in your message.<br>
         <b>Default:</b> <code>msg.payload.reference</code> and <code>msg.payload.target</code><br>
-        <b>Output:</b> Returns the aligned target image. Alignment info is added to <code>msg.alignment</code>.
+        <b>Output:</b> Returns the aligned target image. Alignment info is added to <code>msg.alignment</code>.<br>
+        <b>Transform Matrix:</b> When enabled, includes transformation matrix with <code>dx</code>, <code>dy</code> translation values, 2x3 OpenCV matrix, and 3x3 homogeneous matrix.
     </div>
 </script>
 
@@ -345,6 +387,15 @@
         <li><code>success</code>: boolean indicating alignment success</li>
         <li><code>timing</code>: processing timing breakdown</li>
         <li><code>preset</code>: speed preset used</li>
+        <li><code>transformMatrix</code>: (optional) transformation matrix when enabled:
+          <ul>
+            <li><code>dx</code>: horizontal translation in pixels</li>
+            <li><code>dy</code>: vertical translation in pixels</li>
+            <li><code>matrix2x3</code>: OpenCV 2x3 matrix format [a, b, dx, c, d, dy]</li>
+            <li><code>matrix3x3</code>: standard 3x3 homogeneous matrix [a, b, dx, c, d, dy, 0, 0, 1]</li>
+            <li><code>transform</code>: alias for matrix3x3 (backward compatibility)</li>
+          </ul>
+        </li>
       </ul>
     </dd>
   </dl>
@@ -355,6 +406,13 @@
     <li><strong>Fast:</strong> Good speed, decent accuracy (scale: 0.3, iterations: 20)</li>
     <li><strong>Balanced:</strong> Balanced speed and accuracy (scale: 0.5, iterations: 30)</li>
     <li><strong>Quality:</strong> Best accuracy, slower processing (scale: 0.7, iterations: 50)</li>
+    <li><strong>Custom:</strong> Manual parameter control:
+      <ul>
+        <li><code>Scale</code>: Image downscale factor (0.1-1.0) - smaller values = faster processing</li>
+        <li><code>Max Iterations</code>: Maximum alignment iterations (1-200) - more iterations = better accuracy</li>
+        <li><code>Termination Eps</code>: Convergence threshold (0.000001-0.1) - smaller values = stricter convergence</li>
+      </ul>
+    </li>
   </ul>
 
   <h3>Algorithm Details</h3>

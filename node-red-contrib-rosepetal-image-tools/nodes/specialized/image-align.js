@@ -23,6 +23,7 @@ module.exports = function (RED) {
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
         const preset = config.preset || 'ultra-fast';
+        const returnMatrix = config.returnMatrix || false;
 
         /* ▸ Read images from message ------------------------------------ */
         // Get images directly from specified paths
@@ -44,31 +45,43 @@ module.exports = function (RED) {
 
         // Set alignment parameters based on preset
         let scale, maxIterations, terminationEps;
-        switch (preset) {
-          case 'ultra-fast':
-            scale = 0.2;
-            maxIterations = 10;
-            terminationEps = 1e-1;
-            break;
-          case 'fast':
-            scale = 0.3;
-            maxIterations = 20;
-            terminationEps = 1e-2;
-            break;
-          case 'balanced':
-            scale = 0.5;
-            maxIterations = 30;
-            terminationEps = 1e-3;
-            break;
-          case 'quality':
-            scale = 0.7;
-            maxIterations = 50;
-            terminationEps = 1e-4;
-            break;
-          default:
-            scale = 0.2;
-            maxIterations = 10;
-            terminationEps = 1e-1;
+        if (preset === 'custom') {
+          // Use custom parameters from configuration
+          scale = parseFloat(config.customScale) || 0.2;
+          maxIterations = parseInt(config.customMaxIterations) || 10;
+          terminationEps = parseFloat(config.customTerminationEps) || 1e-1;
+          
+          // Validate ranges
+          scale = Math.max(0.1, Math.min(1.0, scale));
+          maxIterations = Math.max(1, Math.min(200, maxIterations));
+          terminationEps = Math.max(1e-6, Math.min(1e-1, terminationEps));
+        } else {
+          switch (preset) {
+            case 'ultra-fast':
+              scale = 0.2;
+              maxIterations = 10;
+              terminationEps = 1e-1;
+              break;
+            case 'fast':
+              scale = 0.3;
+              maxIterations = 20;
+              terminationEps = 1e-2;
+              break;
+            case 'balanced':
+              scale = 0.5;
+              maxIterations = 30;
+              terminationEps = 1e-3;
+              break;
+            case 'quality':
+              scale = 0.7;
+              maxIterations = 50;
+              terminationEps = 1e-4;
+              break;
+            default:
+              scale = 0.2;
+              maxIterations = 10;
+              terminationEps = 1e-1;
+          }
         }
 
         /* ▸ Single call to the C++ addon --------------------------------- */
@@ -80,7 +93,8 @@ module.exports = function (RED) {
           terminationEps,
           outputFormat,
           outputQuality,
-          pngOptimize
+          pngOptimize,
+          returnMatrix
         );
 
         /* ▸ Status: standardized success formatting ----------------------- */
@@ -132,6 +146,11 @@ module.exports = function (RED) {
           timing: result.timing,
           preset: preset
         };
+        
+        // Add transformation matrix if returned
+        if (result.transformMatrix) {
+          msg.alignment.transformMatrix = result.transformMatrix;
+        }
 
         send(msg);
         

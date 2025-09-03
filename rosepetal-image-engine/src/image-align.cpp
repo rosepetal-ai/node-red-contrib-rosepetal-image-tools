@@ -21,7 +21,8 @@ public:
                     double terminationEps,
                     std::string outputFormat,
                     int quality = 90,
-                    bool pngOptimize = false)
+                    bool pngOptimize = false,
+                    bool returnMatrix = false)
         : Napi::AsyncWorker(callback),
           scale(scale),
           maxIterations(maxIterations),
@@ -29,6 +30,7 @@ public:
           outputFormat(std::move(outputFormat)),
           quality(quality),
           pngOptimize(pngOptimize),
+          returnMatrix(returnMatrix),
           alignmentSuccess(false) {
         
         try {
@@ -80,6 +82,10 @@ protected:
             alignmentSuccess = FindTransformation(refGray, targetGray, transformMatrix);
             
             if (alignmentSuccess) {
+                // Store transformation matrix if requested
+                if (returnMatrix) {
+                    transformationMatrix = transformMatrix.clone();
+                }
                 // Apply transformation to the color target image
                 ApplyTransformation(targetResized, transformMatrix, cv::Size(refWidth, refHeight));
             } else {
@@ -121,6 +127,39 @@ protected:
             response.Set("timing", MakeTimingJS(env, convertMs, taskMs, encodeMs));
             response.Set("success", Napi::Boolean::New(env, alignmentSuccess));
             
+            // Add transformation matrix if requested and alignment succeeded
+            if (returnMatrix && alignmentSuccess && !transformationMatrix.empty()) {
+                Napi::Object matrix = Napi::Object::New(env);
+                matrix.Set("dx", Napi::Number::New(env, transformationMatrix.at<float>(0, 2)));
+                matrix.Set("dy", Napi::Number::New(env, transformationMatrix.at<float>(1, 2)));
+                
+                // Provide both 2x3 OpenCV matrix and standard 3x3 homogeneous matrix
+                Napi::Array matrix2x3 = Napi::Array::New(env, 6);
+                matrix2x3.Set(0u, Napi::Number::New(env, transformationMatrix.at<float>(0, 0)));
+                matrix2x3.Set(1u, Napi::Number::New(env, transformationMatrix.at<float>(0, 1)));
+                matrix2x3.Set(2u, Napi::Number::New(env, transformationMatrix.at<float>(0, 2)));
+                matrix2x3.Set(3u, Napi::Number::New(env, transformationMatrix.at<float>(1, 0)));
+                matrix2x3.Set(4u, Napi::Number::New(env, transformationMatrix.at<float>(1, 1)));
+                matrix2x3.Set(5u, Napi::Number::New(env, transformationMatrix.at<float>(1, 2)));
+                
+                // Standard 3x3 homogeneous transformation matrix
+                Napi::Array matrix3x3 = Napi::Array::New(env, 9);
+                matrix3x3.Set(0u, Napi::Number::New(env, transformationMatrix.at<float>(0, 0))); // m00
+                matrix3x3.Set(1u, Napi::Number::New(env, transformationMatrix.at<float>(0, 1))); // m01
+                matrix3x3.Set(2u, Napi::Number::New(env, transformationMatrix.at<float>(0, 2))); // m02 (dx)
+                matrix3x3.Set(3u, Napi::Number::New(env, transformationMatrix.at<float>(1, 0))); // m10
+                matrix3x3.Set(4u, Napi::Number::New(env, transformationMatrix.at<float>(1, 1))); // m11
+                matrix3x3.Set(5u, Napi::Number::New(env, transformationMatrix.at<float>(1, 2))); // m12 (dy)
+                matrix3x3.Set(6u, Napi::Number::New(env, 0.0)); // m20 (always 0)
+                matrix3x3.Set(7u, Napi::Number::New(env, 0.0)); // m21 (always 0)
+                matrix3x3.Set(8u, Napi::Number::New(env, 1.0)); // m22 (always 1)
+                
+                matrix.Set("matrix2x3", matrix2x3);  // OpenCV format [a,b,dx,c,d,dy]
+                matrix.Set("matrix3x3", matrix3x3);  // Standard homogeneous format
+                matrix.Set("transform", matrix3x3);  // Alias for backward compatibility
+                response.Set("transformMatrix", matrix);
+            }
+            
             Callback().Call({env.Null(), response});
             
         } catch (const std::exception& e) {
@@ -136,9 +175,11 @@ private:
     std::string outputFormat;
     int quality;
     bool pngOptimize;
+    bool returnMatrix;
     
     // Image data
     cv::Mat referenceMat, targetMat, alignedImage;
+    cv::Mat transformationMatrix;
     std::string referenceChannelOrder, targetChannelOrder, outputChannelOrder;
     bool alignmentSuccess;
     
@@ -226,8 +267,8 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     
     // Validate arguments - expect callback as last argument
-    if (info.Length() < 3 || info.Length() > 9 || !info[info.Length() - 1].IsFunction()) {
-        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], callback)")
+    if (info.Length() < 3 || info.Length() > 10 || !info[info.Length() - 1].IsFunction()) {
+        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], callback)")
             .ThrowAsJavaScriptException();
         return env.Null();
     }
@@ -244,6 +285,7 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     std::string outputFormat = "raw";
     int quality = 90;
     bool pngOptimize = false;
+    bool returnMatrix = false;
     size_t cbIdx = 2;
     
     // Parse optional parameters (before callback)
@@ -271,11 +313,15 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
         pngOptimize = info[7].As<Napi::Boolean>().Value();
         cbIdx = 8;
     }
+    if (info.Length() >= 10) {
+        returnMatrix = info[8].As<Napi::Boolean>().Value();
+        cbIdx = 9;
+    }
     
     // Create and queue worker
     ImageAlignWorker* worker = new ImageAlignWorker(callback, referenceImage, targetImage,
                                                    scale, maxIterations, terminationEps,
-                                                   outputFormat, quality, pngOptimize);
+                                                   outputFormat, quality, pngOptimize, returnMatrix);
     worker->Queue();
     
     return env.Undefined();

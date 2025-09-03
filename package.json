@@ -1,0 +1,34 @@
+{
+  "name": "@rosepetal/red-contrib-rosepetal-image-tools",
+  "version": "1.0.0",
+  "description": "Node-RED Image Processing Toolkit",
+  "main": "install.sh",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools.git"
+  },
+  "keywords": [
+    "node-red",
+    "image",
+    "opencv",
+    "performance"
+  ],
+  "author": "Rosepetal SL <dev@rosepetal.ai> (https://www.rosepetal.ai)",
+  "contributors": [
+    {
+      "name": "Nil Allue",
+      "email": "nil.allue@rosepetal.ai"
+    }
+  ],
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
+  },
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme"
+}

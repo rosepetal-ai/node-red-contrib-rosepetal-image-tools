@@ -1,0 +1,405 @@
+<script type="text/javascript">
+    RED.nodes.registerType('image-align', {
+        category: 'RP Image',
+        color: '#DDA0DD',
+        defaults: {
+            name: { value: "" },
+            // Image path configurations (like blend node)
+            referenceImagePath: { value: "payload.reference" },
+            referenceImagePathType: { value: "msg" },
+            targetImagePath: { value: "payload.target" },
+            targetImagePathType: { value: "msg" },
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" },
+            outputFormat: { value: "raw" },
+            outputQuality: { value: 90 },
+            pngOptimize: { value: false },
+            // Debug configuration
+            debugEnabled: { value: false },
+            debugWidth: { value: 200 },
+            debugWidthType: { value: "num" },
+            // Alignment configuration
+            preset: { value: "ultra-fast" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-crosshairs",
+        label: function() {
+            if (this.name) { return this.name; }
+            return `align (${this.preset})`;
+        },
+        oneditprepare: function() {
+            /* path typedInputs */
+            $("#node-input-referenceImagePath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-referenceImagePathType"
+            });
+            $("#node-input-targetImagePath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-targetImagePathType"
+            });
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
+
+            // Initialize debug width TypedInput
+            $("#node-input-debugWidth").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-debugWidthType"
+            });
+
+            // Output Format Logic
+            function updateQualityVisibility() {
+                const format = $('#node-input-outputFormat').val();
+                if (format === 'jpg' || format === 'webp') {
+                    $('#quality-row').show();
+                } else {
+                    $('#quality-row').hide();
+                }
+                
+                if (format === 'png') {
+                    $('#png-optimize-row').show();
+                } else {
+                    $('#png-optimize-row').hide();
+                }
+            }
+
+            $('#node-input-outputFormat').on('change', updateQualityVisibility);
+            updateQualityVisibility();
+
+            // Debug Display Logic
+            const debugCheckbox = $('#node-input-debugEnabled');
+            const debugWidthRow = $('#debug-width-row');
+            
+            function updateDebugWidthVisibility() {
+                if (debugCheckbox.is(':checked')) {
+                    debugWidthRow.show();
+                } else {
+                    debugWidthRow.hide();
+                }
+            }
+            
+            updateDebugWidthVisibility();
+            debugCheckbox.on('change', updateDebugWidthVisibility);
+
+            // Preset description update
+            function updatePresetDescription() {
+                const preset = $('#node-input-preset').val();
+                let description = '';
+                
+                switch(preset) {
+                    case 'ultra-fast':
+                        description = 'Maximum speed, basic accuracy (scale: 0.2, iter: 10)';
+                        break;
+                    case 'fast':
+                        description = 'Good speed, decent accuracy (scale: 0.3, iter: 20)';
+                        break;
+                    case 'balanced':
+                        description = 'Balanced speed and accuracy (scale: 0.5, iter: 30)';
+                        break;
+                    case 'quality':
+                        description = 'Best accuracy, slower processing (scale: 0.7, iter: 50)';
+                        break;
+                }
+                
+                $('#preset-description').text(description);
+            }
+            
+            $('#node-input-preset').on('change', updatePresetDescription);
+            updatePresetDescription();
+        }
+    });
+
+    // Debug image display renderer (shared)
+    if (!window.debugImageRendererInitialized) {
+        window.debugImageRendererInitialized = true;
+        
+        (function() {
+            var isSubscribed = false;
+            
+            function subscribeToDebugImages() {
+                if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+                isSubscribed = true;
+                
+                RED.comms.subscribe('debug-image', function(event, data) {
+                    if (!data || !data.id) return;
+                    
+                    try {
+                        renderDebugImage(data);
+                    } catch (err) {
+                        console.warn('Debug image render error:', err);
+                    }
+                });
+            }
+            
+            function renderDebugImage(data) {
+                const nodeId = data.id;
+                const base64Data = data.data;
+                const format = data.format || 'unknown';
+                const mimeType = data.mimeType || 'jpeg';
+                
+                if (!base64Data) {
+                    removeDebugImage(nodeId);
+                    return;
+                }
+                
+                const nodeElement = document.getElementById(nodeId);
+                if (!nodeElement) return;
+                
+                const debugWidth = data.debugWidth || 200;
+                const debugHeight = data.debugHeight || 200;
+                const maxDisplayWidth = Math.min(debugWidth, 500);
+                const displayHeight = debugHeight * (maxDisplayWidth / debugWidth);
+                
+                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                
+                if (!debugContainer) {
+                    debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    debugContainer.id = 'debug-img-container-' + nodeId;
+                    debugContainer.setAttribute('x', '0');
+                    debugContainer.setAttribute('y', '45');
+                    debugContainer.setAttribute('width', maxDisplayWidth.toString());
+                    debugContainer.setAttribute('height', displayHeight.toString());
+                    debugContainer.style.overflow = 'visible';
+                    
+                    const img = document.createElement('img');
+                    img.id = 'debug-img-' + nodeId;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    img.style.cursor = 'pointer';
+                    img.style.maxHeight = 'none';
+                    img.style.maxWidth = 'none';
+                    
+                    img.onclick = function() {
+                        removeDebugImage(nodeId);
+                    };
+                    
+                    debugContainer.appendChild(img);
+                    nodeElement.appendChild(debugContainer);
+                } else {
+                    debugContainer.setAttribute('width', maxDisplayWidth.toString());
+                    debugContainer.setAttribute('height', displayHeight.toString());
+                }
+                
+                const img = document.getElementById('debug-img-' + nodeId);
+                if (img) {
+                    img.src = `data:image/${mimeType};base64,${base64Data}`;
+                    img.title = 'Debug aligned image (click to hide)';
+                }
+            }
+            
+            function removeDebugImage(nodeId) {
+                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                if (debugContainer) {
+                    debugContainer.remove();
+                }
+            }
+            
+            function initializeWhenReady() {
+                if (typeof RED !== 'undefined' && RED.comms) {
+                    subscribeToDebugImages();
+                    
+                    setInterval(function() {
+                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(container => {
+                            const nodeId = container.id.replace('debug-img-container-', '');
+                            const nodeElement = document.getElementById(nodeId);
+                            if (!nodeElement) {
+                                container.remove();
+                            }
+                        });
+                    }, 5000);
+                } else {
+                    setTimeout(initializeWhenReady, 100);
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeWhenReady);
+            } else {
+                initializeWhenReady();
+            }
+        })();
+    }
+</script>
+
+<script type="text/x-red" data-template-name="image-align">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-referenceImagePath"><i class="fa fa-photo"></i> Reference Image</label>
+        <input type="text" id="node-input-referenceImagePath" style="width: 70%;">
+        <input type="hidden" id="node-input-referenceImagePathType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-targetImagePath"><i class="fa fa-photo"></i> Target Image</label>
+        <input type="text" id="node-input-targetImagePath" style="width: 70%;">
+        <input type="hidden" id="node-input-targetImagePathType">
+    </div>
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+        <select id="node-input-outputFormat" style="width: 200px;">
+            <option value="raw">Raw (fastest)</option>
+            <option value="jpg">JPEG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WebP</option>
+        </select>
+    </div>
+    <div class="form-row" id="quality-row">
+        <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+        <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+        <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+    </div>
+    <div class="form-row" id="png-optimize-row" style="display: none;">
+        <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+        <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+    </div>
+    
+    <!-- Debug Configuration -->
+    <div class="form-row">
+        <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+        <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show aligned image</label>
+    </div>
+    <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
+        <span style="margin-left: 10px; color: #666;">pixels</span>
+    </div>
+    
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-preset"><i class="fa fa-tachometer"></i> Speed Preset</label>
+        <select id="node-input-preset" style="width: 200px;">
+            <option value="ultra-fast">Ultra Fast</option>
+            <option value="fast">Fast</option>
+            <option value="balanced">Balanced</option>
+            <option value="quality">Quality</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <div id="preset-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+    </div>
+    
+    <div class="form-tips">
+        <b>Flexible Paths:</b> Configure where to find reference and target images in your message.<br>
+        <b>Default:</b> <code>msg.payload.reference</code> and <code>msg.payload.target</code><br>
+        <b>Output:</b> Returns the aligned target image. Alignment info is added to <code>msg.alignment</code>.
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="image-align">
+  <p>Aligns images using ultra-fast ECC (Enhanced Correlation Coefficient) algorithm with OpenCV backend for maximum performance.</p>
+
+  <h3>Details</h3>
+  <p>This node performs image alignment by finding the transformation needed to align a target image with a reference image. It uses OpenCV's ECC algorithm optimized for speed with configurable precision levels. The aligned target image is returned as output.</p>
+
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Reference Image <span class="property-type">string</span></dt>
+    <dd>Path to reference image in message. Defaults to <code>msg.payload.reference</code>.</dd>
+    <dt>Target Image <span class="property-type">string</span></dt>
+    <dd>Path to target image in message. Defaults to <code>msg.payload.target</code>.</dd>
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>Location where aligned image will be stored. Defaults to <code>msg.payload</code>.</dd>
+    <dt>Output Format <span class="property-type">string</span></dt>
+    <dd>Output format: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+    <dt>Speed Preset <span class="property-type">string</span></dt>
+    <dd>Alignment speed/quality balance: <code>ultra-fast</code>, <code>fast</code>, <code>balanced</code>, or <code>quality</code>.</dd>
+  </dl>
+
+  <h3>Inputs</h3>
+  <dl class="message-properties">
+    <dt>Images <span class="property-type">object</span></dt>
+    <dd>Both images must be in standard format: <code>{data: Buffer, width: number, height: number, channels: number, colorSpace: string}</code>. Images can be located anywhere in the message using the configurable paths.</dd>
+  </dl>
+
+  <h3>Outputs</h3>
+  <dl class="message-properties">
+    <dt>payload <span class="property-type">object|Buffer</span></dt>
+    <dd>Aligned target image in specified output format.</dd>
+    <dt>alignment <span class="property-type">object</span></dt>
+    <dd>Alignment information:
+      <ul>
+        <li><code>success</code>: boolean indicating alignment success</li>
+        <li><code>timing</code>: processing timing breakdown</li>
+        <li><code>preset</code>: speed preset used</li>
+      </ul>
+    </dd>
+  </dl>
+
+  <h3>Speed Presets</h3>
+  <ul>
+    <li><strong>Ultra Fast:</strong> Maximum speed, basic accuracy (scale: 0.2, iterations: 10)</li>
+    <li><strong>Fast:</strong> Good speed, decent accuracy (scale: 0.3, iterations: 20)</li>
+    <li><strong>Balanced:</strong> Balanced speed and accuracy (scale: 0.5, iterations: 30)</li>
+    <li><strong>Quality:</strong> Best accuracy, slower processing (scale: 0.7, iterations: 50)</li>
+  </ul>
+
+  <h3>Algorithm Details</h3>
+  <p>Uses OpenCV's <code>findTransformECC</code> with <code>MOTION_TRANSLATION</code> for ultra-fast translation-only alignment:</p>
+  <ul>
+    <li>Images are downscaled for speed (configurable scale factor)</li>
+    <li>ECC alignment finds optimal translation transform</li>
+    <li>Transform is scaled back to full resolution and applied</li>
+    <li>Target image dimensions are adjusted to match reference</li>
+  </ul>
+
+  <h3>Flexible Input Configuration</h3>
+  <p>Configure where to find images in your message using the path settings:</p>
+  <ul>
+    <li><strong>Default:</strong> <code>msg.payload.reference</code> and <code>msg.payload.target</code></li>
+    <li><strong>Custom paths:</strong> <code>msg.referenceImage</code> and <code>msg.targetToAlign</code></li>
+    <li><strong>Flow context:</strong> <code>flow.template</code> and <code>msg.sample</code></li>
+    <li><strong>Global context:</strong> <code>global.baseImage</code> and <code>msg.testImage</code></li>
+  </ul>
+
+  <h3>Usage Examples</h3>
+  <pre><code>// Default structure (payload.reference & payload.target)
+msg.payload = {
+  reference: { data: Buffer, width: 800, height: 600, channels: 3, colorSpace: "BGR" },
+  target: { data: Buffer, width: 800, height: 600, channels: 3, colorSpace: "BGR" }
+};
+
+// Custom paths (configure: referenceImage & targetImage)
+msg.referenceImage = { data: Buffer, width: 800, height: 600, channels: 3, colorSpace: "BGR" };
+msg.targetImage = { data: Buffer, width: 800, height: 600, channels: 3, colorSpace: "BGR" };
+
+// Mixed sources (configure: flow.template & payload)
+flow.set("template", referenceImageObject);
+msg.payload = targetImageObject;</code></pre>
+
+  <h3>Common Workflows</h3>
+  <ul>
+    <li><strong>Quality Control:</strong> Image-in → Image-align → comparison analysis</li>
+    <li><strong>Template Matching:</strong> Template + samples → Image-align → feature extraction</li>
+    <li><strong>Multi-camera Calibration:</strong> Reference view + other views → Image-align → unified coordinate system</li>
+  </ul>
+
+  <h3>Performance</h3>
+  <p>Optimized for real-time processing with sub-50ms typical processing times. Uses downscaled alignment for speed while maintaining accuracy for most use cases.</p>
+
+  <h3>Error Handling</h3>
+  <p>If alignment fails, the target image is resized to match reference dimensions and returned. Check <code>msg.alignment.success</code> for alignment status.</p>
+</script>

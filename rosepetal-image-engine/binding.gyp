@@ -13,7 +13,8 @@
         "src/mosaic.cpp",
         "src/advanced-mosaic.cpp",
         "src/blend.cpp",
-        "src/add-mask.cpp"
+        "src/add-mask.cpp",
+        "src/image-align.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

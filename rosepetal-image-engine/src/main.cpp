@@ -10,6 +10,7 @@ Napi::Value Mosaic(const Napi::CallbackInfo& info);
 Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info);
 Napi::Value Blend(const Napi::CallbackInfo& info);
 Napi::Value AddMask(const Napi::CallbackInfo& info);
+Napi::Value ImageAlign(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "resize"), Napi::Function::New(env, Resize));
@@ -22,6 +23,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "advancedMosaic"), Napi::Function::New(env, AdvancedMosaic));
   exports.Set(Napi::String::New(env, "blend"), Napi::Function::New(env, Blend));
   exports.Set(Napi::String::New(env, "addMask"), Napi::Function::New(env, AddMask));
+  exports.Set(Napi::String::New(env, "imageAlign"), Napi::Function::New(env, ImageAlign));
   return exports;
 }
 

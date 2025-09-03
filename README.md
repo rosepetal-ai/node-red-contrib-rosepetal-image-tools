@@ -1,6 +1,6 @@
 # Node-RED Image Processing Toolkit
 
-A comprehensive Node-RED package providing 16 specialized nodes for high-performance image processing using C++ OpenCV backend. Perfect for computer vision workflows, batch processing, and automated image manipulation.
+A comprehensive Node-RED package providing 17 specialized nodes for high-performance image processing using C++ OpenCV backend. Perfect for computer vision workflows, batch processing, and automated image manipulation.
 
 ![Demo](assets/flow_time_example.gif)
 
@@ -58,14 +58,15 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[cropBB](docs/nodes/specialized/cropBB.md)** | Extract crops from AI bounding boxes | Object detection integration, confidence filtering |
+| **[image-align](docs/nodes/specialized/image-align.md)** | Ultra-fast image alignment using ECC algorithm | Translation correction, speed presets, real-time processing |
 
 ## 🔥 Real-World Use Cases
 
 ### Computer Vision Pipeline
 ```
-[Camera] → [AI Detection] → [CropBB] → [Classification] → [Decision]
+[Camera] → [Image-Align] → [AI Detection] → [CropBB] → [Classification] → [Decision]
 ```
-Perfect for quality control, security systems, and medical imaging.
+Perfect for quality control, security systems, and medical imaging with precise image registration.
 
 ### Batch Photo Processing
 ```

@@ -30,5 +30,25 @@
   "bugs": {
     "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
   },
-  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme"
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
+      "node-red": {
+        "nodes": {
+            "image-in": "node-red-contrib-rosepetal-image-tools/nodes/io/image-in.js",
+            "array-in": "node-red-contrib-rosepetal-image-tools/nodes/io/array-in.js",
+            "array-out": "node-red-contrib-rosepetal-image-tools/nodes/io/array-out.js",
+            "array-select": "node-red-contrib-rosepetal-image-tools/nodes/io/array-select.js",
+            "cropBB": "node-red-contrib-rosepetal-image-tools/nodes/specialized/cropBB.js",
+            "resize": "node-red-contrib-rosepetal-image-tools/nodes/transform/resize.js",
+            "rotate": "node-red-contrib-rosepetal-image-tools/nodes/transform/rotate.js",
+            "crop": "node-red-contrib-rosepetal-image-tools/nodes/transform/crop.js",
+            "concat": "node-red-contrib-rosepetal-image-tools/nodes/mix/concat.js",
+            "padding": "node-red-contrib-rosepetal-image-tools/nodes/transform/padding.js",
+            "filter": "node-red-contrib-rosepetal-image-tools/nodes/transform/filter.js",
+            "mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/mosaic.js",
+            "advanced-mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/advanced-mosaic.js",
+            "blend": "node-red-contrib-rosepetal-image-tools/nodes/blend/blend.js",
+            "add-mask": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-mask.js"
+        }
+    }
+
 }

@@ -31,8 +31,9 @@
     "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
   },
   "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
-      "node-red": {
-        "nodes": {
+  "node-red": {
+      "version": ">=1.0.0",
+      "nodes": {
             "image-in": "node-red-contrib-rosepetal-image-tools/nodes/io/image-in.js",
             "array-in": "node-red-contrib-rosepetal-image-tools/nodes/io/array-in.js",
             "array-out": "node-red-contrib-rosepetal-image-tools/nodes/io/array-out.js",
@@ -50,5 +51,4 @@
             "add-mask": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-mask.js"
         }
     }
-
 }

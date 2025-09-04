@@ -124,18 +124,18 @@ main() {
     NODE_RED_DIR="$HOME/.node-red"
     if [ -d "$NODE_RED_DIR" ]; then
         print_step "Optional: Install into your Node-RED instance"
-        # read -p "Do you want to install this package into '$NODE_RED_DIR'? (y/N) " -n 1 -r
+        read -p "Do you want to install this package into '$NODE_RED_DIR'? (y/N) " -n 1 -r
         echo
-        #if [[ $REPLY =~ ^[Yy]$ ]]; then
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_info "Installing into Node-RED..."
             (cd "$NODE_RED_DIR" && npm install "$SCRIPT_DIR/node-red-contrib-rosepetal-image-tools")
             print_success "Successfully installed in Node-RED."
             print_info "Please restart your Node-RED instance to see the new nodes."
-        #else
-         #   print_info "Skipping automatic installation."
-          #  print_info "You can install it later by running this command:"
-           # print_info "  cd ~/.node-red && npm install $SCRIPT_DIR/node-red-contrib-rosepetal-image-tools"
-        #fi
+        else
+            print_info "Skipping automatic installation."
+            print_info "You can install it later by running this command:"
+            print_info "  cd ~/.node-red && npm install $SCRIPT_DIR/node-red-contrib-rosepetal-image-tools"
+        fi
     fi
 }
 

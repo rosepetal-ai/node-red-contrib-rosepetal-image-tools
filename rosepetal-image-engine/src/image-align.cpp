@@ -22,7 +22,8 @@ public:
                     std::string outputFormat,
                     int quality = 90,
                     bool pngOptimize = false,
-                    bool returnMatrix = false)
+                    bool returnMatrix = false,
+                    const Napi::Value& polygonValue = Napi::Value())
         : Napi::AsyncWorker(callback),
           scale(scale),
           maxIterations(maxIterations),
@@ -31,7 +32,8 @@ public:
           quality(quality),
           pngOptimize(pngOptimize),
           returnMatrix(returnMatrix),
-          alignmentSuccess(false) {
+          alignmentSuccess(false),
+          hasPolygon(false) {
         
         try {
             auto t0 = std::chrono::steady_clock::now();
@@ -39,6 +41,27 @@ public:
             // Convert input images to OpenCV Mat
             referenceMat = ConvertToMat(referenceImage);
             targetMat = ConvertToMat(targetImage);
+            
+            // Parse polygon if provided
+            if (!polygonValue.IsNull() && !polygonValue.IsUndefined() && polygonValue.IsArray()) {
+                Napi::Array polygonArray = polygonValue.As<Napi::Array>();
+                if (polygonArray.Length() > 0) {
+                    hasPolygon = true;
+                    originalPolygon.reserve(polygonArray.Length());
+                    
+                    for (uint32_t i = 0; i < polygonArray.Length(); i++) {
+                        Napi::Value point = polygonArray[i];
+                        if (point.IsArray()) {
+                            Napi::Array pointArray = point.As<Napi::Array>();
+                            if (pointArray.Length() >= 2) {
+                                double x = pointArray.Get(0u).As<Napi::Number>().DoubleValue();
+                                double y = pointArray.Get(1u).As<Napi::Number>().DoubleValue();
+                                originalPolygon.push_back(cv::Point2f(x, y));
+                            }
+                        }
+                    }
+                }
+            }
             
             // Detect channel format for output
             referenceChannelOrder = DetectChannelFormat(referenceImage, referenceMat);
@@ -86,6 +109,12 @@ protected:
                 if (returnMatrix) {
                     transformationMatrix = transformMatrix.clone();
                 }
+                
+                // Transform polygon if provided
+                if (hasPolygon && !originalPolygon.empty()) {
+                    TransformPolygon(originalPolygon, transformMatrix, refWidth, refHeight);
+                }
+                
                 // Apply transformation to the color target image
                 ApplyTransformation(targetResized, transformMatrix, cv::Size(refWidth, refHeight));
             } else {
@@ -160,6 +189,18 @@ protected:
                 response.Set("transformMatrix", matrix);
             }
             
+            // Add transformed polygon if it was provided and transformed
+            if (hasPolygon && !transformedPolygon.empty() && alignmentSuccess) {
+                Napi::Array polygonArray = Napi::Array::New(env, transformedPolygon.size());
+                for (size_t i = 0; i < transformedPolygon.size(); i++) {
+                    Napi::Array point = Napi::Array::New(env, 2);
+                    point.Set(0u, Napi::Number::New(env, transformedPolygon[i].x));
+                    point.Set(1u, Napi::Number::New(env, transformedPolygon[i].y));
+                    polygonArray.Set(static_cast<uint32_t>(i), point);
+                }
+                response.Set("transformedPolygon", polygonArray);
+            }
+            
             Callback().Call({env.Null(), response});
             
         } catch (const std::exception& e) {
@@ -182,6 +223,11 @@ private:
     cv::Mat transformationMatrix;
     std::string referenceChannelOrder, targetChannelOrder, outputChannelOrder;
     bool alignmentSuccess;
+    
+    // Polygon data
+    bool hasPolygon;
+    std::vector<cv::Point2f> originalPolygon;
+    std::vector<cv::Point2f> transformedPolygon;
     
     // Timing
     double convertMs = 0.0;
@@ -260,6 +306,34 @@ private:
             alignedImage = target;
         }
     }
+    
+    // Transform polygon coordinates
+    void TransformPolygon(const std::vector<cv::Point2f>& polygon, const cv::Mat& transformMatrix, int width, int height) {
+        transformedPolygon.clear();
+        transformedPolygon.reserve(polygon.size());
+        
+        for (const auto& point : polygon) {
+            // Convert from normalized (0-1) to pixel coordinates
+            float px = point.x * width;
+            float py = point.y * height;
+            
+            // Apply the transformation matrix
+            // Since we're using WARP_INVERSE_MAP, we need to apply the inverse transform
+            // For translation-only (2x3 matrix with identity rotation), the inverse is just negating the translation
+            float transformedX = px - transformMatrix.at<float>(0, 2);
+            float transformedY = py - transformMatrix.at<float>(1, 2);
+            
+            // Convert back to normalized coordinates
+            float normalizedX = transformedX / width;
+            float normalizedY = transformedY / height;
+            
+            // Clamp to valid range [0, 1]
+            normalizedX = std::max(0.0f, std::min(1.0f, normalizedX));
+            normalizedY = std::max(0.0f, std::min(1.0f, normalizedY));
+            
+            transformedPolygon.push_back(cv::Point2f(normalizedX, normalizedY));
+        }
+    }
 };
 
 // Main function exported to Node.js
@@ -267,8 +341,8 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
     
     // Validate arguments - expect callback as last argument
-    if (info.Length() < 3 || info.Length() > 10 || !info[info.Length() - 1].IsFunction()) {
-        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], callback)")
+    if (info.Length() < 3 || info.Length() > 11 || !info[info.Length() - 1].IsFunction()) {
+        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], [polygon], callback)")
             .ThrowAsJavaScriptException();
         return env.Null();
     }
@@ -286,6 +360,7 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     int quality = 90;
     bool pngOptimize = false;
     bool returnMatrix = false;
+    Napi::Value polygon = env.Null();
     size_t cbIdx = 2;
     
     // Parse optional parameters (before callback)
@@ -317,11 +392,15 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
         returnMatrix = info[8].As<Napi::Boolean>().Value();
         cbIdx = 9;
     }
+    if (info.Length() >= 11) {
+        polygon = info[9];
+        cbIdx = 10;
+    }
     
     // Create and queue worker
     ImageAlignWorker* worker = new ImageAlignWorker(callback, referenceImage, targetImage,
                                                    scale, maxIterations, terminationEps,
-                                                   outputFormat, quality, pngOptimize, returnMatrix);
+                                                   outputFormat, quality, pngOptimize, returnMatrix, polygon);
     worker->Queue();
     
     return env.Undefined();

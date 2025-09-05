@@ -24,6 +24,7 @@ module.exports = function (RED) {
         const pngOptimize = config.pngOptimize || false;
         const preset = config.preset || 'ultra-fast';
         const returnMatrix = config.returnMatrix || false;
+        const transformPolygon = config.transformPolygon || false;
 
         /* ▸ Read images from message ------------------------------------ */
         // Get images directly from specified paths
@@ -41,6 +42,51 @@ module.exports = function (RED) {
         if (!target) {
           node.warn("Target image is invalid or missing");
           return;
+        }
+
+        // Read and validate polygon if transform polygon is enabled
+        let polygon = null;
+        if (transformPolygon) {
+          polygon = RED.util.getMessageProperty(msg, config.polygonPath || 'payload.polygon');
+          
+          // Validate polygon coordinates
+          if (polygon) {
+            if (!Array.isArray(polygon)) {
+              node.warn("Polygon coordinates must be an array");
+              polygon = null;
+            } else if (polygon.length === 0) {
+              node.warn("Polygon coordinates array is empty");
+              polygon = null;
+            } else {
+              // Validate each coordinate pair
+              let validPolygon = true;
+              for (let i = 0; i < polygon.length; i++) {
+                const point = polygon[i];
+                if (!Array.isArray(point) || point.length !== 2) {
+                  node.warn(`Invalid polygon coordinate at index ${i}: expected [x, y] pair`);
+                  validPolygon = false;
+                  break;
+                }
+                
+                const [x, y] = point;
+                if (typeof x !== 'number' || typeof y !== 'number') {
+                  node.warn(`Invalid polygon coordinate at index ${i}: coordinates must be numbers`);
+                  validPolygon = false;
+                  break;
+                }
+                
+                if (x < 0 || x > 1 || y < 0 || y > 1) {
+                  node.warn(`Invalid polygon coordinate at index ${i}: coordinates must be in range [0, 1]`);
+                  validPolygon = false;
+                  break;
+                }
+              }
+              
+              if (!validPolygon) {
+                polygon = null;
+              }
+            }
+          }
         }
 
         // Set alignment parameters based on preset
@@ -94,7 +140,8 @@ module.exports = function (RED) {
           outputFormat,
           outputQuality,
           pngOptimize,
-          returnMatrix
+          returnMatrix,
+          polygon
         );
 
         /* ▸ Status: standardized success formatting ----------------------- */
@@ -150,6 +197,14 @@ module.exports = function (RED) {
         // Add transformation matrix if returned
         if (result.transformMatrix) {
           msg.alignment.transformMatrix = result.transformMatrix;
+        }
+        
+        // Add polygon data if polygon transformation was requested
+        if (transformPolygon && polygon) {
+          msg.alignment.originalPolygon = polygon;
+          if (result.transformedPolygon) {
+            msg.alignment.transformedPolygon = result.transformedPolygon;
+          }
         }
 
         send(msg);

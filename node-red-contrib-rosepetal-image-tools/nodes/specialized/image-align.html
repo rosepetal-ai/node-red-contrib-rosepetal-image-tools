@@ -21,6 +21,9 @@
             // Alignment configuration
             preset: { value: "ultra-fast" },
             returnMatrix: { value: false },
+            transformPolygon: { value: false },
+            polygonPath: { value: "payload.polygon" },
+            polygonPathType: { value: "msg" },
             // Custom parameters
             customScale: { value: 0.2 },
             customMaxIterations: { value: 10 },
@@ -49,6 +52,11 @@
                 default: 'msg',
                 types: ['msg', 'flow', 'global'],
                 typeField: "#node-input-outputPathType"
+            });
+            $("#node-input-polygonPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-polygonPathType"
             });
 
             // Initialize debug width TypedInput
@@ -91,6 +99,21 @@
             
             updateDebugWidthVisibility();
             debugCheckbox.on('change', updateDebugWidthVisibility);
+
+            // Transform Polygon Logic
+            const transformPolygonCheckbox = $('#node-input-transformPolygon');
+            const polygonPathRow = $('#polygon-path-row');
+            
+            function updatePolygonPathVisibility() {
+                if (transformPolygonCheckbox.is(':checked')) {
+                    polygonPathRow.show();
+                } else {
+                    polygonPathRow.hide();
+                }
+            }
+            
+            updatePolygonPathVisibility();
+            transformPolygonCheckbox.on('change', updatePolygonPathVisibility);
 
             // Preset description and custom parameters visibility
             function updatePresetDescription() {
@@ -294,6 +317,18 @@
         <label for="node-input-returnMatrix" style="width:auto; margin-left:5px;">Return transformation matrix</label>
     </div>
     
+    <!-- Transform Polygon Option -->
+    <div class="form-row">
+        <label for="node-input-transformPolygon"><i class="fa fa-draw-polygon"></i> Transform Polygon</label>
+        <input type="checkbox" id="node-input-transformPolygon" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-transformPolygon" style="width:auto; margin-left:5px;">Transform polygon coordinates</label>
+    </div>
+    <div class="form-row" id="polygon-path-row" style="display: none;">
+        <label for="node-input-polygonPath"><i class="fa fa-map-marker"></i> Polygon Path</label>
+        <input type="text" id="node-input-polygonPath" style="width: 70%;">
+        <input type="hidden" id="node-input-polygonPathType">
+    </div>
+    
     <!-- Debug Configuration -->
     <div class="form-row">
         <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
@@ -347,7 +382,8 @@
         <b>Flexible Paths:</b> Configure where to find reference and target images in your message.<br>
         <b>Default:</b> <code>msg.payload.reference</code> and <code>msg.payload.target</code><br>
         <b>Output:</b> Returns the aligned target image. Alignment info is added to <code>msg.alignment</code>.<br>
-        <b>Transform Matrix:</b> When enabled, includes transformation matrix with <code>dx</code>, <code>dy</code> translation values, 2x3 OpenCV matrix, and 3x3 homogeneous matrix.
+        <b>Transform Matrix:</b> When enabled, includes transformation matrix with <code>dx</code>, <code>dy</code> translation values, 2x3 OpenCV matrix, and 3x3 homogeneous matrix.<br>
+        <b>Transform Polygon:</b> When enabled, transforms polygon coordinates using the same alignment transformation. Expects normalized coordinates (0-1 range) in the same format as add-mask node.
     </div>
 </script>
 
@@ -369,6 +405,10 @@
     <dd>Output format: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
     <dt>Speed Preset <span class="property-type">string</span></dt>
     <dd>Alignment speed/quality balance: <code>ultra-fast</code>, <code>fast</code>, <code>balanced</code>, or <code>quality</code>.</dd>
+    <dt>Transform Polygon <span class="property-type">boolean</span></dt>
+    <dd>When enabled, transforms polygon coordinates from the specified path using the alignment transformation.</dd>
+    <dt>Polygon Path <span class="property-type">string</span></dt>
+    <dd>Path to polygon coordinates in message. Expected format: array of [x, y] pairs with normalized values (0-1 range).</dd>
   </dl>
 
   <h3>Inputs</h3>
@@ -396,6 +436,8 @@
             <li><code>transform</code>: alias for matrix3x3 (backward compatibility)</li>
           </ul>
         </li>
+        <li><code>originalPolygon</code>: (optional) original polygon coordinates when Transform Polygon is enabled</li>
+        <li><code>transformedPolygon</code>: (optional) transformed polygon coordinates in same normalized format (0-1 range)</li>
       </ul>
     </dd>
   </dl>

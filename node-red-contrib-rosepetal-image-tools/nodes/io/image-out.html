@@ -1,0 +1,395 @@
+<script type="text/javascript">
+    RED.nodes.registerType('image-out', {
+        category: 'RP Image',
+        color: '#A6C8A6',
+        defaults: {
+            name: { value: "" },
+            folderPath: { value: "", required: true },
+            folderPathType: { value: "str" },
+            filenamePrefix: { value: "" },
+            filenamePrefixType: { value: "str" },
+            inputPath: { value: "payload" },
+            inputPathType: { value: "msg" },
+            outputFormat: { value: "jpg" },
+            outputQuality: { value: 90 },
+            pngOptimize: { value: false },
+            overwriteProtection: { value: true },
+            active: { value: true },
+            // Debug configuration
+            debugEnabled: { value: false },
+            debugWidth: { value: 200 },
+            debugWidthType: { value: "num" }
+        },
+        inputs: 1,
+        outputs: 0,
+        align: "right",
+        icon: "font-awesome/fa-save",
+        label: function() {
+            return this.name || "image out";
+        },
+        button: {
+            toggle: "active",
+            visible: function() { return true; },
+            onclick: function() {
+                var node = this;
+                var label = RED.utils.sanitize(this.name || "image-out");
+                
+                // Make AJAX call to toggle active state
+                $.ajax({
+                    url: "image-out/" + this.id,
+                    type: "POST",
+                    success: function(resp) {
+                        // Create history event for undo/redo
+                        var historyEvent = {
+                            t: 'edit',
+                            node: node,
+                            changes: {
+                                active: !node.active
+                            },
+                            dirty: node.dirty,
+                            changed: node.changed
+                        };
+                        
+                        // Toggle the active state
+                        node.active = !node.active;
+                        node.dirty = true;
+                        node.changed = true;
+                        
+                        // Push to history and update UI
+                        RED.history.push(historyEvent);
+                        RED.nodes.dirty(true);
+                        RED.view.redraw();
+                        
+                        // Show notification
+                        RED.notify(label + " " + (node.active ? "activated" : "deactivated"), "success");
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        if (jqXHR.status == 404) {
+                            RED.notify("Node not deployed", "error");
+                        } else {
+                            RED.notify("Error: " + errorThrown, "error");
+                        }
+                    }
+                });
+            }
+        },
+        oneditprepare: function() {
+            // Initialize TypedInput for folder path
+            $("#node-input-folderPath").typedInput({
+                default: 'str',
+                types: ['str', 'msg', 'flow', 'global'],
+                typeField: "#node-input-folderPathType"
+            });
+            
+            // Initialize TypedInput for filename prefix
+            $("#node-input-filenamePrefix").typedInput({
+                default: 'str',
+                types: ['str', 'msg', 'flow', 'global'],
+                typeField: "#node-input-filenamePrefixType"
+            });
+            
+            // Initialize TypedInput for input path
+            $("#node-input-inputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-inputPathType"
+            });
+            
+            // Initialize debug width TypedInput
+            $("#node-input-debugWidth").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-debugWidthType"
+            });
+            
+            // Show/hide quality row based on format
+            function updateQualityVisibility() {
+                const format = $('#node-input-outputFormat').val();
+                const qualityRow = $('#quality-row');
+                const pngOptimizeRow = $('#png-optimize-row');
+                
+                if (format === 'jpg' || format === 'webp') {
+                    qualityRow.show();
+                    pngOptimizeRow.hide();
+                } else if (format === 'png') {
+                    qualityRow.hide();
+                    pngOptimizeRow.show();
+                } else {
+                    qualityRow.hide();
+                    pngOptimizeRow.hide();
+                }
+            }
+            
+            $('#node-input-outputFormat').change(updateQualityVisibility);
+            updateQualityVisibility();
+            
+            // Debug checkbox logic
+            const debugCheckbox = $('#node-input-debugEnabled');
+            const debugWidthRow = $('#debug-width-row');
+            
+            function updateDebugWidthVisibility() {
+                if (debugCheckbox.prop('checked')) {
+                    debugWidthRow.show();
+                } else {
+                    debugWidthRow.hide();
+                }
+            }
+            
+            debugCheckbox.change(updateDebugWidthVisibility);
+            updateDebugWidthVisibility();
+            
+            // Initialize debug image display
+            initDebugImageDisplay();
+        }
+    });
+    
+    // Debug image display functionality (same as other nodes)
+    function initDebugImageDisplay() {
+        (function() {
+            var isSubscribed = false;
+            
+            function subscribeToDebugImages() {
+                if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+                isSubscribed = true;
+                
+                RED.comms.subscribe('debug-image', function(event, data) {
+                    if (!data || !data.id) return;
+                    
+                    try {
+                        renderDebugImage(data);
+                    } catch (err) {
+                        console.warn('Debug image render error:', err);
+                    }
+                });
+            }
+            
+            function renderDebugImage(data) {
+                const nodeId = data.id;
+                const base64Data = data.data;
+                const format = data.format || 'unknown';
+                const mimeType = data.mimeType || 'jpeg';
+                
+                if (!base64Data) {
+                    removeDebugImage(nodeId);
+                    return;
+                }
+                
+                const nodeElement = document.getElementById(nodeId);
+                if (!nodeElement) return;
+                
+                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                
+                if (!debugContainer) {
+                    // Create SVG foreignObject to embed HTML content in SVG
+                    debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    debugContainer.id = 'debug-img-container-' + nodeId;
+                    debugContainer.setAttribute('x', '70');
+                    debugContainer.setAttribute('y', '5');
+                    debugContainer.setAttribute('width', '120');
+                    debugContainer.setAttribute('height', '120');
+                    debugContainer.style.overflow = 'visible';
+                    
+                    // Create simple image directly inside foreignObject
+                    const img = document.createElement('img');
+                    img.id = 'debug-img-' + nodeId;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    img.style.cursor = 'pointer';
+                    img.style.maxHeight = '100px';
+                    img.style.maxWidth = '100px';
+                    
+                    img.onclick = function() {
+                        removeDebugImage(nodeId);
+                    };
+                    
+                    debugContainer.appendChild(img);
+                    nodeElement.appendChild(debugContainer);
+                }
+                
+                const img = document.getElementById('debug-img-' + nodeId);
+                
+                if (img) {
+                    img.src = `data:image/${mimeType};base64,${base64Data}`;
+                    img.title = 'Debug image (click to hide)';
+                }
+            }
+            
+            function removeDebugImage(nodeId) {
+                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                if (debugContainer) {
+                    debugContainer.remove();
+                }
+            }
+            
+            function initializeWhenReady() {
+                if (typeof RED !== 'undefined' && RED.comms) {
+                    subscribeToDebugImages();
+                    
+                    // Clean up orphaned debug images periodically
+                    setInterval(function() {
+                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(container => {
+                            const nodeId = container.id.replace('debug-img-container-', '');
+                            const nodeElement = document.getElementById(nodeId);
+                            if (!nodeElement) {
+                                container.remove();
+                            }
+                        });
+                    }, 5000);
+                } else {
+                    setTimeout(initializeWhenReady, 100);
+                }
+            }
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeWhenReady);
+            } else {
+                initializeWhenReady();
+            }
+        })();
+    }
+</script>
+
+<script type="text/x-red" data-template-name="image-out">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+    
+    <hr>
+    
+    <!-- Folder Configuration -->
+    <div class="form-row">
+        <label for="node-input-folderPath"><i class="fa fa-folder"></i> Folder Path</label>
+        <input type="text" id="node-input-folderPath" style="width: 70%;" placeholder="/path/to/save/folder">
+        <input type="hidden" id="node-input-folderPathType">
+    </div>
+    
+    <div class="form-row">
+        <label for="node-input-filenamePrefix"><i class="fa fa-tag"></i> Filename Prefix</label>
+        <input type="text" id="node-input-filenamePrefix" style="width: 70%;" placeholder="image (optional)">
+        <input type="hidden" id="node-input-filenamePrefixType">
+        <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
+            Pattern: [prefix]_YYYYMMDD_HHMMSS.[ext]
+        </div>
+    </div>
+    
+    <hr>
+    
+    <!-- Input Configuration -->
+    <div class="form-row">
+        <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+        <input type="text" id="node-input-inputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-inputPathType">
+    </div>
+    
+    <hr>
+    
+    <!-- Output Format Configuration -->
+    <div class="form-row">
+        <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+        <select id="node-input-outputFormat" style="width: 200px;">
+            <option value="jpg">JPEG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WebP</option>
+        </select>
+    </div>
+    
+    <div class="form-row" id="quality-row">
+        <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+        <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+        <span style="margin-left: 10px; color: #666;">1-100 (JPEG/WebP only)</span>
+    </div>
+    
+    <div class="form-row" id="png-optimize-row" style="display: none;">
+        <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+        <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+    </div>
+    
+    <hr>
+    
+    <!-- Protection Settings -->
+    <div class="form-row">
+        <label for="node-input-overwriteProtection"><i class="fa fa-shield"></i> Protection</label>
+        <input type="checkbox" id="node-input-overwriteProtection" style="display:inline-block; width:auto; vertical-align:baseline;" checked>
+        <label for="node-input-overwriteProtection" style="width:auto; margin-left:5px;">Prevent overwriting existing files (_2, _3, etc.)</label>
+    </div>
+    
+    <!-- Debug Configuration -->
+    <div class="form-row">
+        <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+        <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show saved image preview</label>
+    </div>
+    
+    <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="image-out">
+    <p>Saves images to the filesystem with automatic timestamp-based naming and optional overwrite protection.</p>
+    
+    <h3>Details</h3>
+    <p>This node saves image data to disk with automatic timestamp naming to ensure unique filenames. It includes an enable/disable button (similar to the debug node) that allows you to control whether images are saved without modifying your flow.</p>
+    
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Folder Path <span class="property-type">string | msg | flow | global</span></dt>
+        <dd>The directory where images will be saved. Can be an absolute or relative path. The folder will be created if it doesn't exist. Can be dynamically set from message properties, flow context, or global context.</dd>
+        
+        <dt>Filename Prefix <span class="property-type">string</span></dt>
+        <dd>Optional prefix for the filename. If not specified, defaults to "image". The final filename pattern is: <code>[prefix]_YYYYMMDD_HHMMSS.[ext]</code></dd>
+        
+        <dt>Input from <span class="property-type">string</span></dt>
+        <dd>The location of the image data to save. Defaults to <code>msg.payload</code>. Can be set to any message property, flow variable, or global variable.</dd>
+        
+        <dt>Output Format <span class="property-type">select</span></dt>
+        <dd>The image format to save: JPEG, PNG, or WebP.</dd>
+        
+        <dt>Quality <span class="property-type">number</span></dt>
+        <dd>Quality setting for JPEG and WebP formats (1-100). Higher values mean better quality but larger file sizes.</dd>
+        
+        <dt>PNG Optimize <span class="property-type">boolean</span></dt>
+        <dd>When enabled, applies maximum compression to PNG files. This creates smaller files but takes more processing time.</dd>
+        
+        <dt>Overwrite Protection <span class="property-type">boolean</span></dt>
+        <dd>When enabled (default), automatically appends <code>_2</code>, <code>_3</code>, etc. to filenames if a file with the same name already exists.</dd>
+        
+        <dt>Active Button <span class="property-type">button</span></dt>
+        <dd>Click the button on the node to enable/disable saving. When disabled, the node passes messages through without saving images. The state is indicated by the button color (green = active, gray = inactive).</dd>
+    </dl>
+    
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>Image Object <span class="property-type">object</span></dt>
+        <dd>Standard image structure with properties: data (Buffer), width, height, channels, colorSpace, dtype.</dd>
+    </dl>
+    
+    <h3>Outputs</h3>
+    <p>This node has no outputs. It is a terminal node that saves images to the filesystem.</p>
+    
+    <h3>Examples</h3>
+    <ul>
+        <li><strong>Basic Save:</strong> Connect to any image processing node output to save the result with timestamp naming.</li>
+        <li><strong>Dynamic Folder:</strong> Set folder path from <code>msg.folder</code> to save to different locations based on message content.</li>
+        <li><strong>With Prefix:</strong> Use prefix "webcam" to generate files like: <code>webcam_20240109_143022.jpg</code></li>
+        <li><strong>Overwrite Protection:</strong> If <code>image_20240109_143022.jpg</code> exists, saves as <code>image_20240109_143022_2.jpg</code></li>
+        <li><strong>Conditional Saving:</strong> Use the button to enable/disable saving during development or testing.</li>
+    </ul>
+    
+    <h3>Status Indicators</h3>
+    <ul>
+        <li><strong>Gray dot "inactive":</strong> Node is disabled via button</li>
+        <li><strong>Blue dot "saving...":</strong> Currently writing file to disk</li>
+        <li><strong>Green dot "saved: filename":</strong> Successfully saved with filename shown</li>
+        <li><strong>Red dot "Error":</strong> Save failed (check debug panel for details)</li>
+    </ul>
+    
+    <h3>Performance</h3>
+    <p>Image encoding and file writing are performed asynchronously for optimal performance. The node status displays the save time in milliseconds.</p>
+</script>

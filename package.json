@@ -35,10 +35,12 @@
       "version": ">=1.0.0",
       "nodes": {
             "image-in": "node-red-contrib-rosepetal-image-tools/nodes/io/image-in.js",
+            "image-out": "node-red-contrib-rosepetal-image-tools/nodes/io/image-out.js",
             "array-in": "node-red-contrib-rosepetal-image-tools/nodes/io/array-in.js",
             "array-out": "node-red-contrib-rosepetal-image-tools/nodes/io/array-out.js",
             "array-select": "node-red-contrib-rosepetal-image-tools/nodes/io/array-select.js",
             "cropBB": "node-red-contrib-rosepetal-image-tools/nodes/specialized/cropBB.js",
+            "image-align": "node-red-contrib-rosepetal-image-tools/nodes/specialized/image-align.js",
             "resize": "node-red-contrib-rosepetal-image-tools/nodes/transform/resize.js",
             "rotate": "node-red-contrib-rosepetal-image-tools/nodes/transform/rotate.js",
             "crop": "node-red-contrib-rosepetal-image-tools/nodes/transform/crop.js",

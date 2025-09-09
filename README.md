@@ -24,7 +24,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 
 ## 📋 Node Categories
 
-### 🔄 I/O Nodes - Data Flow Management
+### I/O Nodes - Data Flow Management
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[image-in](docs/nodes/io/image-in.md)** | Load images from filesystem | JPEG/PNG/WebP/etc. support, Sharp backend |
@@ -32,7 +32,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | **[array-out](docs/nodes/io/array-out.md)** | Assemble arrays from multiple sources | Timeout protection, ordered assembly |
 | **[array-select](docs/nodes/io/array-select.md)** | Extract elements with flexible selection | Python-like slicing, range selection |
 
-### 🔧 Transform Nodes - Image Processing
+### Transform Nodes - Image Processing
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[resize](docs/nodes/transform/resize.md)** | Scale images with aspect ratio control | Proportional scaling, multiple modes |
@@ -41,47 +41,34 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | **[padding](docs/nodes/transform/padding.md)** | Add configurable margins | Color customization, flexible sizing |
 | **[filter](docs/nodes/transform/filter.md)** | Apply enhancement filters | Blur, sharpen, edge, emboss, Gaussian |
 
-### 🎨 Mix Nodes - Image Composition
+### Mix Nodes - Image Composition
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[concat](docs/nodes/mix/concat.md)** | Combine images horizontally/vertically | Direction control, padding strategies |
 | **[mosaic](docs/nodes/mix/mosaic.md)** | Position images on canvas | Coordinate positioning, manual placement |
 | **[advanced-mosaic](docs/nodes/mix/advanced-mosaic.md)** | Complex layouts with custom positioning | Pixel-perfect control, layering |
 
-### 🌈 Blend Nodes - Advanced Compositing  
+### Blend Nodes - Advanced Compositing  
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[blend](docs/nodes/blend/blend.md)** | Alpha blend two images with opacity | Background removal, color tolerance |
 | **[add-mask](docs/nodes/blend/add-mask.md)** | Apply polygon-based masks to regions | Coordinate arrays, mask strength control |
 
-### 🤖 Specialized Nodes - AI/ML Integration
+### Specialized Nodes - AI/ML Integration
 | Node | Purpose | Key Features |
 |------|---------|-------------|
 | **[cropBB](docs/nodes/specialized/cropBB.md)** | Extract crops from AI bounding boxes | Object detection integration, confidence filtering |
 | **[image-align](docs/nodes/specialized/image-align.md)** | Ultra-fast image alignment using ECC algorithm | Translation correction, speed presets, real-time processing |
 
-## 🔥 Real-World Use Cases
 
-### Computer Vision Pipeline
-```
-[Camera] → [Image-Align] → [AI Detection] → [CropBB] → [Classification] → [Decision]
-```
-Perfect for quality control, security systems, and medical imaging with precise image registration.
-
-### Batch Photo Processing
-```
-[Photo Collection] → [Array-Out] → [Resize] → [Filter] → [Watermark] → [Export]
-```
-Process hundreds of photos simultaneously with C++ performance.
-
-## 🏗️ Architecture & Performance
+## Architecture & Performance
 
 ### Two-Tier Design
 - **JavaScript Layer**: Node-RED integration, validation, I/O handling
 - **C++ Layer**: OpenCV-powered image processing for maximum performance
 
 ### Performance Benefits
-- **10-100x faster** than pure JavaScript implementations
+- **Faster!** than pure JavaScript implementations
 - **Parallel processing** for array operations
 - **Memory efficient** with optimized algorithms
 - **Async operations** with real-time performance timing
@@ -97,23 +84,6 @@ Process hundreds of photos simultaneously with C++ performance.
   dtype: string        // "uint8" (standard)
 }
 ```
-
-## 💡 Key Features
-
-### 🎯 **AI/ML Ready**
-Built-in support for computer vision workflows with `cropBB` node for object detection integration.
-
-### ⚡ **High Performance** 
-C++ backend delivers professional-grade speed for production workflows.
-
-### 🔧 **Flexible I/O**
-Dynamic path configuration supports `msg`, `flow`, and `global` contexts for complex workflows.
-
-### 📐 **Professional Quality**
-Multiple output formats (Raw/JPEG/PNG/WebP) with quality control.
-
-### 🔗 **Workflow Integration**
-Designed for Node-RED patterns with array processing, error handling, and status display.
 
 ## 🛠️ Development
 

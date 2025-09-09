@@ -12,14 +12,11 @@ The `concat` node combines multiple images horizontally or vertically into a sin
 - **Report Generation**: Combine charts, photos, and diagrams into unified layouts
 
 ![Concat Demo](../../../assets/nodes/mix/concat-demo.gif)
-*[PLACEHOLDER - Add GIF showing horizontal and vertical concatenation with different alignment options]*
 
 ## Input/Output Specification
 
 ### Inputs
 - **Image Array**: Array of image objects to combine
-- **Single Images**: Multiple separate image inputs (handled as array)
-- **Mixed Sources**: Images from different message paths
 
 ### Outputs
 - **Combined Image**: Single image containing all input images arranged in sequence
@@ -48,8 +45,8 @@ The `concat` node combines multiple images horizontally or vertically into a sin
 
 ### Color Configuration
 - **Padding Color**: Background color for padding areas when images have different sizes
-- **Default**: Black (`#000000`)
-- **Formats**: Hex (`#FF0000`), RGB (`rgb(255,0,0)`), named colors (`red`, `white`, `black`)
+- **Default**: Black
+- **Formats**: RGB (`rgb(255,0,0)`)
 
 ### Output Format Options
 - **Raw**: Standard image object (fastest for processing chains)
@@ -128,121 +125,3 @@ Combine different types of visual content into reports.
 - **Issue**: Images have different color profiles or brightness
 - **Preprocessing**: Apply consistent color correction before concatenation
 - **Solution**: Use filter nodes to normalize appearance
-
-## Integration Patterns
-
-### Comparison Workflow
-```
-Original → Process → Both images → Concat → Comparison Output
-```
-Standard before/after comparison creation.
-
-### Multi-View Product Display
-```
-Product Photos → Resize (uniform) → Concat → Product Strip → Save
-```
-Create product catalog entries with multiple views.
-
-### Report Generation
-```
-Data → Generate Charts → Text → Generate Images → Concat → Report Page
-```
-Automated report generation with mixed content types.
-
-### Social Media Automation
-```
-Content Array → Resize (social format) → Concat → Platform Upload
-```
-Automated social media content creation.
-
-## Advanced Usage
-
-### Dynamic Layout Selection
-```javascript
-// In a function node before concat:
-if (msg.images.length <= 3) {
-  msg.direction = 'horizontal';
-} else {
-  msg.direction = 'vertical';
-}
-```
-
-### Smart Alignment Based on Content
-```javascript
-// Choose alignment based on image characteristics
-if (msg.imageType === 'portrait') {
-  msg.alignment = 'center';
-} else if (msg.imageType === 'landscape') {
-  msg.alignment = 'top';
-}
-```
-
-### Responsive Layout Logic
-```javascript
-// Calculate optimal layout based on total dimensions
-const totalWidth = msg.images.reduce((sum, img) => sum + img.width, 0);
-const maxWidth = 1920;
-
-if (totalWidth > maxWidth) {
-  msg.direction = 'vertical';
-  msg.alignment = 'center';
-} else {
-  msg.direction = 'horizontal';
-  msg.alignment = 'center';
-}
-```
-
-### Gap Calculation
-```javascript
-// Calculate gaps based on image count
-const imageCount = msg.images.length;
-const availableSpace = 1200; // Target width
-const totalImageWidth = msg.images.reduce((sum, img) => sum + img.width, 0);
-const gapSize = Math.max(0, (availableSpace - totalImageWidth) / (imageCount - 1));
-msg.gapSize = Math.floor(gapSize);
-```
-
-## Best Practices
-
-### Image Preparation
-- Resize images to compatible dimensions before concatenation
-- Apply consistent color correction for uniform appearance
-- Consider final output dimensions when planning layout
-
-### Layout Planning
-- **Horizontal**: Best for comparisons, product views, timelines
-- **Vertical**: Best for step-by-step processes, reports, mobile formats
-- **Alignment**: Choose based on content type and visual balance
-
-### Memory Management
-- Process reasonably-sized images to avoid memory issues
-- Use appropriate output format for final destination
-- Consider image count limits for performance
-
-### Quality Optimization
-- Use raw format for processing chains
-- Apply quality/compression settings appropriate for final use
-- Maintain image quality through processing pipeline
-
-### Design Considerations
-- Plan for consistent spacing and alignment
-- Consider final aspect ratio and viewing context
-- Ensure combined image makes visual sense as a unit
-- Test with representative image sets before production use
-
-## Format-Specific Considerations
-
-### For Web Use
-- Use JPEG for photographs, PNG for graphics with transparency
-- Consider final file size with compression settings
-- Optimize dimensions for target display size
-
-### For Print
-- Use PNG for highest quality preservation
-- Ensure sufficient resolution for print requirements
-- Consider color space compatibility
-
-### For Social Media
-- Plan dimensions for specific platform requirements
-- Use appropriate compression for fast loading
-- Consider mobile viewing experience

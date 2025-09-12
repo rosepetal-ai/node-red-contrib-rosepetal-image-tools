@@ -44,8 +44,9 @@ module.exports = function (RED) {
           return;
         }
 
-        // Read and validate polygon if transform polygon is enabled
+        // Read and validate polygon(s) if transform polygon is enabled
         let polygon = null;
+        let isPolygonArray = false;
         if (transformPolygon) {
           polygon = RED.util.getMessageProperty(msg, config.polygonPath || 'payload.polygon');
           
@@ -58,35 +59,81 @@ module.exports = function (RED) {
               node.warn("Polygon coordinates array is empty");
               polygon = null;
             } else {
-              // Validate each coordinate pair
-              let validPolygon = true;
-              for (let i = 0; i < polygon.length; i++) {
-                const point = polygon[i];
-                if (!Array.isArray(point) || point.length !== 2) {
-                  node.warn(`Invalid polygon coordinate at index ${i}: expected [x, y] pair`);
-                  validPolygon = false;
-                  break;
+              // Check if this is a single polygon or array of polygons
+              // Single polygon: [[x,y], [x,y], ...]
+              // Array of polygons: [[[x,y], [x,y], ...], [[x,y], [x,y], ...], ...]
+              const firstElement = polygon[0];
+              if (Array.isArray(firstElement) && firstElement.length >= 2 && 
+                  typeof firstElement[0] === 'number' && typeof firstElement[1] === 'number') {
+                // Single polygon
+                isPolygonArray = false;
+                const validPolygon = validateSinglePolygon(polygon, node);
+                if (!validPolygon) {
+                  polygon = null;
+                }
+              } else if (Array.isArray(firstElement) && firstElement.length > 0 && 
+                         Array.isArray(firstElement[0])) {
+                // Array of polygons
+                isPolygonArray = true;
+                const validPolygons = [];
+                let allValid = true;
+                
+                for (let i = 0; i < polygon.length; i++) {
+                  const singlePolygon = polygon[i];
+                  if (!Array.isArray(singlePolygon)) {
+                    node.warn(`Invalid polygon at index ${i}: expected array of coordinate pairs`);
+                    allValid = false;
+                    break;
+                  }
+                  
+                  if (validateSinglePolygon(singlePolygon, node, `polygon[${i}]`)) {
+                    validPolygons.push(singlePolygon);
+                  } else {
+                    allValid = false;
+                    break;
+                  }
                 }
                 
-                const [x, y] = point;
-                if (typeof x !== 'number' || typeof y !== 'number') {
-                  node.warn(`Invalid polygon coordinate at index ${i}: coordinates must be numbers`);
-                  validPolygon = false;
-                  break;
+                if (!allValid || validPolygons.length === 0) {
+                  polygon = null;
+                } else {
+                  polygon = validPolygons;
                 }
-                
-                if (x < 0 || x > 1 || y < 0 || y > 1) {
-                  node.warn(`Invalid polygon coordinate at index ${i}: coordinates must be in range [0, 1]`);
-                  validPolygon = false;
-                  break;
-                }
-              }
-              
-              if (!validPolygon) {
+              } else {
+                node.warn("Invalid polygon structure: expected [[x,y], ...] or [[[x,y], ...], ...]");
                 polygon = null;
               }
             }
           }
+        }
+        
+        // Helper function to validate a single polygon
+        function validateSinglePolygon(poly, node, prefix = '') {
+          if (!Array.isArray(poly) || poly.length === 0) {
+            node.warn(`${prefix ? prefix + ': ' : ''}Polygon must be a non-empty array`);
+            return false;
+          }
+          
+          for (let i = 0; i < poly.length; i++) {
+            const point = poly[i];
+            if (!Array.isArray(point) || point.length !== 2) {
+              node.warn(`${prefix ? prefix + ' ' : ''}Invalid coordinate at index ${i}: expected [x, y] pair`);
+              return false;
+            }
+            
+            const [x, y] = point;
+            if (typeof x !== 'number' || typeof y !== 'number') {
+              node.warn(`${prefix ? prefix + ' ' : ''}Invalid coordinate at index ${i}: coordinates must be numbers`);
+              return false;
+            }
+            
+            if (x < 0 || x > 1 || y < 0 || y > 1) {
+              node.warn(`${prefix ? prefix + ' ' : ''}Invalid coordinate at index ${i}: coordinates must be in range [0, 1]`);
+              return false;
+            }
+          }
+          
+          return true;
         }
 
         // Set alignment parameters based on preset
@@ -201,10 +248,19 @@ module.exports = function (RED) {
         
         // Add polygon data if polygon transformation was requested
         if (transformPolygon && polygon) {
+          // Store original polygon(s)
           msg.alignment.originalPolygon = polygon;
+          
+          // Handle transformed polygon(s) based on input type
           if (result.transformedPolygon) {
             msg.alignment.transformedPolygon = result.transformedPolygon;
+          } else if (result.transformedPolygons) {
+            // For array of polygons
+            msg.alignment.transformedPolygons = result.transformedPolygons;
           }
+          
+          // Store whether input was array for clarity
+          msg.alignment.isPolygonArray = isPolygonArray;
         }
 
         send(msg);

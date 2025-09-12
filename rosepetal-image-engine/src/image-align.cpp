@@ -33,7 +33,8 @@ public:
           pngOptimize(pngOptimize),
           returnMatrix(returnMatrix),
           alignmentSuccess(false),
-          hasPolygon(false) {
+          hasPolygon(false),
+          isPolygonArray(false) {
         
         try {
             auto t0 = std::chrono::steady_clock::now();
@@ -42,21 +43,66 @@ public:
             referenceMat = ConvertToMat(referenceImage);
             targetMat = ConvertToMat(targetImage);
             
-            // Parse polygon if provided
+            // Parse polygon(s) if provided
             if (!polygonValue.IsNull() && !polygonValue.IsUndefined() && polygonValue.IsArray()) {
                 Napi::Array polygonArray = polygonValue.As<Napi::Array>();
                 if (polygonArray.Length() > 0) {
-                    hasPolygon = true;
-                    originalPolygon.reserve(polygonArray.Length());
+                    // Check if first element is a coordinate pair or another array
+                    Napi::Value firstElement = polygonArray[0u];
                     
-                    for (uint32_t i = 0; i < polygonArray.Length(); i++) {
-                        Napi::Value point = polygonArray[i];
-                        if (point.IsArray()) {
-                            Napi::Array pointArray = point.As<Napi::Array>();
-                            if (pointArray.Length() >= 2) {
-                                double x = pointArray.Get(0u).As<Napi::Number>().DoubleValue();
-                                double y = pointArray.Get(1u).As<Napi::Number>().DoubleValue();
-                                originalPolygon.push_back(cv::Point2f(x, y));
+                    if (firstElement.IsArray()) {
+                        Napi::Array firstArray = firstElement.As<Napi::Array>();
+                        
+                        // Check if it's a single polygon [[x,y], [x,y], ...]
+                        // or array of polygons [[[x,y], [x,y], ...], ...]
+                        if (firstArray.Length() >= 2 && 
+                            firstArray.Get(0u).IsNumber() && 
+                            firstArray.Get(1u).IsNumber()) {
+                            // Single polygon
+                            hasPolygon = true;
+                            isPolygonArray = false;
+                            originalPolygon.reserve(polygonArray.Length());
+                            
+                            for (uint32_t i = 0; i < polygonArray.Length(); i++) {
+                                Napi::Value point = polygonArray[i];
+                                if (point.IsArray()) {
+                                    Napi::Array pointArray = point.As<Napi::Array>();
+                                    if (pointArray.Length() >= 2) {
+                                        double x = pointArray.Get(0u).As<Napi::Number>().DoubleValue();
+                                        double y = pointArray.Get(1u).As<Napi::Number>().DoubleValue();
+                                        originalPolygon.push_back(cv::Point2f(x, y));
+                                    }
+                                }
+                            }
+                        } else if (firstArray.Length() > 0 && firstArray.Get(0u).IsArray()) {
+                            // Array of polygons
+                            hasPolygon = true;
+                            isPolygonArray = true;
+                            originalPolygons.reserve(polygonArray.Length());
+                            
+                            for (uint32_t i = 0; i < polygonArray.Length(); i++) {
+                                Napi::Value polyValue = polygonArray[i];
+                                if (polyValue.IsArray()) {
+                                    Napi::Array singlePolygon = polyValue.As<Napi::Array>();
+                                    std::vector<cv::Point2f> polygon;
+                                    polygon.reserve(singlePolygon.Length());
+                                    
+                                    for (uint32_t j = 0; j < singlePolygon.Length(); j++) {
+                                        Napi::Value point = singlePolygon[j];
+                                        if (point.IsArray()) {
+                                            Napi::Array pointArray = point.As<Napi::Array>();
+                                            if (pointArray.Length() >= 2) {
+                                                double x = pointArray.Get(0u).As<Napi::Number>().DoubleValue();
+                                                double y = pointArray.Get(1u).As<Napi::Number>().DoubleValue();
+                                                polygon.push_back(cv::Point2f(x, y));
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (!polygon.empty()) {
+                                        originalPolygons.push_back(polygon);
+                                    }
+                                }
                             }
                         }
                     }
@@ -110,9 +156,15 @@ protected:
                     transformationMatrix = transformMatrix.clone();
                 }
                 
-                // Transform polygon if provided
-                if (hasPolygon && !originalPolygon.empty()) {
-                    TransformPolygon(originalPolygon, transformMatrix, refWidth, refHeight);
+                // Transform polygon(s) if provided
+                if (hasPolygon) {
+                    if (isPolygonArray) {
+                        // Transform array of polygons
+                        TransformPolygons(originalPolygons, transformMatrix, refWidth, refHeight);
+                    } else if (!originalPolygon.empty()) {
+                        // Transform single polygon
+                        TransformPolygon(originalPolygon, transformMatrix, refWidth, refHeight);
+                    }
                 }
                 
                 // Apply transformation to the color target image
@@ -189,16 +241,38 @@ protected:
                 response.Set("transformMatrix", matrix);
             }
             
-            // Add transformed polygon if it was provided and transformed
-            if (hasPolygon && !transformedPolygon.empty() && alignmentSuccess) {
-                Napi::Array polygonArray = Napi::Array::New(env, transformedPolygon.size());
-                for (size_t i = 0; i < transformedPolygon.size(); i++) {
-                    Napi::Array point = Napi::Array::New(env, 2);
-                    point.Set(0u, Napi::Number::New(env, transformedPolygon[i].x));
-                    point.Set(1u, Napi::Number::New(env, transformedPolygon[i].y));
-                    polygonArray.Set(static_cast<uint32_t>(i), point);
+            // Add transformed polygon(s) if provided and transformed
+            if (hasPolygon && alignmentSuccess) {
+                if (isPolygonArray) {
+                    // Return array of polygons
+                    if (!transformedPolygons.empty()) {
+                        Napi::Array polygonsArray = Napi::Array::New(env, transformedPolygons.size());
+                        for (size_t i = 0; i < transformedPolygons.size(); i++) {
+                            const auto& polygon = transformedPolygons[i];
+                            Napi::Array polygonArray = Napi::Array::New(env, polygon.size());
+                            for (size_t j = 0; j < polygon.size(); j++) {
+                                Napi::Array point = Napi::Array::New(env, 2);
+                                point.Set(0u, Napi::Number::New(env, polygon[j].x));
+                                point.Set(1u, Napi::Number::New(env, polygon[j].y));
+                                polygonArray.Set(static_cast<uint32_t>(j), point);
+                            }
+                            polygonsArray.Set(static_cast<uint32_t>(i), polygonArray);
+                        }
+                        response.Set("transformedPolygons", polygonsArray);
+                    }
+                } else {
+                    // Return single polygon
+                    if (!transformedPolygon.empty()) {
+                        Napi::Array polygonArray = Napi::Array::New(env, transformedPolygon.size());
+                        for (size_t i = 0; i < transformedPolygon.size(); i++) {
+                            Napi::Array point = Napi::Array::New(env, 2);
+                            point.Set(0u, Napi::Number::New(env, transformedPolygon[i].x));
+                            point.Set(1u, Napi::Number::New(env, transformedPolygon[i].y));
+                            polygonArray.Set(static_cast<uint32_t>(i), point);
+                        }
+                        response.Set("transformedPolygon", polygonArray);
+                    }
                 }
-                response.Set("transformedPolygon", polygonArray);
             }
             
             Callback().Call({env.Null(), response});
@@ -226,8 +300,11 @@ private:
     
     // Polygon data
     bool hasPolygon;
-    std::vector<cv::Point2f> originalPolygon;
-    std::vector<cv::Point2f> transformedPolygon;
+    bool isPolygonArray;
+    std::vector<cv::Point2f> originalPolygon;  // For single polygon
+    std::vector<cv::Point2f> transformedPolygon;  // For single polygon
+    std::vector<std::vector<cv::Point2f>> originalPolygons;  // For array of polygons
+    std::vector<std::vector<cv::Point2f>> transformedPolygons;  // For array of polygons
     
     // Timing
     double convertMs = 0.0;
@@ -307,7 +384,7 @@ private:
         }
     }
     
-    // Transform polygon coordinates
+    // Transform single polygon coordinates
     void TransformPolygon(const std::vector<cv::Point2f>& polygon, const cv::Mat& transformMatrix, int width, int height) {
         transformedPolygon.clear();
         transformedPolygon.reserve(polygon.size());
@@ -332,6 +409,41 @@ private:
             normalizedY = std::max(0.0f, std::min(1.0f, normalizedY));
             
             transformedPolygon.push_back(cv::Point2f(normalizedX, normalizedY));
+        }
+    }
+    
+    // Transform multiple polygons coordinates
+    void TransformPolygons(const std::vector<std::vector<cv::Point2f>>& polygons, const cv::Mat& transformMatrix, int width, int height) {
+        transformedPolygons.clear();
+        transformedPolygons.reserve(polygons.size());
+        
+        for (const auto& polygon : polygons) {
+            std::vector<cv::Point2f> transformedPoly;
+            transformedPoly.reserve(polygon.size());
+            
+            for (const auto& point : polygon) {
+                // Convert from normalized (0-1) to pixel coordinates
+                float px = point.x * width;
+                float py = point.y * height;
+                
+                // Apply the transformation matrix
+                // Since we're using WARP_INVERSE_MAP, we need to apply the inverse transform
+                // For translation-only (2x3 matrix with identity rotation), the inverse is just negating the translation
+                float transformedX = px - transformMatrix.at<float>(0, 2);
+                float transformedY = py - transformMatrix.at<float>(1, 2);
+                
+                // Convert back to normalized coordinates
+                float normalizedX = transformedX / width;
+                float normalizedY = transformedY / height;
+                
+                // Clamp to valid range [0, 1]
+                normalizedX = std::max(0.0f, std::min(1.0f, normalizedX));
+                normalizedY = std::max(0.0f, std::min(1.0f, normalizedY));
+                
+                transformedPoly.push_back(cv::Point2f(normalizedX, normalizedY));
+            }
+            
+            transformedPolygons.push_back(transformedPoly);
         }
     }
 };

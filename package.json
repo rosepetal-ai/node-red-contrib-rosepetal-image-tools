@@ -50,7 +50,8 @@
             "mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/mosaic.js",
             "advanced-mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/advanced-mosaic.js",
             "blend": "node-red-contrib-rosepetal-image-tools/nodes/blend/blend.js",
-            "add-mask": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-mask.js"
+            "add-mask": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-mask.js",
+            "add-masks": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-masks.js"
         }
     }
 }

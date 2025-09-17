@@ -14,6 +14,7 @@
         "src/advanced-mosaic.cpp",
         "src/blend.cpp",
         "src/add-mask.cpp",
+        "src/add-masks.cpp",
         "src/image-align.cpp"
       ],
       "include_dirs": [

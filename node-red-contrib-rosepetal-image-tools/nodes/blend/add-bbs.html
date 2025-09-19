@@ -1,0 +1,589 @@
+<!-- nodes/blend/add-bbs.html -->
+
+<script type="text/javascript">
+    RED.nodes.registerType('add-bbs',{
+      category:'RP Image',
+      color:'#DDA0DD',
+      icon:'font-awesome/fa-object-group',
+      defaults:{
+        name:{value:""},
+        imagePath:{value:"payload.image"}, imagePathType:{value:"msg"},
+        boxesPath:{value:"payload"}, boxesPathType:{value:"msg"},
+        outputPath:{value:"payload"},outputPathType:{value:"msg"},
+        outputFormat:{value:"raw"},
+        outputQuality:{value:90},
+        pngOptimize:{value:false},
+        // Debug configuration
+        debugEnabled:{value:false},
+        debugWidth:{value:200},
+        debugWidthType:{value:"num"},
+        // Display options
+        showClassName:{value:true},
+        showConfidence:{value:true},
+        onlyMapped:{value:false},
+        // Visual settings
+        boxThickness:{value:2},
+        fontSize:{value:0.5},
+        // Class color mappings
+        classColorMappings:{value:[]}
+      },
+      inputs:1,outputs:1,
+      label:function(){return this.name||"add-bbs";},
+      oneditprepare:function(){
+        const node = this;
+        let classMappingIndex = 0;
+
+        /* path typedInputs */
+        $("#node-input-imagePath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-imagePathType"});
+        $("#node-input-boxesPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-boxesPathType"});
+        $("#node-input-outputPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-outputPathType"});
+
+        /* Box thickness slider */
+        const $thicknessSlider = $("#node-input-boxThickness");
+        const $thicknessValue = $("#thickness-value");
+
+        function updateThicknessDisplay() {
+          const value = parseInt($thicknessSlider.val());
+          $thicknessValue.text(value + "px");
+        }
+
+        $thicknessSlider.on("input", updateThicknessDisplay);
+        updateThicknessDisplay();
+
+        /* Font size slider */
+        const $fontSizeSlider = $("#node-input-fontSize");
+        const $fontSizeValue = $("#fontSize-value");
+
+        function updateFontSizeDisplay() {
+          const value = parseFloat($fontSizeSlider.val());
+          $fontSizeValue.text(value.toFixed(1));
+        }
+
+        $fontSizeSlider.on("input", updateFontSizeDisplay);
+        updateFontSizeDisplay();
+
+        function updateQualityVisibility(){
+          const format = $("#node-input-outputFormat").val();
+          $("#quality-row").toggle(format === "jpg" || format === "webp");
+          $("#png-optimize-row").toggle(format === "png");
+        }
+        $("#node-input-outputFormat").on("change", updateQualityVisibility);
+        updateQualityVisibility();
+
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        const debugWidthRow = $('#debug-width-row');
+
+        // Initialize debug width TypedInput
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+
+        // Function to toggle debug width visibility
+        function updateDebugWidthVisibility() {
+            if (debugCheckbox.is(':checked')) {
+                debugWidthRow.show();
+            } else {
+                debugWidthRow.hide();
+            }
+        }
+
+        // Initialize debug state on node open
+        updateDebugWidthVisibility();
+
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            updateDebugWidthVisibility();
+            // Store debug state for runtime access
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
+
+        // === Dynamic Class Color Mapping Logic (reused from add-masks) ===
+
+        // Initialize class mappings from saved config
+        function initializeClassMappings() {
+          const mappings = node.classColorMappings || [];
+          mappings.forEach(mapping => {
+            addClassMappingRow(mapping.className, mapping.color);
+          });
+
+          if (mappings.length === 0) {
+            addClassMappingRow(); // Add one empty row by default
+          }
+        }
+
+        // Add new class mapping row
+        function addClassMappingRow(className = '', color = '#ff0000') {
+          const container = $('#class-mappings-container');
+          const index = classMappingIndex++;
+
+          const rowHtml = `
+            <div class="class-mapping-row" data-index="${index}" style="margin-bottom: 10px; display: flex; align-items: center;">
+              <input type="text" placeholder="Class name (e.g., person)"
+                     class="class-name-input" value="${className}"
+                     style="width: 200px; margin-right: 10px;">
+              <input type="color" class="class-color-input" value="${color}"
+                     style="width: 60px; height: 30px; margin-right: 10px;">
+              <button type="button" class="remove-class-mapping editor-button"
+                      style="margin-right: 10px;">
+                <i class="fa fa-trash"></i>
+              </button>
+              <span class="duplicate-warning" style="color: red; display: none; margin-right: 10px;">
+                ⚠️ Duplicate
+              </span>
+              <span class="color-conflict-warning" style="color: orange; display: none;">
+                ⚠️ Similar color
+              </span>
+            </div>
+          `;
+
+          container.append(rowHtml);
+          updateEventHandlers();
+          validateClassNames();
+          validateColors();
+        }
+
+        // Remove class mapping row
+        function removeClassMappingRow(index) {
+          $(`.class-mapping-row[data-index="${index}"]`).remove();
+          validateClassNames();
+          validateColors();
+
+          // Ensure at least one row exists
+          if ($('.class-mapping-row').length === 0) {
+            addClassMappingRow();
+          }
+        }
+
+        // Update event handlers for dynamic elements
+        function updateEventHandlers() {
+          // Remove existing handlers to prevent duplicates
+          $('.remove-class-mapping').off('click');
+          $('.class-name-input').off('input');
+          $('.class-color-input').off('change');
+
+          // Add class mapping button
+          $('#add-class-mapping').off('click').on('click', function() {
+            addClassMappingRow();
+          });
+
+          // Remove class mapping button
+          $('.remove-class-mapping').on('click', function() {
+            const index = $(this).closest('.class-mapping-row').data('index');
+            removeClassMappingRow(index);
+          });
+
+          // Class name validation
+          $('.class-name-input').on('input', function() {
+            validateClassNames();
+          });
+
+          // Color change validation
+          $('.class-color-input').on('change', function() {
+            validateColors();
+          });
+        }
+
+        // Validate class names for duplicates
+        function validateClassNames() {
+          const classNames = [];
+          const inputs = $('.class-name-input');
+
+          inputs.each(function() {
+            const value = $(this).val().trim();
+            const row = $(this).closest('.class-mapping-row');
+            const warning = row.find('.duplicate-warning');
+
+            if (value && classNames.includes(value)) {
+              warning.show();
+            } else {
+              warning.hide();
+            }
+
+            if (value) classNames.push(value);
+          });
+        }
+
+        // Validate colors for conflicts (similar colors)
+        function validateColors() {
+          const colors = [];
+          const inputs = $('.class-color-input');
+
+          inputs.each(function() {
+            const color = $(this).val();
+            const row = $(this).closest('.class-mapping-row');
+            const warning = row.find('.color-conflict-warning');
+
+            // Check for similar colors (simplified RGB distance)
+            const hasSimilar = colors.some(existingColor => {
+              return calculateColorDistance(color, existingColor) < 50; // Threshold for "similar"
+            });
+
+            if (hasSimilar) {
+              warning.show();
+            } else {
+              warning.hide();
+            }
+
+            colors.push(color);
+          });
+        }
+
+        // Calculate simple RGB distance between two hex colors
+        function calculateColorDistance(color1, color2) {
+          const rgb1 = hexToRgb(color1);
+          const rgb2 = hexToRgb(color2);
+
+          if (!rgb1 || !rgb2) return 255; // Max distance for invalid colors
+
+          return Math.sqrt(
+            Math.pow(rgb1.r - rgb2.r, 2) +
+            Math.pow(rgb1.g - rgb2.g, 2) +
+            Math.pow(rgb1.b - rgb2.b, 2)
+          );
+        }
+
+        function hexToRgb(hex) {
+          const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+          return result ? {
+            r: parseInt(result[1], 16),
+            g: parseInt(result[2], 16),
+            b: parseInt(result[3], 16)
+          } : null;
+        }
+
+        // Initialize UI
+        initializeClassMappings();
+      },
+      oneditsave: function() {
+        // Save class color mappings when dialog is closed
+        const mappings = [];
+        $('.class-mapping-row').each(function() {
+          const className = $(this).find('.class-name-input').val().trim();
+          const color = $(this).find('.class-color-input').val();
+
+          if (className) { // Only save non-empty class names
+            mappings.push({ className, color });
+          }
+        });
+
+        this.classColorMappings = mappings;
+      }
+    });
+
+    // Debug image display renderer - shared across all image processing nodes
+    if (!window.debugImageRendererInitialized) {
+        window.debugImageRendererInitialized = true;
+
+        (function() {
+            var isSubscribed = false;
+
+            function subscribeToDebugImages() {
+                if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
+                isSubscribed = true;
+
+                RED.comms.subscribe('debug-image', function(event, data) {
+                    if (!data || !data.id) return;
+
+                    try {
+                        renderDebugImage(data);
+                    } catch (err) {
+                        console.warn('Debug image render error:', err);
+                    }
+                });
+            }
+
+            function renderDebugImage(data) {
+                const nodeId = data.id;
+                const base64Data = data.data;
+                const format = data.format || 'unknown';
+                const mimeType = data.mimeType || 'jpeg';
+
+                if (!base64Data) {
+                    removeDebugImage(nodeId);
+                    return;
+                }
+
+                const nodeElement = document.getElementById(nodeId);
+                if (!nodeElement) return;
+
+                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
+
+                if (!debugContainer) {
+                    // Create SVG foreignObject to embed HTML content in SVG
+                    debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
+                    debugContainer.id = 'debug-img-container-' + nodeId;
+                    debugContainer.setAttribute('x', '70');
+                    debugContainer.setAttribute('y', '5');
+                    debugContainer.setAttribute('width', '120');
+                    debugContainer.setAttribute('height', '120');
+                    debugContainer.style.overflow = 'visible';
+
+                    // Create simple image directly inside foreignObject
+                    const img = document.createElement('img');
+                    img.id = 'debug-img-' + nodeId;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.display = 'block';
+                    img.style.cursor = 'pointer';
+                    img.style.maxHeight = '100px';
+                    img.style.maxWidth = '100px';
+
+                    img.onclick = function() {
+                        removeDebugImage(nodeId);
+                    };
+
+                    debugContainer.appendChild(img);
+                    nodeElement.appendChild(debugContainer);
+                }
+
+                const img = document.getElementById('debug-img-' + nodeId);
+
+                if (img) {
+                    img.src = `data:image/${mimeType};base64,${base64Data}`;
+                    img.title = 'Debug image (click to hide)';
+                }
+            }
+
+            function removeDebugImage(nodeId) {
+                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                if (debugContainer) {
+                    debugContainer.remove();
+                }
+            }
+
+            function initializeWhenReady() {
+                if (typeof RED !== 'undefined' && RED.comms) {
+                    subscribeToDebugImages();
+
+                    // Clean up orphaned debug images periodically
+                    setInterval(function() {
+                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(container => {
+                            const nodeId = container.id.replace('debug-img-container-', '');
+                            const nodeElement = document.getElementById(nodeId);
+                            if (!nodeElement) {
+                                container.remove();
+                            }
+                        });
+                    }, 5000);
+                } else {
+                    setTimeout(initializeWhenReady, 100);
+                }
+            }
+
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeWhenReady);
+            } else {
+                initializeWhenReady();
+            }
+        })();
+    }
+</script>
+
+<script type="text/x-red" data-template-name="add-bbs">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+
+  <div class="form-row">
+    <label><i class="fa fa-picture-o"></i> Image</label>
+    <input type="text" id="node-input-imagePath" style="width:70%;">
+    <input type="hidden" id="node-input-imagePathType">
+  </div>
+
+  <div class="form-row">
+    <label><i class="fa fa-object-group"></i> Boxes Array</label>
+    <input type="text" id="node-input-boxesPath" style="width:70%;">
+    <input type="hidden" id="node-input-boxesPathType">
+  </div>
+
+  <div class="form-row">
+    <label><i class="fa fa-sign-out"></i> Output</label>
+    <input type="text" id="node-input-outputPath" style="width:70%;">
+    <input type="hidden" id="node-input-outputPathType">
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+    <select id="node-input-outputFormat" style="width: 200px;">
+      <option value="raw">Raw (fastest)</option>
+      <option value="jpg">JPEG</option>
+      <option value="png">PNG</option>
+      <option value="webp">WebP</option>
+    </select>
+  </div>
+
+  <div class="form-row" id="quality-row">
+    <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+    <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+  </div>
+
+  <div class="form-row" id="png-optimize-row" style="display: none;">
+    <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+    <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+  </div>
+
+  <!-- Debug Configuration -->
+  <div class="form-row">
+      <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+      <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+      <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+  </div>
+  <div class="form-row" id="debug-width-row" style="display: none;">
+      <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+      <input type="text" id="node-input-debugWidth" style="width: 120px;">
+      <input type="hidden" id="node-input-debugWidthType">
+      <span style="margin-left: 10px; color: #666;">pixels</span>
+  </div>
+
+  <hr/>
+
+  <!-- Display Options -->
+  <div class="form-row">
+    <label><i class="fa fa-eye"></i> Display Options</label>
+    <div style="margin-left: 105px;">
+      <input type="checkbox" id="node-input-showClassName" style="width:auto; display:inline-block; vertical-align:baseline;">
+      <label for="node-input-showClassName" style="width:auto;">Show Class Name</label>
+      <br>
+      <input type="checkbox" id="node-input-showConfidence" style="width:auto; display:inline-block; vertical-align:baseline;">
+      <label for="node-input-showConfidence" style="width:auto;">Show Confidence</label>
+      <br>
+      <input type="checkbox" id="node-input-onlyMapped" style="width:auto; display:inline-block; vertical-align:baseline;">
+      <label for="node-input-onlyMapped" style="width:auto;">Only Draw Mapped Classes</label>
+    </div>
+  </div>
+
+  <hr/>
+
+  <!-- Visual Settings -->
+  <div class="form-row">
+    <label for="node-input-boxThickness"><i class="fa fa-square-o"></i> Box Thickness</label>
+    <input type="range" id="node-input-boxThickness" min="1" max="10" value="2" style="width:200px;">
+    <span id="thickness-value" style="margin-left: 10px; font-weight: bold;">2px</span>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-fontSize"><i class="fa fa-font"></i> Font Size</label>
+    <input type="range" id="node-input-fontSize" min="0.3" max="2.0" step="0.1" value="0.5" style="width:200px;">
+    <span id="fontSize-value" style="margin-left: 10px; font-weight: bold;">0.5</span>
+  </div>
+
+  <hr/>
+
+  <!-- Class Color Mappings -->
+  <div class="form-row">
+    <label><i class="fa fa-palette"></i> Class Color Mappings</label>
+    <div id="class-mappings-container" style="margin-top: 10px;">
+      <!-- Dynamic class mapping rows will be inserted here -->
+    </div>
+    <div style="margin-top: 10px;">
+      <button type="button" id="add-class-mapping" class="editor-button">
+        <i class="fa fa-plus"></i> Add Class Mapping
+      </button>
+    </div>
+    <div style="margin-top: 5px; font-size: 11px; color: #666;">
+      Define colors for specific class names. Undefined classes will automatically use maximally different colors.
+    </div>
+  </div>
+
+  <hr/>
+
+</script>
+
+<script type="text/x-red" data-help-name="add-bbs">
+  <p><b>rosepetal-add-bbs</b> draws bounding boxes with optional labels on images for object detection visualization. This node processes arrays of bounding box objects with automatic color assignment for different classes.</p>
+
+  <h3>Details</h3>
+  <p>This node performs high-performance bounding box rendering using OpenCV. Boxes are drawn from 4-corner coordinates (normalized 0-1 range) with customizable colors, thickness, and label display options. Labels can show class names, confidence scores, or both with configurable positioning and background.</p>
+
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Image <span class="property-type">string</span></dt>
+    <dd>Message property path containing the base image on which boxes will be drawn. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+
+    <dt>Boxes Array <span class="property-type">string</span></dt>
+    <dd>Message property path containing the boxes array. Expected structure: array of objects with <code>boxes</code> property containing box objects with <code>box</code> coordinates (4 corners), <code>class_name</code>, and optional <code>confidence</code>. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>Message property path where the image with drawn boxes will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+
+    <dt>Output Format <span class="property-type">string</span></dt>
+    <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+
+    <dt>Quality <span class="property-type">number</span></dt>
+    <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
+
+    <dt>Show Class Name <span class="property-type">boolean</span></dt>
+    <dd>Display the class name as part of the box label.</dd>
+
+    <dt>Show Confidence <span class="property-type">boolean</span></dt>
+    <dd>Display the confidence score as part of the box label (e.g., "95.4%").</dd>
+
+    <dt>Only Mapped Classes <span class="property-type">boolean</span></dt>
+    <dd>When enabled, only draw boxes for classes that have explicit color mappings defined.</dd>
+
+    <dt>Box Thickness <span class="property-type">number</span></dt>
+    <dd>Line thickness for bounding boxes (1-10 pixels).</dd>
+
+    <dt>Font Size <span class="property-type">number</span></dt>
+    <dd>Scale factor for label text (0.3-2.0).</dd>
+
+
+    <dt>Class Color Mappings <span class="property-type">array</span></dt>
+    <dd>Dynamic list of class name to color mappings. Each mapping defines a specific color for boxes with that class name.</dd>
+  </dl>
+
+  <h3>Input Structure</h3>
+  <p>The boxes array should follow this exact structure (same as cropBB output):</p>
+  <pre>[
+  {
+    "boxes": [
+      {
+        "box": [[x1,y1], [x2,y1], [x2,y2], [x1,y2]], // 4 corners, normalized [0,1]
+        "class_name": "person",
+        "confidence": 0.95
+      }
+    ]
+  }
+]</pre>
+
+  <h3>Key Features</h3>
+  <ul>
+    <li><b>4-Corner Box Format:</b> Uses same format as cropBB for seamless integration</li>
+    <li><b>Dynamic Color Management:</b> Add/remove class color mappings with real-time validation</li>
+    <li><b>Auto-Color Generation:</b> Maximally different colors for undefined classes</li>
+    <li><b>Flexible Labels:</b> Show class name, confidence, both, or neither</li>
+    <li><b>Smart Positioning:</b> Automatic adjustment when labels would go off-screen</li>
+    <li><b>Performance Optimized:</b> Direct pixel manipulation with OpenMP parallelization</li>
+  </ul>
+
+  <h3>Label Formatting</h3>
+  <p>Labels are formatted based on display options:</p>
+  <ul>
+    <li><b>Class Only:</b> "person"</li>
+    <li><b>Confidence Only:</b> "95.4%"</li>
+    <li><b>Both:</b> "person (95.4%)"</li>
+    <li><b>Neither:</b> Box drawn without label</li>
+  </ul>
+
+  <h3>Performance</h3>
+  <ul>
+    <li><b>C++ Backend:</b> High-performance OpenCV implementation with optimizations</li>
+    <li><b>Direct Drawing:</b> Efficient rectangle and text rendering</li>
+    <li><b>Cached Colors:</b> Reuses color calculations across boxes</li>
+    <li><b>Parallel Processing:</b> OpenMP parallelization for multiple boxes</li>
+  </ul>
+</script>

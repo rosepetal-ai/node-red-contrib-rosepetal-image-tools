@@ -15,6 +15,7 @@
         "src/blend.cpp",
         "src/add-mask.cpp",
         "src/add-masks.cpp",
+        "src/add-bbs.cpp",
         "src/image-align.cpp"
       ],
       "include_dirs": [
@@ -40,13 +41,20 @@
         "-fopenmp",
         "-mavx2",
         "-ftree-vectorize",
-        "-fprefetch-loop-arrays"
+        "-fprefetch-loop-arrays",
+        "-finline-functions",
+        "-flto",
+        "-fipa-pta",
+        "-fvect-cost-model=cheap",
+        "-minline-all-stringops"
       ],
       "ldflags": [
         "-O3",
         "-march=native",
         "-fopenmp",
-        "-lgomp"
+        "-lgomp",
+        "-flto",
+        "-fuse-linker-plugin"
       ],
       "xcode_settings": {
         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",

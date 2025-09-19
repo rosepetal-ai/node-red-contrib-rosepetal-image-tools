@@ -47,7 +47,8 @@
             "advanced-mosaic": "nodes/mix/advanced-mosaic.js",
             "blend": "nodes/blend/blend.js",
             "add-mask": "nodes/blend/add-mask.js",
-            "add-masks": "nodes/blend/add-masks.js"
+            "add-masks": "nodes/blend/add-masks.js",
+            "add-bbs": "nodes/blend/add-bbs.js"
         }
     },
     "dependencies": {

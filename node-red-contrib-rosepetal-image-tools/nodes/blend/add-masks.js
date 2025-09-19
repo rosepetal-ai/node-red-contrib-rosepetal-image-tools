@@ -51,12 +51,20 @@ module.exports = function (RED) {
           // Single object with masks property (your case)
           normalizedMasksArray = [masksArray];
         } else {
-          node.warn("Masks input must be an array or an object with 'masks' property");
+          const total = performance.now() - t0;
+          RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
+          NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
+          send(msg);
+          done && done();
           return;
         }
 
         if (normalizedMasksArray.length === 0) {
-          node.warn("Masks array is empty");
+          const total = performance.now() - t0;
+          RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
+          NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
+          send(msg);
+          done && done();
           return;
         }
 
@@ -134,7 +142,11 @@ module.exports = function (RED) {
         }
 
         if (totalMaskCount === 0) {
-          node.warn("No valid masks found in input array");
+          const total = performance.now() - t0;
+          RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
+          NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
+          send(msg);
+          done && done();
           return;
         }
 

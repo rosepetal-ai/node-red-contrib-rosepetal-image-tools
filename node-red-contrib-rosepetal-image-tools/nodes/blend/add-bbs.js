@@ -56,7 +56,11 @@ module.exports = function (RED) {
         }
 
         if (normalizedBoxesArray.length === 0) {
-          node.warn("Boxes array is empty");
+          const total = performance.now() - t0;
+          RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
+          NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
+          send(msg);
+          done && done();
           return;
         }
 
@@ -122,7 +126,11 @@ module.exports = function (RED) {
         }
 
         if (totalBoxCount === 0) {
-          node.warn("No valid boxes found in input array");
+          const total = performance.now() - t0;
+          RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
+          NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
+          send(msg);
+          done && done();
           return;
         }
 

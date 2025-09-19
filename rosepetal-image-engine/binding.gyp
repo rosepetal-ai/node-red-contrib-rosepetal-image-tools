@@ -36,11 +36,19 @@
         "-frtti",
         "-fno-omit-frame-pointer",
         "-funroll-loops",
-        "-fstrict-aliasing"
+        "-fstrict-aliasing",
+        "-fopenmp",
+        "-mavx2",
+        "-ftree-vectorize",
+        "-fprefetch-loop-arrays",
+        "-flto"
       ],
       "ldflags": [
         "-O3",
-        "-march=native"
+        "-march=native",
+        "-fopenmp",
+        "-lgomp",
+        "-flto"
       ],
       "xcode_settings": {
         "GCC_ENABLE_CPP_EXCEPTIONS": "YES",

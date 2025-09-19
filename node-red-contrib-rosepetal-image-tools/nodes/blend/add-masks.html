@@ -272,10 +272,20 @@
 
         // Initialize UI
         initializeClassMappings();
+      },
+      oneditsave: function() {
+        // Save class color mappings when dialog is closed
+        const mappings = [];
+        $('.class-mapping-row').each(function() {
+          const className = $(this).find('.class-name-input').val().trim();
+          const color = $(this).find('.class-color-input').val();
 
-        // Save on dialog close and other change events
-        $('#dialog-ok').on('click', saveClassMappings);
-        $('#node-input-name').on('change', saveClassMappings);
+          if (className) { // Only save non-empty class names
+            mappings.push({ className, color });
+          }
+        });
+
+        this.classColorMappings = mappings;
       }
     });
 

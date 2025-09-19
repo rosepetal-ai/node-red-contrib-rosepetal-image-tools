@@ -34,21 +34,36 @@ module.exports = function (RED) {
           return;
         }
 
-        // Validate masks array structure
-        if (!Array.isArray(masksArray)) {
-          node.warn("Masks input must be an array");
+        // Smart format detection and normalization
+        let normalizedMasksArray;
+
+        if (Array.isArray(masksArray)) {
+          // Check if it's already in the expected format [{ masks: [...] }]
+          if (masksArray.length > 0 && masksArray[0].hasOwnProperty('masks')) {
+            normalizedMasksArray = masksArray; // Already correct format
+          } else if (masksArray.length > 0 && masksArray[0].hasOwnProperty('mask')) {
+            // Direct array of mask objects
+            normalizedMasksArray = [{ masks: masksArray }];
+          } else {
+            normalizedMasksArray = masksArray; // Keep as is for validation to catch errors
+          }
+        } else if (typeof masksArray === 'object' && masksArray !== null && masksArray.hasOwnProperty('masks')) {
+          // Single object with masks property (your case)
+          normalizedMasksArray = [masksArray];
+        } else {
+          node.warn("Masks input must be an array or an object with 'masks' property");
           return;
         }
 
-        if (masksArray.length === 0) {
+        if (normalizedMasksArray.length === 0) {
           node.warn("Masks array is empty");
           return;
         }
 
         // Validate masks array structure in detail
         let totalMaskCount = 0;
-        for (let elementIndex = 0; elementIndex < masksArray.length; elementIndex++) {
-          const element = masksArray[elementIndex];
+        for (let elementIndex = 0; elementIndex < normalizedMasksArray.length; elementIndex++) {
+          const element = normalizedMasksArray[elementIndex];
 
           if (!element || typeof element !== 'object') {
             node.warn(`Invalid element at index ${elementIndex}: expected object with 'masks' property`);
@@ -143,7 +158,7 @@ module.exports = function (RED) {
         const { image: result, timing = {} } =
               await Cpp.addMasks(
                 baseImg,
-                masksArray,
+                normalizedMasksArray,
                 classColorMap,
                 maskStrength,
                 true, // Always auto-generate colors for undefined classes

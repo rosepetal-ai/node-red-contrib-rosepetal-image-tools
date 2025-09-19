@@ -139,7 +139,8 @@ module.exports = function (RED) {
         }
 
         /* ▸ Options from the editor -------------------------------------- */
-        const maskStrength = Math.max(0, Math.min(100, parseInt(config.globalMaskStrength) || 50)) / 100.0;
+        const maskStrength = Math.max(0, Math.min(100,
+          config.globalMaskStrength !== undefined ? parseInt(config.globalMaskStrength) : 50)) / 100.0;
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;

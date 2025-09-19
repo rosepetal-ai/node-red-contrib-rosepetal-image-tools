@@ -64,29 +64,88 @@ inline std::pair<cv::Mat, cv::Rect> CreateOptimizedPolygonMask(
 // Optimized color generation (cached)
 static std::unordered_map<std::string, cv::Vec3f> colorCache;
 
+// Generate maximally different color from existing colors
+inline cv::Vec3f GenerateMaximallyDifferentColor(
+    const std::string& className,
+    const std::unordered_map<std::string, cv::Vec3f>& userColors) {
+
+  // Collect all used colors
+  std::vector<cv::Vec3f> usedColors;
+  for (const auto& [_, color] : userColors) {
+    usedColors.push_back(color);
+  }
+  for (const auto& [_, color] : colorCache) {
+    usedColors.push_back(color);
+  }
+
+  // If no existing colors, start with a vivid red
+  if (usedColors.empty()) {
+    cv::Vec3f firstColor(0.0f, 0.0f, 1.0f); // BGR: pure red
+    colorCache[className] = firstColor;
+    return firstColor;
+  }
+
+  // Generate candidate colors evenly distributed in HSV space
+  std::vector<cv::Vec3f> candidates;
+  const int numHues = 24; // Every 15 degrees
+  const int numSaturations = 3; // 60%, 80%, 100%
+  const int numValues = 3; // 60%, 80%, 100%
+
+  for (int h = 0; h < numHues; h++) {
+    for (int s = 0; s < numSaturations; s++) {
+      for (int v = 0; v < numValues; v++) {
+        float hue = (h * 360.0f / numHues);
+        float saturation = 0.6f + s * 0.2f; // 60%, 80%, 100%
+        float value = 0.6f + v * 0.2f; // 60%, 80%, 100%
+
+        // Convert HSV to BGR
+        cv::Mat hsv(1, 1, CV_32FC3, cv::Scalar(hue / 360.0f, saturation, value));
+        cv::Mat bgr;
+        cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
+
+        cv::Vec3f color = bgr.at<cv::Vec3f>(0, 0);
+        candidates.push_back(color);
+      }
+    }
+  }
+
+  // Find candidate with maximum minimum distance to existing colors
+  float maxMinDistance = 0;
+  cv::Vec3f bestColor = candidates[0];
+
+  for (const auto& candidate : candidates) {
+    float minDistance = std::numeric_limits<float>::max();
+
+    for (const auto& existing : usedColors) {
+      // Calculate perceptual color distance with weighted components
+      // Human eye is more sensitive to green, then red, then blue
+      float dist = sqrt(
+        pow((candidate[2] - existing[2]) * 2.0f, 2) + // Red (BGR[2])
+        pow((candidate[1] - existing[1]) * 3.0f, 2) + // Green (BGR[1])
+        pow((candidate[0] - existing[0]) * 1.0f, 2)   // Blue (BGR[0])
+      );
+      minDistance = std::min(minDistance, dist);
+    }
+
+    if (minDistance > maxMinDistance) {
+      maxMinDistance = minDistance;
+      bestColor = candidate;
+    }
+  }
+
+  // Cache and return
+  colorCache[className] = bestColor;
+  return bestColor;
+}
+
 inline cv::Vec3f GetCachedColor(const std::string& className) {
   auto it = colorCache.find(className);
   if (it != colorCache.end()) {
     return it->second;
   }
 
-  // Generate and cache
-  std::hash<std::string> hasher;
-  size_t seed = hasher(className);
-  std::mt19937 rng(seed);
-  std::uniform_int_distribution<int> dist(0, 255);
-
-  int hue = rng() % 360;
-  int saturation = 70 + (rng() % 30);
-  int value = 70 + (rng() % 30);
-
-  cv::Mat hsv(1, 1, CV_8UC3, cv::Scalar(hue / 2, saturation * 255 / 100, value * 255 / 100));
-  cv::Mat rgb;
-  cv::cvtColor(hsv, rgb, cv::COLOR_HSV2RGB);
-
-  cv::Vec3b pixel = rgb.at<cv::Vec3b>(0, 0);
-  cv::Vec3f color(pixel[2] / 255.0f, pixel[1] / 255.0f, pixel[0] / 255.0f);
-
+  // This should not be called anymore, but keep as fallback
+  cv::Vec3f color(1.0f, 1.0f, 1.0f); // White fallback
   colorCache[className] = color;
   return color;
 }
@@ -167,7 +226,7 @@ public:
                 if (colorIt != userColorMap.end()) {
                   maskInfo.normalizedColor = colorIt->second;
                 } else if (autoGenerateColors) {
-                  maskInfo.normalizedColor = GetCachedColor(className);
+                  maskInfo.normalizedColor = GenerateMaximallyDifferentColor(className, userColorMap);
                 } else {
                   maskInfo.normalizedColor = cv::Vec3f(1.0f, 1.0f, 1.0f);
                 }

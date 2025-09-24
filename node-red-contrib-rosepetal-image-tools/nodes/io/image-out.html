@@ -8,12 +8,16 @@
             folderPathType: { value: "str" },
             filenamePrefix: { value: "" },
             filenamePrefixType: { value: "str" },
+            filenameFull: { value: "" },
+            filenameFullType: { value: "str" },
             inputPath: { value: "payload" },
             inputPathType: { value: "msg" },
             outputFormat: { value: "jpg" },
             outputQuality: { value: 90 },
             pngOptimize: { value: false },
             overwriteProtection: { value: true },
+            maxImages: { value: "" },
+            maxImagesType: { value: "num" },
             active: { value: true },
             // Debug configuration
             debugEnabled: { value: false },
@@ -33,42 +37,38 @@
             onclick: function() {
                 var node = this;
                 var label = RED.utils.sanitize(this.name || "image-out");
-                
-                // Make AJAX call to toggle active state
-                $.ajax({
-                    url: "image-out/" + this.id,
-                    type: "POST",
-                    success: function(resp) {
-                        // Create history event for undo/redo
-                        var historyEvent = {
-                            t: 'edit',
-                            node: node,
-                            changes: {
-                                active: !node.active
-                            },
-                            dirty: node.dirty,
-                            changed: node.changed
-                        };
-                        
-                        // Toggle the active state
-                        node.active = !node.active;
-                        node.dirty = true;
-                        node.changed = true;
-                        
-                        // Push to history and update UI
-                        RED.history.push(historyEvent);
-                        RED.nodes.dirty(true);
-                        RED.view.redraw();
-                        
-                        // Show notification
-                        RED.notify(label + " " + (node.active ? "activated" : "deactivated"), "success");
-                    },
-                    error: function(jqXHR, textStatus, errorThrown) {
-                        if (jqXHR.status == 404) {
-                            RED.notify("Node not deployed", "error");
-                        } else {
-                            RED.notify("Error: " + errorThrown, "error");
+                var desiredState = node.active;
+
+                sendToggleRequest(node, desiredState, function() {
+                    var historyEvent = {
+                        t: 'edit',
+                        node: node,
+                        changes: {
+                            active: !node.active
+                        },
+                        dirty: node.dirty,
+                        changed: node.changed,
+                        callback: function(ev) {
+                            sendToggleRequest(ev.node, ev.node.active);
                         }
+                    };
+
+                    node.changed = true;
+                    node.dirty = true;
+                    RED.nodes.dirty(true);
+                    RED.history.push(historyEvent);
+                    RED.view.redraw();
+
+                    RED.notify(label + " " + (desiredState ? "activated" : "deactivated"), "success");
+                }, function(jqXHR, textStatus, errorThrown) {
+                    node.active = !node.active;
+                    RED.view.redraw();
+                    if (jqXHR && jqXHR.status === 404) {
+                        RED.notify("Node not deployed", "error");
+                    } else if (errorThrown) {
+                        RED.notify("Error: " + errorThrown, "error");
+                    } else {
+                        RED.notify("Unexpected error", "error");
                     }
                 });
             }
@@ -81,11 +81,26 @@
                 typeField: "#node-input-folderPathType"
             });
             
+            const jsonataTypeOption = {
+                value: 'jsonata',
+                label: 'JSONata',
+                icon: 'red/images/typedInput/expr.svg'
+            };
+
+            const nameTypes = ['str', 'msg', 'flow', 'global', jsonataTypeOption];
+
             // Initialize TypedInput for filename prefix
             $("#node-input-filenamePrefix").typedInput({
                 default: 'str',
-                types: ['str', 'msg', 'flow', 'global'],
+                types: nameTypes,
                 typeField: "#node-input-filenamePrefixType"
+            });
+
+            // Initialize TypedInput for full filename
+            $("#node-input-filenameFull").typedInput({
+                default: 'str',
+                types: nameTypes,
+                typeField: "#node-input-filenameFullType"
             });
             
             // Initialize TypedInput for input path
@@ -93,6 +108,13 @@
                 default: 'msg',
                 types: ['msg', 'flow', 'global'],
                 typeField: "#node-input-inputPathType"
+            });
+
+            // Initialize TypedInput for maximum images
+            $("#node-input-maxImages").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-maxImagesType"
             });
             
             // Initialize debug width TypedInput
@@ -143,6 +165,25 @@
         }
     });
     
+    function sendToggleRequest(node, active, onSuccess, onError) {
+        $.ajax({
+            url: "image-out/" + node.id,
+            type: "POST",
+            data: JSON.stringify({ active: active }),
+            contentType: "application/json; charset=utf-8",
+            success: function(resp) {
+                if (typeof onSuccess === 'function') {
+                    onSuccess(resp);
+                }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                if (typeof onError === 'function') {
+                    onError(jqXHR, textStatus, errorThrown);
+                }
+            }
+        });
+    }
+
     // Debug image display functionality (same as other nodes)
     function initDebugImageDisplay() {
         (function() {
@@ -274,6 +315,15 @@
             Pattern: [prefix]_YYYYMMDD_HHMMSS.[ext]
         </div>
     </div>
+
+    <div class="form-row">
+        <label for="node-input-filenameFull"><i class="fa fa-file-text-o"></i> Full Filename</label>
+        <input type="text" id="node-input-filenameFull" style="width: 70%;" placeholder="photo_${payload.id}.jpg (optional)">
+        <input type="hidden" id="node-input-filenameFullType">
+        <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
+            Overrides prefix & timestamp when provided. Leave blank for automatic naming.
+        </div>
+    </div>
     
     <hr>
     
@@ -316,6 +366,13 @@
         <input type="checkbox" id="node-input-overwriteProtection" style="display:inline-block; width:auto; vertical-align:baseline;" checked>
         <label for="node-input-overwriteProtection" style="width:auto; margin-left:5px;">Prevent overwriting existing files (_2, _3, etc.)</label>
     </div>
+
+    <div class="form-row">
+        <label for="node-input-maxImages"><i class="fa fa-list-ol"></i> Max Images</label>
+        <input type="text" id="node-input-maxImages" style="width: 120px;" placeholder="0">
+        <input type="hidden" id="node-input-maxImagesType">
+        <span style="margin-left: 10px; color: #666;">0 or blank keeps all files.</span>
+    </div>
     
     <!-- Debug Configuration -->
     <div class="form-row">
@@ -342,8 +399,11 @@
         <dt>Folder Path <span class="property-type">string | msg | flow | global</span></dt>
         <dd>The directory where images will be saved. Can be an absolute or relative path. The folder will be created if it doesn't exist. Can be dynamically set from message properties, flow context, or global context.</dd>
         
-        <dt>Filename Prefix <span class="property-type">string</span></dt>
-        <dd>Optional prefix for the filename. If not specified, defaults to "image". The final filename pattern is: <code>[prefix]_YYYYMMDD_HHMMSS.[ext]</code></dd>
+        <dt>Filename Prefix <span class="property-type">string | msg | flow | global | JSONata</span></dt>
+        <dd>Optional prefix for the auto-generated filename. If not specified, defaults to <code>image</code>. The final filename pattern is: <code>[prefix]_YYYYMMDD_HHMMSS.[ext]</code>.</dd>
+        
+        <dt>Full Filename <span class="property-type">string | msg | flow | global | JSONata</span></dt>
+        <dd>Overrides the prefix/timestamp pattern with an explicit name. Leave blank to keep automatic naming. You can include JSONata expressions or dynamic properties. If the expression supplies an extension (jpg/png/webp), the output format adjusts accordingly.</dd>
         
         <dt>Input from <span class="property-type">string</span></dt>
         <dd>The location of the image data to save. Defaults to <code>msg.payload</code>. Can be set to any message property, flow variable, or global variable.</dd>
@@ -359,6 +419,9 @@
         
         <dt>Overwrite Protection <span class="property-type">boolean</span></dt>
         <dd>When enabled (default), automatically appends <code>_2</code>, <code>_3</code>, etc. to filenames if a file with the same name already exists.</dd>
+
+        <dt>Max Images <span class="property-type">number | msg | flow | global | JSONata</span></dt>
+        <dd>Optional FIFO retention policy for the target folder. When greater than zero, the node deletes the oldest files after saving to keep at most the specified number of images.</dd>
         
         <dt>Active Button <span class="property-type">button</span></dt>
         <dd>Click the button on the node to enable/disable saving. When disabled, the node passes messages through without saving images. The state is indicated by the button color (green = active, gray = inactive).</dd>

@@ -39,30 +39,74 @@ module.exports = function(RED) {
       const startTime = Date.now();
       
       try {
-        // Get folder path
+        const evaluateProperty = (value, type, fallbackType = 'str') => {
+          return new Promise((resolve, reject) => {
+            const actualType = type || fallbackType;
+            try {
+              RED.util.evaluateNodeProperty(value, actualType, node, msg, (err, result) => {
+                if (err) {
+                  reject(err);
+                } else {
+                  resolve(result);
+                }
+              });
+            } catch (err) {
+              reject(err);
+            }
+          });
+        };
+
+        // Resolve folder path (supports typed inputs)
+        const folderPathType = config.folderPathType || 'str';
         let folderPath;
-        if (config.folderPathType === 'msg' || config.folderPathType === 'flow' || config.folderPathType === 'global') {
-          folderPath = RED.util.evaluateNodeProperty(config.folderPath, config.folderPathType, node, msg);
+        if (['msg', 'flow', 'global', 'jsonata', 'env'].includes(folderPathType)) {
+          folderPath = await evaluateProperty(config.folderPath, folderPathType);
         } else {
-          folderPath = config.folderPath || '.'; // Default to current directory
+          folderPath = config.folderPath || '.';
         }
-        
-        // Validate folder path
-        if (!folderPath) {
-          throw new Error("Folder path is not configured or resolved.");
+
+        if (folderPath === undefined || folderPath === null || String(folderPath).trim() === '') {
+          throw new Error('Folder path is not configured or resolved.');
         }
-        
-        // Ensure folder exists
+        folderPath = String(folderPath);
+
         try {
           await fs.mkdir(folderPath, { recursive: true });
         } catch (mkdirErr) {
           throw new Error(`Cannot create directory: ${mkdirErr.message}`);
         }
-        
-        // Get input image
-        const inputPath = config.inputPath || "payload";
-        const inputPathType = config.inputPathType || "msg";
-        
+
+        // Resolve optional maximum image count
+        let maxImages = 0;
+        const maxImagesType = config.maxImagesType || 'num';
+        const maxImagesConfigured = !(
+          config.maxImages === undefined ||
+          config.maxImages === null ||
+          (typeof config.maxImages === 'string' && config.maxImages.trim() === '')
+        );
+
+        if (maxImagesConfigured || ['msg', 'flow', 'global', 'jsonata', 'env'].includes(maxImagesType)) {
+          try {
+            const resolvedMax = await evaluateProperty(config.maxImages, maxImagesType);
+            if (resolvedMax !== undefined && resolvedMax !== null && resolvedMax !== '') {
+              const numericMax = parseInt(resolvedMax, 10);
+              if (Number.isNaN(numericMax)) {
+                throw new Error(`Value "${resolvedMax}" is not a valid integer.`);
+              }
+              if (numericMax < 0) {
+                throw new Error('Value must be zero or a positive integer.');
+              }
+              maxImages = numericMax;
+            }
+          } catch (err) {
+            throw new Error(`Unable to resolve max images: ${err.message}`);
+          }
+        }
+
+        // Retrieve input image
+        const inputPath = config.inputPath || 'payload';
+        const inputPathType = config.inputPathType || 'msg';
+
         let image;
         if (inputPathType === 'msg') {
           image = RED.util.getMessageProperty(msg, inputPath);
@@ -71,53 +115,111 @@ module.exports = function(RED) {
         } else if (inputPathType === 'global') {
           image = node.context().global.get(inputPath);
         }
-        
-        // Check if input is valid
+
         if (!image) {
-          throw new Error("No image data found at specified input path");
+          throw new Error('No image data found at specified input path');
         }
-        
-        node.status({ fill: "blue", shape: "dot", text: "saving..." });
-        
-        // Generate timestamp-based filename
+
+        node.status({ fill: 'blue', shape: 'dot', text: 'saving...' });
+
+        // Resolve optional full filename override
+        let resolvedFullFilename = null;
+        const fullNameType = config.filenameFullType || 'str';
+        const hasFullNameConfig = !(
+          config.filenameFull === undefined ||
+          config.filenameFull === null ||
+          (typeof config.filenameFull === 'string' && config.filenameFull.trim() === '')
+        );
+
+        if (hasFullNameConfig || ['msg', 'flow', 'global', 'jsonata', 'env'].includes(fullNameType)) {
+          try {
+            const evaluated = await evaluateProperty(config.filenameFull, fullNameType);
+            if (evaluated !== undefined && evaluated !== null) {
+              const trimmed = String(evaluated).trim();
+              if (trimmed) {
+                resolvedFullFilename = trimmed;
+              }
+            }
+          } catch (err) {
+            throw new Error(`Unable to resolve full filename: ${err.message}`);
+          }
+        }
+
+        // Resolve prefix when full filename not provided
+        const prefixType = config.filenamePrefixType || 'str';
+        let prefixValue = config.filenamePrefix || '';
+        if (['msg', 'flow', 'global', 'jsonata', 'env'].includes(prefixType)) {
+          try {
+            const evaluatedPrefix = await evaluateProperty(config.filenamePrefix, prefixType);
+            prefixValue = evaluatedPrefix !== undefined && evaluatedPrefix !== null ? String(evaluatedPrefix) : '';
+          } catch (err) {
+            throw new Error(`Unable to resolve filename prefix: ${err.message}`);
+          }
+        }
+        prefixValue = (prefixValue || '').trim();
+        const prefix = prefixValue ? `${prefixValue}_` : 'image_';
+
+        // Determine format & extension
+        let format = (config.outputFormat || 'jpg').toLowerCase();
+        if (!['jpg', 'png', 'webp'].includes(format)) {
+          format = 'jpg';
+        }
+        let fileExtension = format === 'jpg' ? 'jpg' : format;
+
+        // Build filename (timestamp-based fallback)
         const now = new Date();
         const timestamp = now.getFullYear().toString() +
-                         (now.getMonth() + 1).toString().padStart(2, '0') +
-                         now.getDate().toString().padStart(2, '0') + '_' +
-                         now.getHours().toString().padStart(2, '0') +
-                         now.getMinutes().toString().padStart(2, '0') +
-                         now.getSeconds().toString().padStart(2, '0');
-        
-        // Build filename with optional prefix (can be dynamic from msg/flow/global)
-        let prefix;
-        if (config.filenamePrefixType === 'msg' || config.filenamePrefixType === 'flow' || config.filenamePrefixType === 'global') {
-          const resolvedPrefix = RED.util.evaluateNodeProperty(config.filenamePrefix, config.filenamePrefixType, node, msg);
-          prefix = resolvedPrefix ? resolvedPrefix + '_' : 'image_';
+                          (now.getMonth() + 1).toString().padStart(2, '0') +
+                          now.getDate().toString().padStart(2, '0') + '_' +
+                          now.getHours().toString().padStart(2, '0') +
+                          now.getMinutes().toString().padStart(2, '0') +
+                          now.getSeconds().toString().padStart(2, '0');
+
+        let baseFilename;
+        if (resolvedFullFilename) {
+          if (/[\\/]/.test(resolvedFullFilename)) {
+            throw new Error('Full filename must not include path separators');
+          }
+          const parsed = path.parse(resolvedFullFilename);
+          if (parsed.ext) {
+            const extLower = parsed.ext.slice(1).toLowerCase();
+            if (!['jpg', 'jpeg', 'png', 'webp'].includes(extLower)) {
+              throw new Error(`Unsupported extension in filename: ${parsed.ext}`);
+            }
+            fileExtension = parsed.ext.slice(1);
+            format = extLower === 'jpeg' ? 'jpg' : extLower;
+            baseFilename = parsed.name;
+          } else {
+            baseFilename = parsed.base;
+          }
         } else {
-          prefix = config.filenamePrefix ? config.filenamePrefix + '_' : 'image_';
+          baseFilename = `${prefix}${timestamp}`;
         }
-        const format = config.outputFormat || 'jpg';
-        const extension = format === 'jpg' ? 'jpg' : format;
-        let baseFilename = `${prefix}${timestamp}`;
-        let filename = `${baseFilename}.${extension}`;
+
+        if (!baseFilename || !String(baseFilename).trim()) {
+          throw new Error('Filename could not be determined.');
+        }
+        baseFilename = String(baseFilename).trim();
+
+        let filename = `${baseFilename}.${fileExtension}`;
+        const originalFilename = filename;
         let filePath = path.join(folderPath, filename);
-        
-        // Handle overwrite protection
-        if (config.overwriteProtection !== false) { // Default to true
+
+        if (config.overwriteProtection !== false) {
           let counter = 2;
           while (await fileExists(filePath)) {
-            filename = `${baseFilename}_${counter}.${extension}`;
+            filename = `${baseFilename}_${counter}.${fileExtension}`;
             filePath = path.join(folderPath, filename);
-            counter++;
-            if (counter > 1000) { // Safety limit
-              throw new Error("Too many file variations exist");
+            counter += 1;
+            if (counter > 1000) {
+              throw new Error('Too many file variations exist');
             }
           }
         }
-        
+
         // Convert image to buffer based on format
         let outputBuffer;
-        const quality = parseInt(config.outputQuality) || 90;
+        const quality = parseInt(config.outputQuality, 10) || 90;
         
         // Check if image is already an encoded Buffer (JPEG, PNG, WebP)
         if (Buffer.isBuffer(image) && !image.width && !image.height) {
@@ -215,7 +317,17 @@ module.exports = function(RED) {
         
         // Write file to disk
         await fs.writeFile(filePath, outputBuffer);
-        
+
+        if (maxImages > 0) {
+          try {
+            await enforceMaxImages(folderPath, maxImages);
+          } catch (policyErr) {
+            node.warn(`Max images enforcement failed: ${policyErr.message}`);
+          }
+        }
+
+        const renameOccurred = config.overwriteProtection !== false && filename !== originalFilename;
+
         // Debug display if enabled
         if (config.debugEnabled) {
           try {
@@ -229,11 +341,10 @@ module.exports = function(RED) {
             );
             
             if (debugResult) {
-              const wasOverwriteAvoided = config.overwriteProtection && filename !== `${prefix}${timestamp}.${extension}`;
-              const statusText = wasOverwriteAvoided ? 
-                `saved: ${filename} (avoided overwrite)` : 
+              const statusText = renameOccurred ?
+                `saved: ${filename} (avoided overwrite)` :
                 `saved: ${filename}`;
-              
+
               node.status({ 
                 fill: "green", 
                 shape: "dot", 
@@ -245,11 +356,10 @@ module.exports = function(RED) {
           }
         } else {
           const elapsedMs = Date.now() - startTime;
-          const wasOverwriteAvoided = config.overwriteProtection && filename !== `${prefix}${timestamp}.${extension}`;
-          const statusText = wasOverwriteAvoided ? 
-            `saved: ${filename} (${elapsedMs}ms, avoided overwrite)` : 
+          const statusText = renameOccurred ?
+            `saved: ${filename} (${elapsedMs}ms, avoided overwrite)` :
             `saved: ${filename} (${elapsedMs}ms)`;
-          
+
           node.status({ fill: "green", shape: "dot", text: statusText });
         }
         
@@ -271,7 +381,55 @@ module.exports = function(RED) {
         return false;
       }
     }
-    
+
+    async function enforceMaxImages(folderPath, maxCount) {
+      if (maxCount <= 0) {
+        return;
+      }
+
+      try {
+        const entries = await fs.readdir(folderPath, { withFileTypes: true });
+        const files = entries
+          .filter((entry) => entry.isFile())
+          .map((entry) => entry.name);
+
+        if (files.length <= maxCount) {
+          return;
+        }
+
+        const fileStats = [];
+        for (const name of files) {
+          try {
+            const fullPath = path.join(folderPath, name);
+            const stats = await fs.stat(fullPath);
+            fileStats.push({
+              name,
+              path: fullPath,
+              mtime: stats.mtimeMs,
+            });
+          } catch (err) {
+            node.warn(`Unable to inspect file ${name}: ${err.message}`);
+          }
+        }
+
+        fileStats.sort((a, b) => a.mtime - b.mtime);
+
+        while (fileStats.length > maxCount) {
+          const oldest = fileStats.shift();
+          if (!oldest) {
+            break;
+          }
+          try {
+            await fs.unlink(oldest.path);
+          } catch (err) {
+            throw new Error(`Failed to remove ${oldest.name}: ${err.message}`);
+          }
+        }
+      } catch (err) {
+        throw new Error(`Unable to read folder "${folderPath}": ${err.message}`);
+      }
+    }
+
     // Handle cleanup
     node.on('close', function() {
       // Clear any debug images
@@ -294,8 +452,14 @@ module.exports = function(RED) {
         node.active = true;
       }
       
-      // Toggle state
-      node.active = !node.active;
+      let desiredState;
+      if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'active')) {
+        desiredState = !!req.body.active;
+      } else {
+        desiredState = !node.active; // Legacy behaviour
+      }
+
+      node.active = desiredState;
       
       // Update node status
       if (!node.active) {
@@ -304,7 +468,7 @@ module.exports = function(RED) {
         node.status({});
       }
       
-      res.sendStatus(200);
+      res.json({ active: node.active });
     } else {
       res.sendStatus(404);
     }

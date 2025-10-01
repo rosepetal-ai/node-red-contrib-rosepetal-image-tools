@@ -189,56 +189,58 @@ public:
     }
 
     // Pre-process all masks and create optimized structures
-    for (size_t elementIndex = 0; elementIndex < masksArray.Length(); elementIndex++) {
-      Napi::Object element = masksArray.Get(elementIndex).As<Napi::Object>();
+    for (size_t maskIndex = 0; maskIndex < masksArray.Length(); maskIndex++) {
+      Napi::Object maskObj = masksArray.Get(maskIndex).As<Napi::Object>();
 
-      if (element.Has("masks")) {
-        Napi::Array masks = element.Get("masks").As<Napi::Array>();
+      if (maskObj.Has("polygons") && maskObj.Has("tag")) {
+        Napi::Array polygonsArray = maskObj.Get("polygons").As<Napi::Array>();
+        if (polygonsArray.Length() > 0) {
+          Napi::Array coordinates = polygonsArray.Get(0u).As<Napi::Array>();
+          std::string className = maskObj.Get("tag").As<Napi::String>().Utf8Value();
 
-        for (size_t maskIndex = 0; maskIndex < masks.Length(); maskIndex++) {
-          Napi::Object maskObj = masks.Get(maskIndex).As<Napi::Object>();
+          // Parse polygon coordinates
+          std::vector<cv::Point2f> polygon;
+          polygon.reserve(coordinates.Length());
 
-          if (maskObj.Has("mask") && maskObj.Has("class_name")) {
-            Napi::Array maskArray = maskObj.Get("mask").As<Napi::Array>();
-            if (maskArray.Length() > 0) {
-              Napi::Array coordinates = maskArray.Get(0u).As<Napi::Array>();
-              std::string className = maskObj.Get("class_name").As<Napi::String>().Utf8Value();
+          for (size_t i = 0; i < coordinates.Length(); i++) {
+            Napi::Array point = coordinates.Get(i).As<Napi::Array>();
+            if (point.Length() >= 2) {
+              float x = point.Get(0u).As<Napi::Number>().FloatValue();
+              float y = point.Get(1u).As<Napi::Number>().FloatValue();
+              polygon.emplace_back(x, y);
+            }
+          }
 
-              // Parse polygon coordinates
-              std::vector<cv::Point2f> polygon;
-              polygon.reserve(coordinates.Length());
+          if (!polygon.empty()) {
+            OptimizedMaskInfo maskInfo;
+            maskInfo.className = className;
 
-              for (size_t i = 0; i < coordinates.Length(); i++) {
-                Napi::Array point = coordinates.Get(i).As<Napi::Array>();
-                if (point.Length() >= 2) {
-                  float x = point.Get(0u).As<Napi::Number>().FloatValue();
-                  float y = point.Get(1u).As<Napi::Number>().FloatValue();
-                  polygon.emplace_back(x, y);
-                }
-              }
-
-              if (!polygon.empty()) {
-                OptimizedMaskInfo maskInfo;
-                maskInfo.className = className;
-
-                // Get color
-                auto colorIt = userColorMap.find(className);
-                if (colorIt != userColorMap.end()) {
-                  maskInfo.normalizedColor = colorIt->second;
-                } else if (autoGenerateColors) {
-                  maskInfo.normalizedColor = GenerateMaximallyDifferentColor(className, userColorMap);
-                } else {
-                  maskInfo.normalizedColor = cv::Vec3f(1.0f, 1.0f, 1.0f);
-                }
-
-                // Create optimized mask with bounding box
-                auto [mask, bbox] = CreateOptimizedPolygonMask(polygon, imageMat.size());
-                maskInfo.binaryMask = mask;
-                maskInfo.boundingBox = bbox;
-
-                optimizedMasks.push_back(std::move(maskInfo));
+            // Get color
+            auto colorIt = userColorMap.find(className);
+            if (colorIt != userColorMap.end()) {
+              // User-defined mapping
+              maskInfo.normalizedColor = colorIt->second;
+            } else {
+              // Check if color already cached for this tag
+              auto cachedColorIt = colorCache.find(className);
+              if (cachedColorIt != colorCache.end()) {
+                // Reuse cached color
+                maskInfo.normalizedColor = cachedColorIt->second;
+              } else if (autoGenerateColors) {
+                // Generate new color and cache it
+                maskInfo.normalizedColor = GenerateMaximallyDifferentColor(className, userColorMap);
+              } else {
+                // Fallback to white
+                maskInfo.normalizedColor = cv::Vec3f(1.0f, 1.0f, 1.0f);
               }
             }
+
+            // Create optimized mask with bounding box
+            auto [mask, bbox] = CreateOptimizedPolygonMask(polygon, imageMat.size());
+            maskInfo.binaryMask = mask;
+            maskInfo.boundingBox = bbox;
+
+            optimizedMasks.push_back(std::move(maskInfo));
           }
         }
       }

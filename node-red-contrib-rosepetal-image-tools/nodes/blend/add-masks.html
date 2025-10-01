@@ -7,8 +7,8 @@
       icon:'font-awesome/fa-masks',
       defaults:{
         name:{value:""},
-        imagePath:{value:"payload.image"}, imagePathType:{value:"msg"},
-        masksPath:{value:"payload"}, masksPathType:{value:"msg"},
+        imagePath:{value:"image"}, imagePathType:{value:"msg"},
+        masksPath:{value:"array"}, masksPathType:{value:"msg"},
         outputPath:{value:"payload"},outputPathType:{value:"msg"},
         outputFormat:{value:"raw"},
         outputQuality:{value:90},
@@ -492,13 +492,13 @@
   <h3>Properties</h3>
   <dl class="message-properties">
     <dt>Image <span class="property-type">string</span></dt>
-    <dd>Message property path containing the base image to which the masks will be applied. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    <dd>Message property path containing the base image to which the masks will be applied (default: <code>msg.image</code>). Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
 
     <dt>Masks Array <span class="property-type">string</span></dt>
-    <dd>Message property path containing the masks array. Expected structure: array of objects with <code>masks</code> property containing mask objects with <code>mask[0]</code> coordinates and <code>class_name</code>. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    <dd>Message property path containing the masks array (default: <code>msg.array</code>). Expected structure: direct array of mask objects with <code>polygons</code> coordinates and <code>tag</code> property. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
 
     <dt>Output to <span class="property-type">string</span></dt>
-    <dd>Message property path where the masked image will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    <dd>Message property path where the masked image will be stored (default: <code>msg.payload</code>). Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
 
     <dt>Output Format <span class="property-type">string</span></dt>
     <dd>Format for the output image: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
@@ -511,48 +511,43 @@
 
 
     <dt>Class Color Mappings <span class="property-type">array</span></dt>
-    <dd>Dynamic list of class name to color mappings. Each mapping defines a specific color for masks with that class name. Supports adding and removing mappings.</dd>
+    <dd>Dynamic list of tag name to color mappings. Each mapping defines a specific color for masks with that tag. Supports adding and removing mappings.</dd>
   </dl>
 
   <h3>Input Structure</h3>
-  <p>The masks array should follow this exact structure:</p>
+  <p>The masks array should follow this exact structure (direct array of mask objects):</p>
   <pre>[
   {
-    "masks": [
-      {
-        "mask": [[[x,y], [x,y], ...]], // Note: coordinates are in mask[0]
-        "class_name": "dog"
-      }
-    ]
+    "tag": "bottle",
+    "polygons": [[[0.107, 0.141], [0.211, 0.141], [0.211, 0.930], [0.107, 0.930]]],
+    "confidence": 0.9697,
+    "color": "rgb(144,133,227)",  // Ignored - use class color mappings instead
+    "classId": 0,                  // Ignored
+    "raw_boxes": [...],            // Ignored
+    "area": 0.072                  // Ignored
   },
   {
-    "masks": [
-      {
-        "mask": [[[x,y], [x,y], ...]],
-        "class_name": "cat"
-      },
-      {
-        "mask": [[[x,y], [x,y], ...]],
-        "class_name": "zebra"
-      }
-    ]
+    "tag": "mountain",
+    "polygons": [[[0.283, 0.158], [0.391, 0.158], [0.391, 0.963], [0.283, 0.963]]],
+    "confidence": 0.9648
   }
 ]</pre>
+  <p><b>Note:</b> Only <code>tag</code> and <code>polygons</code> fields are used. Other fields (color, classId, raw_boxes, area, confidence) are ignored.</p>
 
   <h3>Key Features</h3>
   <ul>
-    <li><b>Dynamic Color Management:</b> Add/remove class color mappings with real-time validation</li>
-    <li><b>Auto-Color Generation:</b> Consistent random colors for undefined classes using seeded generation</li>
-    <li><b>Duplicate Detection:</b> Visual warnings for duplicate class names and similar colors</li>
+    <li><b>Dynamic Color Management:</b> Add/remove tag color mappings with real-time validation</li>
+    <li><b>Auto-Color Generation:</b> Consistent random colors for undefined tags using maximally different color algorithm</li>
+    <li><b>Duplicate Detection:</b> Visual warnings for duplicate tags and similar colors</li>
     <li><b>Multi-Layer Blending:</b> Proper compositing of multiple masks with weight normalization</li>
-    <li><b>Structure Validation:</b> Comprehensive validation of nested mask array structure</li>
+    <li><b>Structure Validation:</b> Comprehensive validation of direct array structure</li>
   </ul>
 
   <h3>Color Management</h3>
   <p>Colors are assigned using this priority order:</p>
   <ol>
-    <li><b>User-defined mapping:</b> Colors explicitly set in the class color mappings</li>
-    <li><b>Auto-generated:</b> Seeded random colors for undefined classes</li>
+    <li><b>User-defined mapping:</b> Colors explicitly set in the tag color mappings</li>
+    <li><b>Auto-generated:</b> Maximally different colors for undefined tags</li>
     <li><b>Default fallback:</b> White color (#ffffff)</li>
   </ol>
 

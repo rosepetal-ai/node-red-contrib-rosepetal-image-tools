@@ -34,32 +34,13 @@ module.exports = function (RED) {
           return;
         }
 
-        // Smart format detection and normalization
-        let normalizedMasksArray;
-
-        if (Array.isArray(masksArray)) {
-          // Check if it's already in the expected format [{ masks: [...] }]
-          if (masksArray.length > 0 && masksArray[0].hasOwnProperty('masks')) {
-            normalizedMasksArray = masksArray; // Already correct format
-          } else if (masksArray.length > 0 && masksArray[0].hasOwnProperty('mask')) {
-            // Direct array of mask objects
-            normalizedMasksArray = [{ masks: masksArray }];
-          } else {
-            normalizedMasksArray = masksArray; // Keep as is for validation to catch errors
-          }
-        } else if (typeof masksArray === 'object' && masksArray !== null && masksArray.hasOwnProperty('masks')) {
-          // Single object with masks property (your case)
-          normalizedMasksArray = [masksArray];
-        } else {
-          const total = performance.now() - t0;
-          RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
-          NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
-          send(msg);
-          done && done();
+        // Validate masks array - expect direct array format
+        if (!Array.isArray(masksArray)) {
+          node.warn("Masks input must be an array");
           return;
         }
 
-        if (normalizedMasksArray.length === 0) {
+        if (masksArray.length === 0) {
           const total = performance.now() - t0;
           RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
           NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
@@ -70,75 +51,61 @@ module.exports = function (RED) {
 
         // Validate masks array structure in detail
         let totalMaskCount = 0;
-        for (let elementIndex = 0; elementIndex < normalizedMasksArray.length; elementIndex++) {
-          const element = normalizedMasksArray[elementIndex];
+        for (let maskIndex = 0; maskIndex < masksArray.length; maskIndex++) {
+          const maskObj = masksArray[maskIndex];
 
-          if (!element || typeof element !== 'object') {
-            node.warn(`Invalid element at index ${elementIndex}: expected object with 'masks' property`);
+          if (!maskObj || typeof maskObj !== 'object') {
+            node.warn(`Invalid mask object at index ${maskIndex}: expected object`);
             return;
           }
 
-          if (!element.hasOwnProperty('masks') || !Array.isArray(element.masks)) {
-            node.warn(`Invalid element at index ${elementIndex}: 'masks' property must be an array`);
+          if (!maskObj.hasOwnProperty('polygons') || !Array.isArray(maskObj.polygons)) {
+            node.warn(`Invalid mask object at index ${maskIndex}: 'polygons' property must be an array`);
             return;
           }
 
-          for (let maskIndex = 0; maskIndex < element.masks.length; maskIndex++) {
-            const maskObj = element.masks[maskIndex];
-
-            if (!maskObj || typeof maskObj !== 'object') {
-              node.warn(`Invalid mask object at element[${elementIndex}].masks[${maskIndex}]: expected object`);
-              return;
-            }
-
-            if (!maskObj.hasOwnProperty('mask') || !Array.isArray(maskObj.mask)) {
-              node.warn(`Invalid mask object at element[${elementIndex}].masks[${maskIndex}]: 'mask' property must be an array`);
-              return;
-            }
-
-            if (maskObj.mask.length === 0) {
-              node.warn(`Empty mask array at element[${elementIndex}].masks[${maskIndex}]: mask[0] is required`);
-              return;
-            }
-
-            if (!Array.isArray(maskObj.mask[0])) {
-              node.warn(`Invalid mask coordinates at element[${elementIndex}].masks[${maskIndex}]: mask[0] must be an array of coordinate pairs`);
-              return;
-            }
-
-            if (!maskObj.hasOwnProperty('class_name') || typeof maskObj.class_name !== 'string') {
-              node.warn(`Invalid class_name at element[${elementIndex}].masks[${maskIndex}]: must be a non-empty string`);
-              return;
-            }
-
-            if (maskObj.class_name.trim() === '') {
-              node.warn(`Empty class_name at element[${elementIndex}].masks[${maskIndex}]: class name cannot be empty`);
-              return;
-            }
-
-            // Validate coordinate format
-            const coordinates = maskObj.mask[0];
-            for (let i = 0; i < coordinates.length; i++) {
-              const point = coordinates[i];
-              if (!Array.isArray(point) || point.length !== 2) {
-                node.warn(`Invalid coordinate at element[${elementIndex}].masks[${maskIndex}].mask[0][${i}]: expected [x, y] pair`);
-                return;
-              }
-
-              const [x, y] = point;
-              if (typeof x !== 'number' || typeof y !== 'number') {
-                node.warn(`Invalid coordinate at element[${elementIndex}].masks[${maskIndex}].mask[0][${i}]: coordinates must be numbers`);
-                return;
-              }
-
-              if (x < 0 || x > 1 || y < 0 || y > 1) {
-                node.warn(`Invalid coordinate at element[${elementIndex}].masks[${maskIndex}].mask[0][${i}]: coordinates must be in range [0, 1]`);
-                return;
-              }
-            }
-
-            totalMaskCount++;
+          if (maskObj.polygons.length === 0) {
+            node.warn(`Empty polygons array at index ${maskIndex}: polygons[0] is required`);
+            return;
           }
+
+          if (!Array.isArray(maskObj.polygons[0])) {
+            node.warn(`Invalid polygon coordinates at index ${maskIndex}: polygons[0] must be an array of coordinate pairs`);
+            return;
+          }
+
+          if (!maskObj.hasOwnProperty('tag') || typeof maskObj.tag !== 'string') {
+            node.warn(`Invalid tag at index ${maskIndex}: must be a non-empty string`);
+            return;
+          }
+
+          if (maskObj.tag.trim() === '') {
+            node.warn(`Empty tag at index ${maskIndex}: tag cannot be empty`);
+            return;
+          }
+
+          // Validate coordinate format
+          const coordinates = maskObj.polygons[0];
+          for (let i = 0; i < coordinates.length; i++) {
+            const point = coordinates[i];
+            if (!Array.isArray(point) || point.length !== 2) {
+              node.warn(`Invalid coordinate at index ${maskIndex}.polygons[0][${i}]: expected [x, y] pair`);
+              return;
+            }
+
+            const [x, y] = point;
+            if (typeof x !== 'number' || typeof y !== 'number') {
+              node.warn(`Invalid coordinate at index ${maskIndex}.polygons[0][${i}]: coordinates must be numbers`);
+              return;
+            }
+
+            if (x < 0 || x > 1 || y < 0 || y > 1) {
+              node.warn(`Invalid coordinate at index ${maskIndex}.polygons[0][${i}]: coordinates must be in range [0, 1]`);
+              return;
+            }
+          }
+
+          totalMaskCount++;
         }
 
         if (totalMaskCount === 0) {
@@ -171,7 +138,7 @@ module.exports = function (RED) {
         const { image: result, timing = {} } =
               await Cpp.addMasks(
                 baseImg,
-                normalizedMasksArray,
+                masksArray,
                 classColorMap,
                 maskStrength,
                 true, // Always auto-generate colors for undefined classes

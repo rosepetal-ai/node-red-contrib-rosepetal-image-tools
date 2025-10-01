@@ -10,7 +10,7 @@
   
     defaults:{
       name:{value:""},
-      imageInputPath:{value:"images"},   imageInputPathType:{value:"msg"},
+      imageInputPath:{value:"image"},   imageInputPathType:{value:"msg"},
       bboxInputPath:{value:"default"},  bboxInputPathType:{value:"msg"},
       outputPath:{value:"payload"},  outputPathType:{value:"msg"},
       outputFormat:{value:"raw"},
@@ -167,29 +167,29 @@
   <p>Extracts image crops from bounding boxes detected by inference models.</p>
   
   <h3>Details</h3>
-  <p>This node takes images and their corresponding bounding box data (typically from an inferencer node) 
+  <p>This node takes images and their corresponding bounding box data (typically from an inferencer node)
   and extracts each detected region as a separate image crop. Each crop is paired with its detection metadata.</p>
-  
+
   <h3>Inputs</h3>
   <dl class="message-properties">
     <dt>Image Input<span class="property-type">image | image[]</span></dt>
     <dd>Single image or array of images in standard Rosepetal format</dd>
-    
-    <dt>Bounding Boxes<span class="property-type">object | object[]</span></dt>
-    <dd>Detection results from inferencer node containing bounding box coordinates, labels, and confidence scores</dd>
+
+    <dt>Bounding Boxes<span class="property-type">array</span></dt>
+    <dd>Array of detection objects with format: <code>[{raw_boxes: [[x1,y1],...], tag: "label", confidence: 0.95}, ...]</code></dd>
   </dl>
-  
+
   <h3>Outputs</h3>
   <dl class="message-properties">
     <dt>crops<span class="property-type">array</span></dt>
-    <dd>Array of objects with structure: <code>[{crop: imageObject, tag: {label, confidence, bbox}}, ...]</code></dd>
+    <dd>Array of image objects with metadata. Each element is directly usable as an image with added <code>tag</code>, <code>confidence</code>, and <code>bbox</code> properties.</dd>
   </dl>
   
   <h3>Configuration</h3>
   <dl class="message-properties">
     <dt>Image Input</dt>
-    <dd>Path to image data (default: <code>msg.images</code>)</dd>
-    
+    <dd>Path to image data (default: <code>msg.image</code>)</dd>
+
     <dt>Bounding Boxes</dt>
     <dd>Path to inference results (default: <code>msg.default</code>)</dd>
     
@@ -203,17 +203,65 @@
     <dd>Enable debug image display in Node-RED editor</dd>
   </dl>
   
+  <h3>Example Input (Bounding Boxes)</h3>
+  <pre>[
+  {
+    "raw_boxes": [[0.1, 0.2], [0.4, 0.2], [0.4, 0.6], [0.1, 0.6]],
+    "tag": "mountain",
+    "confidence": 0.98095703125
+  },
+  {
+    "raw_boxes": [[0.5, 0.1], [0.9, 0.1], [0.9, 0.4], [0.5, 0.4]],
+    "tag": "sky",
+    "confidence": 0.92
+  }
+]</pre>
+
   <h3>Example Output</h3>
   <pre>[
   {
-    crop: {data: Buffer, width: 150, height: 200, channels: 3, colorSpace: "RGB"},
-    tag: {label: "person", confidence: 0.95, bbox: {x: 100, y: 50, width: 150, height: 200}}
+    data: Buffer,           // Crop image data
+    width: 150,
+    height: 200,
+    channels: 3,
+    colorSpace: "RGB",
+    dtype: "uint8",
+    tag: "mountain",        // Detection label
+    confidence: 0.98,       // Detection confidence
+    bbox: {                 // Crop coordinates in pixels
+      x: 100, y: 50, width: 150, height: 200,
+      normalized: {x1: 0.1, y1: 0.2, x2: 0.4, y2: 0.6}
+    }
   },
   {
-    crop: {data: Buffer, width: 80, height: 120, channels: 3, colorSpace: "RGB"},
-    tag: {label: "car", confidence: 0.87, bbox: {x: 300, y: 200, width: 80, height: 120}}
+    data: Buffer,
+    width: 80,
+    height: 120,
+    channels: 3,
+    colorSpace: "RGB",
+    dtype: "uint8",
+    tag: "sky",
+    confidence: 0.92,
+    bbox: {
+      x: 300, y: 200, width: 80, height: 120,
+      normalized: {x1: 0.5, y1: 0.1, x2: 0.9, y2: 0.4}
+    }
   }
 ]</pre>
+
+  <h3>Usage</h3>
+  <p>Each array element can be directly used as an image input to other nodes:</p>
+  <pre>// Access first crop directly
+msg.payload[0]  // {data, width, height, channels, colorSpace, tag, confidence, bbox}
+
+// Use in image-out node
+msg.payload = crops[0];  // No need for crops[0].crop
+
+// Filter by tag
+const mountains = crops.filter(c => c.tag === "mountain");
+
+// Sort by confidence
+crops.sort((a, b) => b.confidence - a.confidence);</pre>
   
   <h3>Performance</h3>
   <p>Uses optimized C++ backend for fast crop extraction. Multiple crops are processed in parallel for best performance.</p>

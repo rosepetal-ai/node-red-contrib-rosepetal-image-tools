@@ -93,32 +93,30 @@ module.exports = function (RED) {
         const cropJobs = validBboxes.map(bbox => {
           // Convert bbox coordinates to crop parameters
           const { x, y, width, height, label, confidence, originalBbox } = bbox;
-          
+
           return CppProcessor.crop(image, x, y, width, height, false, outputFormat, outputQuality, pngOptimize)
             .then(result => ({
-              crop: result.image,
-              tag: {
-                label: label,
-                confidence: confidence,
-                bbox: originalBbox
-              },
+              ...result.image,           // Spread image properties (data, width, height, channels, colorSpace, dtype)
+              tag: label,                // Add tag metadata directly
+              confidence: confidence,    // Add confidence metadata directly
+              bbox: originalBbox,        // Add bbox metadata directly
               timing: result.timing
             }));
         });
 
         /* Execute all crops in parallel */
         const cropResults = await Promise.all(cropJobs);
-        
+
         /* Accumulate results and timing */
         cropResults.forEach(result => {
-          allCrops.push({
-            crop: result.crop,
-            tag: result.tag
-          });
-          
+          // Extract timing before pushing to output
           totalConvertMs += result.timing?.convertMs ?? 0;
           totalTaskMs += result.timing?.taskMs ?? 0;
           totalEncodeMs += result.timing?.encodeMs ?? 0;
+
+          // Remove timing property and push flattened image with metadata
+          const { timing, ...cropWithMetadata } = result;
+          allCrops.push(cropWithMetadata);
         });
 
         /* Set output */
@@ -133,16 +131,16 @@ module.exports = function (RED) {
           try {
             let debugWidth = NodeUtils.resolveDimension(node, config.debugWidthType, config.debugWidth, msg) || 200;
             debugWidth = Math.max(1, parseInt(debugWidth));
-            
+
             const debugResult = await NodeUtils.debugImageDisplay(
-              allCrops[0].crop, 
-              outputFormat, 
-              outputQuality, 
-              node, 
-              true, 
+              allCrops[0],       // First crop is now directly the image object
+              outputFormat,
+              outputQuality,
+              node,
+              true,
               debugWidth
             );
-            
+
             if (debugResult) {
               debugFormat = `${debugResult.formatMessage} (${debugResult.size}B)`;
             }
@@ -170,12 +168,11 @@ module.exports = function (RED) {
 
   /**
    * Parse a single detection object into standardized bbox format
-   * Handles the specific inference format: 
+   * Handles the format:
    * {
-   *   "box": [[x1,y1], [x2,y1], [x2,y2], [x1,y2]], // normalized 0-1 coordinates
+   *   "raw_boxes": [[x1,y1], [x2,y1], [x2,y2], [x1,y2]], // normalized 0-1 coordinates
    *   "confidence": 0.97,
-   *   "class_name": "label",
-   *   "class_tag": 3
+   *   "tag": "mountain"
    * }
    */
   function parseSingleDetection(det, minConfidence, image, node) {
@@ -185,22 +182,22 @@ module.exports = function (RED) {
     const confidence = det.confidence || 1.0;
     if (confidence < minConfidence) return null;
 
-    // Extract label - prefer class_name over class_tag
-    const label = det.class_name || det.class_tag || det.label || 'unknown';
+    // Extract tag
+    const label = det.tag || 'unknown';
 
     // Extract coordinates from 4-corner format
-    if (!det.box || !Array.isArray(det.box) || det.box.length !== 4) {
-      node.warn(`Invalid box format in detection: expected 4 corner points, got ${det.box}`);
+    if (!det.raw_boxes || !Array.isArray(det.raw_boxes) || det.raw_boxes.length !== 4) {
+      node.warn(`Invalid raw_boxes format in detection: expected 4 corner points, got ${det.raw_boxes}`);
       return null;
     }
 
     try {
       // Parse 4 corner points: [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
-      const [[x1, y1], [x2, y1_check], [x2_check, y2], [x1_check, y2_check]] = det.box;
-      
+      const [[x1, y1], [x2, y1_check], [x2_check, y2], [x1_check, y2_check]] = det.raw_boxes;
+
       // Validate corner format consistency
       if (x2 !== x2_check || x1 !== x1_check || y1 !== y1_check || y2 !== y2_check) {
-        node.warn(`Inconsistent corner points in detection box: ${JSON.stringify(det.box)}`);
+        node.warn(`Inconsistent corner points in detection raw_boxes: ${JSON.stringify(det.raw_boxes)}`);
         return null;
       }
 
@@ -215,7 +212,7 @@ module.exports = function (RED) {
 
       // Validate pixel coordinates
       if (width <= 0 || height <= 0) {
-        node.warn(`Invalid dimensions: width=${width}, height=${height} for box ${JSON.stringify(det.box)}`);
+        node.warn(`Invalid dimensions: width=${width}, height=${height} for raw_boxes ${JSON.stringify(det.raw_boxes)}`);
         return null;
       }
 

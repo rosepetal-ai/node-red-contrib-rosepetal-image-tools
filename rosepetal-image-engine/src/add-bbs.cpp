@@ -146,98 +146,90 @@ public:
     // Reserve capacity for better performance
     bboxInfos.reserve(32); // Reserve for typical number of boxes
 
-    // Parse boxes array structure
-    for (size_t elementIndex = 0; elementIndex < boxesArray.Length(); elementIndex++) {
-      Napi::Object element = boxesArray.Get(elementIndex).As<Napi::Object>();
+    // Parse boxes array structure - direct array format
+    for (size_t boxIndex = 0; boxIndex < boxesArray.Length(); boxIndex++) {
+      Napi::Object boxObj = boxesArray.Get(boxIndex).As<Napi::Object>();
 
-      if (element.Has("boxes")) {
-        Napi::Array boxes = element.Get("boxes").As<Napi::Array>();
+      if (boxObj.Has("raw_boxes") && boxObj.Has("tag")) {
+        // Extract box coordinates (4 corners format)
+        Napi::Array box = boxObj.Get("raw_boxes").As<Napi::Array>();
+        if (box.Length() != 4) continue;
 
-        for (size_t boxIndex = 0; boxIndex < boxes.Length(); boxIndex++) {
-          Napi::Object boxObj = boxes.Get(boxIndex).As<Napi::Object>();
-
-          if (boxObj.Has("box") && boxObj.Has("class_name")) {
-            // Extract box coordinates (4 corners format)
-            Napi::Array box = boxObj.Get("box").As<Napi::Array>();
-            if (box.Length() != 4) continue;
-
-            // Parse 4 corners: [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
-            std::vector<cv::Point2f> corners;
-            for (size_t i = 0; i < 4; i++) {
-              Napi::Array corner = box.Get(i).As<Napi::Array>();
-              if (corner.Length() >= 2) {
-                float x = corner.Get(0u).As<Napi::Number>().FloatValue();
-                float y = corner.Get(1u).As<Napi::Number>().FloatValue();
-                corners.emplace_back(x, y);
-              }
-            }
-
-            if (corners.size() != 4) continue;
-
-            // Extract class name and confidence
-            std::string className = boxObj.Get("class_name").As<Napi::String>().Utf8Value();
-            float confidence = boxObj.Has("confidence") ?
-                              boxObj.Get("confidence").As<Napi::Number>().FloatValue() : 1.0f;
-
-            // Skip unmapped classes if onlyMapped is true
-            if (onlyMapped) {
-              if (userColorMap.find(className) == userColorMap.end()) {
-                continue; // Skip this box
-              }
-            }
-
-            // Get color for this class and pre-compute BGR scalar
-            cv::Vec3f color;
-            auto colorIt = userColorMap.find(className);
-            if (colorIt != userColorMap.end()) {
-              color = colorIt->second;
-            } else {
-              color = GenerateMaximallyDifferentColor(className, userColorMap, colorCache);
-            }
-
-            // Pre-compute BGR color as Scalar for faster drawing
-            cv::Scalar bgrColor(
-              color[0] * 255.0f,  // B
-              color[1] * 255.0f,  // G
-              color[2] * 255.0f   // R
-            );
-
-            // Convert normalized coordinates to pixels
-            cv::Rect bbox;
-            bbox.x = static_cast<int>(corners[0].x * imageMat.cols);
-            bbox.y = static_cast<int>(corners[0].y * imageMat.rows);
-            bbox.width = static_cast<int>((corners[2].x - corners[0].x) * imageMat.cols);
-            bbox.height = static_cast<int>((corners[2].y - corners[0].y) * imageMat.rows);
-
-            // Clamp to image bounds
-            bbox.x = std::max(0, std::min(imageMat.cols - 1, bbox.x));
-            bbox.y = std::max(0, std::min(imageMat.rows - 1, bbox.y));
-            bbox.width = std::min(bbox.width, imageMat.cols - bbox.x);
-            bbox.height = std::min(bbox.height, imageMat.rows - bbox.y);
-
-            // Pre-generate label text with optimized string handling
-            char labelBuffer[256];
-            if (showClassName && showConfidence) {
-              snprintf(labelBuffer, sizeof(labelBuffer), "%s (%.1f%%)", className.c_str(), confidence * 100.0f);
-            } else if (showClassName) {
-              snprintf(labelBuffer, sizeof(labelBuffer), "%s", className.c_str());
-            } else if (showConfidence) {
-              snprintf(labelBuffer, sizeof(labelBuffer), "%.1f%%", confidence * 100.0f);
-            } else {
-              labelBuffer[0] = '\0';
-            }
-            std::string labelText(labelBuffer);
-
-            // Store bbox info with pre-computed values
-            BBoxInfo info;
-            info.boundingRect = bbox;
-            info.className = className;
-            info.confidence = confidence;
-            info.bgrColor = bgrColor;
-            info.labelText = labelText;
-            bboxInfos.push_back(info);
+        // Parse 4 corners: [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
+        std::vector<cv::Point2f> corners;
+        for (size_t i = 0; i < 4; i++) {
+          Napi::Array corner = box.Get(i).As<Napi::Array>();
+          if (corner.Length() >= 2) {
+            float x = corner.Get(0u).As<Napi::Number>().FloatValue();
+            float y = corner.Get(1u).As<Napi::Number>().FloatValue();
+            corners.emplace_back(x, y);
           }
         }
+
+        if (corners.size() != 4) continue;
+
+        // Extract tag (class name) and confidence
+        std::string className = boxObj.Get("tag").As<Napi::String>().Utf8Value();
+        float confidence = boxObj.Has("confidence") ?
+                          boxObj.Get("confidence").As<Napi::Number>().FloatValue() : 1.0f;
+
+        // Skip unmapped classes if onlyMapped is true
+        if (onlyMapped) {
+          if (userColorMap.find(className) == userColorMap.end()) {
+            continue; // Skip this box
+          }
+        }
+
+        // Get color for this class and pre-compute BGR scalar
+        cv::Vec3f color;
+        auto colorIt = userColorMap.find(className);
+        if (colorIt != userColorMap.end()) {
+          color = colorIt->second;
+        } else {
+          color = GenerateMaximallyDifferentColor(className, userColorMap, colorCache);
+        }
+
+        // Pre-compute BGR color as Scalar for faster drawing
+        cv::Scalar bgrColor(
+          color[0] * 255.0f,  // B
+          color[1] * 255.0f,  // G
+          color[2] * 255.0f   // R
+        );
+
+        // Convert normalized coordinates to pixels
+        cv::Rect bbox;
+        bbox.x = static_cast<int>(corners[0].x * imageMat.cols);
+        bbox.y = static_cast<int>(corners[0].y * imageMat.rows);
+        bbox.width = static_cast<int>((corners[2].x - corners[0].x) * imageMat.cols);
+        bbox.height = static_cast<int>((corners[2].y - corners[0].y) * imageMat.rows);
+
+        // Clamp to image bounds
+        bbox.x = std::max(0, std::min(imageMat.cols - 1, bbox.x));
+        bbox.y = std::max(0, std::min(imageMat.rows - 1, bbox.y));
+        bbox.width = std::min(bbox.width, imageMat.cols - bbox.x);
+        bbox.height = std::min(bbox.height, imageMat.rows - bbox.y);
+
+        // Pre-generate label text with optimized string handling
+        char labelBuffer[256];
+        if (showClassName && showConfidence) {
+          snprintf(labelBuffer, sizeof(labelBuffer), "%s (%.1f%%)", className.c_str(), confidence * 100.0f);
+        } else if (showClassName) {
+          snprintf(labelBuffer, sizeof(labelBuffer), "%s", className.c_str());
+        } else if (showConfidence) {
+          snprintf(labelBuffer, sizeof(labelBuffer), "%.1f%%", confidence * 100.0f);
+        } else {
+          labelBuffer[0] = '\0';
+        }
+        std::string labelText(labelBuffer);
+
+        // Store bbox info with pre-computed values
+        BBoxInfo info;
+        info.boundingRect = bbox;
+        info.className = className;
+        info.confidence = confidence;
+        info.bgrColor = bgrColor;
+        info.labelText = labelText;
+        bboxInfos.push_back(info);
       }
     }
 

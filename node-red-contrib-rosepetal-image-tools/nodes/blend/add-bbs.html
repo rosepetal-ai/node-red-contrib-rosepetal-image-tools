@@ -456,13 +456,13 @@
     <label><i class="fa fa-eye"></i> Display Options</label>
     <div style="margin-left: 105px;">
       <input type="checkbox" id="node-input-showClassName" style="width:auto; display:inline-block; vertical-align:baseline;">
-      <label for="node-input-showClassName" style="width:auto;">Show Class Name</label>
+      <label for="node-input-showClassName" style="width:auto;">Show Tag Name</label>
       <br>
       <input type="checkbox" id="node-input-showConfidence" style="width:auto; display:inline-block; vertical-align:baseline;">
       <label for="node-input-showConfidence" style="width:auto;">Show Confidence</label>
       <br>
       <input type="checkbox" id="node-input-onlyMapped" style="width:auto; display:inline-block; vertical-align:baseline;">
-      <label for="node-input-onlyMapped" style="width:auto;">Only Draw Mapped Classes</label>
+      <label for="node-input-onlyMapped" style="width:auto;">Only Draw Mapped Tags</label>
     </div>
   </div>
 
@@ -483,19 +483,19 @@
 
   <hr/>
 
-  <!-- Class Color Mappings -->
+  <!-- Tag Color Mappings -->
   <div class="form-row">
-    <label><i class="fa fa-palette"></i> Class Color Mappings</label>
+    <label><i class="fa fa-palette"></i> Tag Color Mappings</label>
     <div id="class-mappings-container" style="margin-top: 10px;">
-      <!-- Dynamic class mapping rows will be inserted here -->
+      <!-- Dynamic tag mapping rows will be inserted here -->
     </div>
     <div style="margin-top: 10px;">
       <button type="button" id="add-class-mapping" class="editor-button">
-        <i class="fa fa-plus"></i> Add Class Mapping
+        <i class="fa fa-plus"></i> Add Tag Mapping
       </button>
     </div>
     <div style="margin-top: 5px; font-size: 11px; color: #666;">
-      Define colors for specific class names. Undefined classes will automatically use maximally different colors.
+      Define colors for specific tags. Undefined tags will automatically use maximally different colors.
     </div>
   </div>
 
@@ -515,7 +515,7 @@
     <dd>Message property path containing the base image on which boxes will be drawn. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
 
     <dt>Boxes Array <span class="property-type">string</span></dt>
-    <dd>Message property path containing the boxes array. Expected structure: array of objects with <code>boxes</code> property containing box objects with <code>box</code> coordinates (4 corners), <code>class_name</code>, and optional <code>confidence</code>. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
+    <dd>Message property path containing the boxes array. Expected structure: array of objects with <code>raw_boxes</code> coordinates (4 corners), <code>tag</code>, and optional <code>confidence</code>. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
 
     <dt>Output to <span class="property-type">string</span></dt>
     <dd>Message property path where the image with drawn boxes will be stored. Supports <code>msg</code>, <code>flow</code>, or <code>global</code> context via TypedInput.</dd>
@@ -526,14 +526,14 @@
     <dt>Quality <span class="property-type">number</span></dt>
     <dd>Compression quality (1-100) for JPEG and WebP formats. Only visible when JPG or WebP is selected.</dd>
 
-    <dt>Show Class Name <span class="property-type">boolean</span></dt>
-    <dd>Display the class name as part of the box label.</dd>
+    <dt>Show Tag Name <span class="property-type">boolean</span></dt>
+    <dd>Display the tag name as part of the box label.</dd>
 
     <dt>Show Confidence <span class="property-type">boolean</span></dt>
     <dd>Display the confidence score as part of the box label (e.g., "95.4%").</dd>
 
-    <dt>Only Mapped Classes <span class="property-type">boolean</span></dt>
-    <dd>When enabled, only draw boxes for classes that have explicit color mappings defined.</dd>
+    <dt>Only Mapped Tags <span class="property-type">boolean</span></dt>
+    <dd>When enabled, only draw boxes for tags that have explicit color mappings defined.</dd>
 
     <dt>Box Thickness <span class="property-type">number</span></dt>
     <dd>Line thickness for bounding boxes (1-10 pixels).</dd>
@@ -542,30 +542,31 @@
     <dd>Scale factor for label text (0.3-2.0).</dd>
 
 
-    <dt>Class Color Mappings <span class="property-type">array</span></dt>
-    <dd>Dynamic list of class name to color mappings. Each mapping defines a specific color for boxes with that class name.</dd>
+    <dt>Tag Color Mappings <span class="property-type">array</span></dt>
+    <dd>Dynamic list of tag name to color mappings. Each mapping defines a specific color for boxes with that tag.</dd>
   </dl>
 
   <h3>Input Structure</h3>
-  <p>The boxes array should follow this exact structure (same as cropBB output):</p>
+  <p>The boxes array should follow this exact structure:</p>
   <pre>[
   {
-    "boxes": [
-      {
-        "box": [[x1,y1], [x2,y1], [x2,y2], [x1,y2]], // 4 corners, normalized [0,1]
-        "class_name": "person",
-        "confidence": 0.95
-      }
-    ]
+    "tag": "mountain",
+    "raw_boxes": [[x1,y1], [x2,y1], [x2,y2], [x1,y2]], // 4 corners, normalized [0,1]
+    "confidence": 0.98095703125
+  },
+  {
+    "tag": "bottle",
+    "raw_boxes": [[0.82,0.14], [0.93,0.14], [0.93,0.98], [0.82,0.98]],
+    "confidence": 0.96337890625
   }
 ]</pre>
 
   <h3>Key Features</h3>
   <ul>
-    <li><b>4-Corner Box Format:</b> Uses same format as cropBB for seamless integration</li>
-    <li><b>Dynamic Color Management:</b> Add/remove class color mappings with real-time validation</li>
-    <li><b>Auto-Color Generation:</b> Maximally different colors for undefined classes</li>
-    <li><b>Flexible Labels:</b> Show class name, confidence, both, or neither</li>
+    <li><b>4-Corner Box Format:</b> Normalized coordinates [0,1] for resolution-independent processing</li>
+    <li><b>Dynamic Color Management:</b> Add/remove tag color mappings with real-time validation</li>
+    <li><b>Auto-Color Generation:</b> Maximally different colors for undefined tags</li>
+    <li><b>Flexible Labels:</b> Show tag name, confidence, both, or neither</li>
     <li><b>Smart Positioning:</b> Automatic adjustment when labels would go off-screen</li>
     <li><b>Performance Optimized:</b> Direct pixel manipulation with OpenMP parallelization</li>
   </ul>
@@ -573,9 +574,9 @@
   <h3>Label Formatting</h3>
   <p>Labels are formatted based on display options:</p>
   <ul>
-    <li><b>Class Only:</b> "person"</li>
-    <li><b>Confidence Only:</b> "95.4%"</li>
-    <li><b>Both:</b> "person (95.4%)"</li>
+    <li><b>Tag Only:</b> "mountain"</li>
+    <li><b>Confidence Only:</b> "98.1%"</li>
+    <li><b>Both:</b> "mountain (98.1%)"</li>
     <li><b>Neither:</b> Box drawn without label</li>
   </ul>
 

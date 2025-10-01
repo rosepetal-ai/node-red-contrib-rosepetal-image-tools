@@ -34,28 +34,13 @@ module.exports = function (RED) {
           return;
         }
 
-        // Smart format detection and normalization (same as add-masks)
-        let normalizedBoxesArray;
-
-        if (Array.isArray(boxesArray)) {
-          // Check if it's already in the expected format [{ boxes: [...] }]
-          if (boxesArray.length > 0 && boxesArray[0].hasOwnProperty('boxes')) {
-            normalizedBoxesArray = boxesArray; // Already correct format
-          } else if (boxesArray.length > 0 && boxesArray[0].hasOwnProperty('box')) {
-            // Direct array of box objects
-            normalizedBoxesArray = [{ boxes: boxesArray }];
-          } else {
-            normalizedBoxesArray = boxesArray; // Keep as is for validation to catch errors
-          }
-        } else if (typeof boxesArray === 'object' && boxesArray !== null && boxesArray.hasOwnProperty('boxes')) {
-          // Single object with boxes property
-          normalizedBoxesArray = [boxesArray];
-        } else {
-          node.warn("Boxes input must be an array or an object with 'boxes' property");
+        // Validate boxes input - expect direct array format
+        if (!Array.isArray(boxesArray)) {
+          node.warn("Boxes input must be an array");
           return;
         }
 
-        if (normalizedBoxesArray.length === 0) {
+        if (boxesArray.length === 0) {
           const total = performance.now() - t0;
           RED.util.setMessageProperty(msg, config.outputPath || 'payload', baseImg);
           NodeUtils.setSuccessStatus(node, 0, total, { convertMs: 0, taskMs: 0, encodeMs: 0 });
@@ -66,63 +51,49 @@ module.exports = function (RED) {
 
         // Validate boxes array structure in detail
         let totalBoxCount = 0;
-        for (let elementIndex = 0; elementIndex < normalizedBoxesArray.length; elementIndex++) {
-          const element = normalizedBoxesArray[elementIndex];
+        for (let boxIndex = 0; boxIndex < boxesArray.length; boxIndex++) {
+          const boxObj = boxesArray[boxIndex];
 
-          if (!element || typeof element !== 'object') {
-            node.warn(`Invalid element at index ${elementIndex}: expected object with 'boxes' property`);
+          if (!boxObj || typeof boxObj !== 'object') {
+            node.warn(`Invalid box object at index ${boxIndex}: expected object`);
             return;
           }
 
-          if (!element.hasOwnProperty('boxes') || !Array.isArray(element.boxes)) {
-            node.warn(`Invalid element at index ${elementIndex}: 'boxes' property must be an array`);
+          if (!boxObj.hasOwnProperty('raw_boxes') || !Array.isArray(boxObj.raw_boxes)) {
+            node.warn(`Invalid box object at index ${boxIndex}: 'raw_boxes' property must be an array`);
             return;
           }
 
-          for (let boxIndex = 0; boxIndex < element.boxes.length; boxIndex++) {
-            const boxObj = element.boxes[boxIndex];
-
-            if (!boxObj || typeof boxObj !== 'object') {
-              node.warn(`Invalid box object at element[${elementIndex}].boxes[${boxIndex}]: expected object`);
-              return;
-            }
-
-            if (!boxObj.hasOwnProperty('box') || !Array.isArray(boxObj.box)) {
-              node.warn(`Invalid box object at element[${elementIndex}].boxes[${boxIndex}]: 'box' property must be an array`);
-              return;
-            }
-
-            if (boxObj.box.length !== 4) {
-              node.warn(`Invalid box format at element[${elementIndex}].boxes[${boxIndex}]: expected 4 corner points`);
-              return;
-            }
-
-            // Validate 4-corner format
-            const [[x1, y1], [x2, y1_check], [x2_check, y2], [x1_check, y2_check]] = boxObj.box;
-
-            if (x2 !== x2_check || x1 !== x1_check || y1 !== y1_check || y2 !== y2_check) {
-              node.warn(`Inconsistent corner points at element[${elementIndex}].boxes[${boxIndex}]`);
-              return;
-            }
-
-            // Check normalized range
-            if (x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1 || y1 < 0 || y1 > 1 || y2 < 0 || y2 > 1) {
-              node.warn(`Box coordinates out of range [0,1] at element[${elementIndex}].boxes[${boxIndex}]`);
-              return;
-            }
-
-            if (!boxObj.hasOwnProperty('class_name') || typeof boxObj.class_name !== 'string') {
-              node.warn(`Invalid class_name at element[${elementIndex}].boxes[${boxIndex}]: must be a non-empty string`);
-              return;
-            }
-
-            if (boxObj.class_name.trim() === '') {
-              node.warn(`Empty class_name at element[${elementIndex}].boxes[${boxIndex}]: class name cannot be empty`);
-              return;
-            }
-
-            totalBoxCount++;
+          if (boxObj.raw_boxes.length !== 4) {
+            node.warn(`Invalid box format at index ${boxIndex}: expected 4 corner points`);
+            return;
           }
+
+          // Validate 4-corner format
+          const [[x1, y1], [x2, y1_check], [x2_check, y2], [x1_check, y2_check]] = boxObj.raw_boxes;
+
+          if (x2 !== x2_check || x1 !== x1_check || y1 !== y1_check || y2 !== y2_check) {
+            node.warn(`Inconsistent corner points at index ${boxIndex}`);
+            return;
+          }
+
+          // Check normalized range
+          if (x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1 || y1 < 0 || y1 > 1 || y2 < 0 || y2 > 1) {
+            node.warn(`Box coordinates out of range [0,1] at index ${boxIndex}`);
+            return;
+          }
+
+          if (!boxObj.hasOwnProperty('tag') || typeof boxObj.tag !== 'string') {
+            node.warn(`Invalid tag at index ${boxIndex}: must be a non-empty string`);
+            return;
+          }
+
+          if (boxObj.tag.trim() === '') {
+            node.warn(`Empty tag at index ${boxIndex}: tag cannot be empty`);
+            return;
+          }
+
+          totalBoxCount++;
         }
 
         if (totalBoxCount === 0) {
@@ -164,7 +135,7 @@ module.exports = function (RED) {
         const { image: result, timing = {}, boxCount } =
               await Cpp.addBBs(
                 baseImg,
-                normalizedBoxesArray,
+                boxesArray,  // Pass direct array to C++
                 classColorMap,
                 showClassName,
                 showConfidence,

@@ -48,7 +48,8 @@
             "blend": "nodes/blend/blend.js",
             "add-mask": "nodes/blend/add-mask.js",
             "add-masks": "nodes/blend/add-masks.js",
-            "add-bbs": "nodes/blend/add-bbs.js"
+            "add-bbs": "nodes/blend/add-bbs.js",
+            "clean-debug": "nodes/util/clean-debug.js"
         }
     },
     "dependencies": {

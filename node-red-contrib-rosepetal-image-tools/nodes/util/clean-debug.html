@@ -1,0 +1,201 @@
+<script type="text/javascript">
+    (function() {
+        function toggleCompleteField($complete, type) {
+            const $textInput = $complete.typedInput('input');
+            if (type === "full") {
+                if ($textInput && $textInput.length) {
+                    $textInput.prop("disabled", true).addClass("disabled");
+                }
+                $("#node-input-complete-full-label").show();
+            } else {
+                if ($textInput && $textInput.length) {
+                    $textInput.prop("disabled", false).removeClass("disabled");
+                }
+                $("#node-input-complete-full-label").hide();
+            }
+        }
+
+        RED.nodes.registerType('clean-debug', {
+            category: 'RP Image',
+            paletteLabel: 'clean debug',
+            color: '#E2D96E',
+            inputs: 1,
+            outputs: 0,
+            icon: 'font-awesome/fa-bug',
+            align: 'right',
+            defaults: {
+                name: { value: "" },
+                active: { value: true },
+                tosidebar: { value: true },
+                console: { value: false },
+                complete: { value: "payload" },
+                targetType: { value: "msg" },
+                clean: { value: true }
+            },
+            label: function() {
+                if (this.name) {
+                    return this.name;
+                }
+                return this.clean === false ? "debug" : "clean debug";
+            },
+            labelStyle: function() {
+                return this.name ? "node_label_italic" : "";
+            },
+            button: {
+                toggle: "active",
+                visible: function() {
+                    return true;
+                },
+                onclick: function() {
+                    var node = this;
+                    var desiredState = node.active;
+
+                    sendCleanDebugToggle(node, desiredState, function() {
+                        var historyEvent = {
+                            t: 'edit',
+                            node: node,
+                            changes: {
+                                active: !node.active
+                            },
+                            dirty: node.dirty,
+                            changed: node.changed,
+                            callback: function(ev) {
+                                sendCleanDebugToggle(ev.node, ev.node.active);
+                            }
+                        };
+
+                        node.changed = true;
+                        node.dirty = true;
+                        RED.nodes.dirty(true);
+                        RED.history.push(historyEvent);
+                        RED.view.redraw();
+                    }, function() {
+                        node.active = !node.active;
+                        RED.view.redraw();
+                        RED.notify("Failed to update Clean Debug state", "error");
+                    });
+                }
+            },
+            oneditprepare: function() {
+                const $complete = $("#node-input-complete");
+                $complete.typedInput({
+                    default: 'msg',
+                    types: [
+                        'msg',
+                        'flow',
+                        'global',
+                        'str',
+                        'num',
+                        'bool',
+                        'json',
+                        'bin',
+                        'date',
+                        'jsonata',
+                        'env',
+                        {
+                            value: 'full',
+                            label: 'complete msg object',
+                            hasValue: false
+                        }
+                    ],
+                    typeField: "#node-input-targetType"
+                });
+
+                toggleCompleteField($complete, $complete.typedInput('type'));
+
+                $complete.on("change", function() {
+                    toggleCompleteField($complete, $complete.typedInput('type'));
+                });
+
+                $("#node-input-tosidebar").prop("checked", this.tosidebar !== false);
+                $("#node-input-console").prop("checked", this.console === true);
+                $("#node-input-clean").prop("checked", this.clean !== false);
+            },
+            oneditsave: function() {
+                this.tosidebar = $("#node-input-tosidebar").is(":checked");
+                this.console = $("#node-input-console").is(":checked");
+                this.clean = $("#node-input-clean").is(":checked");
+            }
+        });
+    })();
+</script>
+
+<script type="text/x-red" data-template-name="clean-debug">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-complete"><i class="fa fa-dot-circle-o"></i> Output</label>
+        <input type="text" id="node-input-complete" style="width: 70%;">
+        <input type="hidden" id="node-input-targetType">
+        <span id="node-input-complete-full-label" style="display: none;">complete msg object</span>
+    </div>
+
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-tosidebar" checked>
+        <label for="node-input-tosidebar" style="width: auto;">Send to debug sidebar</label>
+    </div>
+
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-console">
+        <label for="node-input-console" style="width: auto;">Also log to console</label>
+    </div>
+
+    <div class="form-row">
+        <label></label>
+        <input type="checkbox" id="node-input-clean" checked>
+        <label for="node-input-clean" style="width: auto;">Clean heavy payloads (images/buffers)</label>
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="clean-debug">
+    <p>An enhanced drop-in replacement for the core Debug node that filters out heavy binary/image payloads by default to keep the debug sidebar responsive.</p>
+
+    <h3>Details</h3>
+    <p>The Clean Debug node mirrors the behaviour of the standard Debug node while adding an optional cleaning step that replaces Buffers, typed arrays, data URLs and large Base64 strings with short placeholders.</p>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Output<span class="property-type">typed input</span></dt>
+        <dd>Select the message property (or expression) to show in the debug sidebar. Choose <strong>complete msg object</strong> to inspect the whole message.</dd>
+        <dt>Send to debug sidebar<span class="property-type">boolean</span></dt>
+        <dd>Publish the result to the editor sidebar. Disable if you only want console/status output.</dd>
+        <dt>Also log to console<span class="property-type">boolean</span></dt>
+        <dd>Write the formatted output to the Node-RED runtime log.</dd>
+        <dt>Clean heavy payloads<span class="property-type">boolean</span></dt>
+        <dd>When enabled (default), large Buffers, Base64 strings and data URLs are replaced with concise placeholders so they do not flood the UI.</dd>
+        <dt>Enabled<span class="property-type">boolean</span></dt>
+        <dd>Temporarily disable the node without removing it from your flow.</dd>
+    </dl>
+
+    <h3>Notes</h3>
+    <ul>
+        <li>Disabling the clean option restores the exact behaviour of the built-in Debug node.</li>
+        <li>The cleaning step only affects what is displayed; the original message object is left untouched.</li>
+    </ul>
+</script>
+
+<script type="text/javascript">
+    function sendCleanDebugToggle(node, desiredState, onSuccess, onError) {
+        $.ajax({
+            url: "clean-debug/" + node.id,
+            type: "POST",
+            data: JSON.stringify({ active: desiredState }),
+            contentType: "application/json; charset=utf-8",
+            success: function(resp) {
+                if (typeof onSuccess === "function") {
+                    onSuccess(resp);
+                }
+            },
+            error: function(jqXHR, textStatus, errorThrown) {
+                if (typeof onError === "function") {
+                    onError(jqXHR, textStatus, errorThrown);
+                }
+            }
+        });
+    }
+</script>

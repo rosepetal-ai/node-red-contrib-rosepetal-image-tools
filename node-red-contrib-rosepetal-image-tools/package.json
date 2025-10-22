@@ -31,6 +31,7 @@
     "node-red": {
         "nodes": {
             "image-in": "nodes/io/image-in.js",
+            "folder-in": "nodes/io/folder-in.js",
             "image-out": "nodes/io/image-out.js",
             "array-in": "nodes/io/array-in.js",
             "array-out": "nodes/io/array-out.js",

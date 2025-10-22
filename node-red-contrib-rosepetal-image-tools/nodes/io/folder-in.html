@@ -1,0 +1,248 @@
+<script type="text/javascript">
+    RED.nodes.registerType('folder-in', {
+        category: 'RP Image',
+        color: '#A6C8A6',
+        defaults: {
+            name: { value: "" },
+            folderPath: { value: "", required: true },
+            folderPathType: { value: "str" },
+            interval: { value: 1000, required: true, validate: RED.validators.number() },
+            intervalType: { value: "num" },
+            mode: { value: "loop" },
+            outputPath: { value: "payload" },
+            outputPathType: { value: "msg" },
+            debugEnabled: { value: false },
+            debugWidth: { value: 200 },
+            debugWidthType: { value: "num" }
+        },
+        inputs: 0,
+        outputs: 1,
+        icon: "font-awesome/fa-folder-open",
+        align: "left",
+        button: {
+            enabled: function() {
+                return !this.changed;
+            },
+            onclick: function() {
+                const node = this;
+                const label = this.name || "folder-in";
+
+                $.ajax({
+                    url: "folder-in/" + this.id,
+                    type: "POST",
+                    success: function(resp, textStatus, xhr) {
+                        RED.notify("Toggled " + label, "success");
+                    },
+                    error: function(jqXHR, textStatus, errorThrown) {
+                        if (jqXHR.status == 404) {
+                            RED.notify("Node not deployed", "error");
+                        } else if (jqXHR.status == 500) {
+                            RED.notify("Toggle failed", "error");
+                        } else if (jqXHR.status == 0) {
+                            RED.notify("No response from server", "error");
+                        } else {
+                            RED.notify("Unexpected error: " + textStatus, "error");
+                        }
+                    }
+                });
+            }
+        },
+        label: function() {
+            return this.name || this.folderPath.split('/').pop() || "folder in";
+        },
+        labelStyle: function() {
+            return this.name ? "node_label_italic" : "";
+        },
+        oneditprepare: function() {
+            // Initialize TypedInput for folder path
+            $("#node-input-folderPath").typedInput({
+                default: 'str',
+                types: ['str', 'msg', 'flow', 'global'],
+                typeField: "#node-input-folderPathType"
+            });
+
+            // Initialize TypedInput for interval
+            $("#node-input-interval").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-intervalType"
+            });
+
+            // Initialize TypedInput for output path
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
+
+            // Debug display logic
+            const debugCheckbox = $('#node-input-debugEnabled');
+            const debugWidthRow = $('#debug-width-row');
+
+            // Initialize debug width TypedInput
+            $("#node-input-debugWidth").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-debugWidthType"
+            });
+
+            // Show/hide debug width based on checkbox
+            function updateDebugWidthVisibility() {
+                if (debugCheckbox.prop('checked')) {
+                    debugWidthRow.show();
+                } else {
+                    debugWidthRow.hide();
+                }
+            }
+
+            debugCheckbox.change(function() {
+                updateDebugWidthVisibility();
+            });
+
+            // Initialize visibility
+            updateDebugWidthVisibility();
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="folder-in">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-folderPath"><i class="fa fa-folder-open"></i> Folder Path</label>
+        <input type="text" id="node-input-folderPath" style="width: 70%;" placeholder="/path/to/image/folder">
+        <input type="hidden" id="node-input-folderPathType">
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-interval"><i class="fa fa-clock-o"></i> Interval (ms)</label>
+        <input type="text" id="node-input-interval" style="width: 120px;">
+        <input type="hidden" id="node-input-intervalType">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-mode"><i class="fa fa-repeat"></i> Mode</label>
+        <select id="node-input-mode" style="width: 200px;">
+            <option value="loop">Loop (repeat images)</option>
+            <option value="one-shot">One-shot (stop at end)</option>
+        </select>
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+
+    <!-- Debug Configuration -->
+    <div class="form-row">
+        <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+        <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show loaded images</label>
+    </div>
+    <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="folder-in">
+    <p>Scans a folder for image files and emits them one by one at configurable intervals. Features a toggle button to start/stop emission.</p>
+
+    <h3>Details</h3>
+    <p>This node reads all image files from a specified folder and emits them sequentially at a configurable rate. It can operate in two modes: loop (continuously repeat images) or one-shot (stop after all images). The node features a physical button on the left side (like the inject node) to start and stop the emission process.</p>
+
+    <p><strong>Supported Image Formats:</strong> JPEG, PNG, WebP, BMP, GIF, TIFF</p>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Folder Path <span class="property-type">string | msg | flow | global</span></dt>
+        <dd>The path to the folder containing image files. Can be a static string (absolute or relative path) or dynamically resolved from message properties, flow context, or global context. The node will scan this folder and find all supported image files.</dd>
+
+        <dt>Interval (ms) <span class="property-type">number</span></dt>
+        <dd>The time interval in milliseconds between each image emission. For example, 1000 = 1 second between images. Minimum recommended: 100ms.</dd>
+
+        <dt>Mode <span class="property-type">loop | one-shot</span></dt>
+        <dd>
+            <ul>
+                <li><strong>Loop:</strong> After emitting the last image, restart from the first image and continue indefinitely until stopped.</li>
+                <li><strong>One-shot:</strong> Stop automatically after emitting all images once.</li>
+            </ul>
+        </dd>
+
+        <dt>Output to <span class="property-type">msg | flow | global</span></dt>
+        <dd>The location where the resulting image object will be stored. Defaults to <code>msg.payload</code>.</dd>
+
+        <dt>Debug <span class="property-type">boolean</span></dt>
+        <dd>Enable inline image preview display for debugging purposes.</dd>
+    </dl>
+
+    <h3>Button Control</h3>
+    <p>Click the button on the left side of the node to toggle between running and stopped states:</p>
+    <ul>
+        <li><strong>Stopped (grey):</strong> No images are being emitted. Click to start.</li>
+        <li><strong>Running (green):</strong> Images are being emitted at the configured interval. Click to stop.</li>
+    </ul>
+    <p><strong>Note:</strong> This node does not have an input connector. It operates independently using only the button control.</p>
+
+    <h3>Outputs</h3>
+    <p>The node sets the property specified in 'Output to' with the processed image object using the standard format:</p>
+    <pre>{
+  data: Buffer,        // Raw pixel data
+  width: number,       // Image width in pixels
+  height: number,      // Image height in pixels
+  channels: number,    // Channel count (1, 3, 4)
+  colorSpace: string,  // "GRAY", "RGB", "RGBA"
+  dtype: string        // "uint8"
+}</pre>
+
+    <p>Additionally, each message includes metadata in <code>msg._folderIn</code>:</p>
+    <pre>{
+  fileName: string,    // Name of the current image file
+  filePath: string,    // Full path to the current image file
+  index: number,       // Current image index (0-based)
+  total: number        // Total number of images in folder
+}</pre>
+
+    <h3>Examples</h3>
+    <ul>
+        <li><strong>Slideshow:</strong> Set folder to <code>/images/slideshow</code>, interval to 2000ms (2 seconds), mode to "loop" for continuous slideshow</li>
+        <li><strong>Batch Processing:</strong> Set mode to "one-shot" and connect to processing nodes to automatically process all images in a folder</li>
+        <li><strong>Animation Preview:</strong> Set interval to 100ms to quickly preview a sequence of images</li>
+        <li><strong>Dataset Loading:</strong> Use "one-shot" mode to load a complete dataset for AI/ML processing</li>
+    </ul>
+
+    <h3>Status Display</h3>
+    <p>The node displays its current state and progress:</p>
+    <ul>
+        <li><strong>Stopped:</strong> Node is not emitting images</li>
+        <li><strong>Scanning folder:</strong> Reading directory contents</li>
+        <li><strong>Loading [filename]:</strong> Currently loading an image</li>
+        <li><strong>[n/total]: [filename]:</strong> Successfully emitted image n of total</li>
+        <li><strong>Completed all images:</strong> One-shot mode finished</li>
+        <li><strong>Error:</strong> Error occurred during operation</li>
+    </ul>
+
+    <h3>Error Handling</h3>
+    <p>If the folder path is invalid, contains no images, or an image cannot be read, the node will display a warning in the debug panel and update its status accordingly.</p>
+
+    <h3>Performance</h3>
+    <p>Image loading is performed asynchronously using Sharp for optimal performance. Each image is loaded on demand, so memory usage remains low even with large folders.</p>
+
+    <h3>Tips</h3>
+    <ul>
+        <li>Use relative paths for portability across systems</li>
+        <li>Images are emitted in alphabetical order by filename</li>
+        <li>Connect to transform nodes (resize, crop, etc.) for automated batch processing</li>
+        <li>Use the metadata in <code>msg._folderIn</code> to track progress or create custom workflows</li>
+        <li>Adjust interval based on your processing pipeline speed to avoid message queue buildup</li>
+    </ul>
+</script>

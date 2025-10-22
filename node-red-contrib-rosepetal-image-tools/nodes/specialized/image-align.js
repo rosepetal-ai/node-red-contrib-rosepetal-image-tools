@@ -53,10 +53,8 @@ module.exports = function (RED) {
           // Validate polygon coordinates
           if (polygon) {
             if (!Array.isArray(polygon)) {
-              node.warn("Polygon coordinates must be an array");
               polygon = null;
             } else if (polygon.length === 0) {
-              node.warn("Polygon coordinates array is empty");
               polygon = null;
             } else {
               // Check if this is a single polygon or array of polygons

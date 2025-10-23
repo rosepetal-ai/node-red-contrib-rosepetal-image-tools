@@ -1,0 +1,600 @@
+<script type="text/javascript">
+(function() {
+  const DEFAULT_POINT = Object.freeze({
+    xType: 'num', xValue: '0.5',
+    yType: 'num', yValue: '0.5',
+    radiusType: 'num', radiusValue: '0.02',
+    colorType: 'str', colorValue: '#ff0000',
+    opacityType: 'num', opacityValue: '1'
+  });
+
+  const DEFAULT_LINE = Object.freeze({
+    x1Type: 'num', x1Value: '0.1',
+    y1Type: 'num', y1Value: '0.1',
+    x2Type: 'num', x2Value: '0.9',
+    y2Type: 'num', y2Value: '0.9',
+    thicknessType: 'num', thicknessValue: '0.01',
+    colorType: 'str', colorValue: '#00ff00',
+    opacityType: 'num', opacityValue: '1'
+  });
+
+  function mergeDefaults(base, data) {
+    return $.extend(true, {}, base, data);
+  }
+
+  function normalizeHexColor(value) {
+    if (typeof value !== 'string') {
+      return null;
+    }
+    let hex = value.trim();
+    if (!hex || hex[0] !== '#') {
+      return null;
+    }
+    if (hex.length === 4) {
+      hex = '#' + hex[1] + hex[1] + hex[2] + hex[2] + hex[3] + hex[3];
+    }
+    if (/^#[0-9a-f]{6}$/i.test(hex)) {
+      return hex.toLowerCase();
+    }
+    return null;
+  }
+
+  RED.nodes.registerType('draw', {
+    category: 'RP Image',
+    color: '#DDA0DD',
+    defaults: {
+      name: { value: "" },
+      inputPath: { value: "payload" },
+      inputPathType: { value: "msg" },
+      outputPath: { value: "payload" },
+      outputPathType: { value: "msg" },
+      outputFormat: { value: "raw" },
+      outputQuality: { value: 90 },
+      pngOptimize: { value: false },
+      debugEnabled: { value: false },
+      debugWidth: { value: 200 },
+      debugWidthType: { value: "num" },
+      points: { value: [] },
+      lines: { value: [] }
+    },
+    inputs: 1,
+    outputs: 1,
+    icon: "font-awesome/fa-paint-brush",
+    label: function () {
+      return this.name || "draw";
+    },
+    oneditprepare: function () {
+      const node = this;
+      const markDirty = () => RED.nodes.dirty(true);
+
+      $("#node-input-inputPath").typedInput({
+        default: 'msg',
+        types: ['msg', 'flow', 'global'],
+        typeField: "#node-input-inputPathType"
+      });
+
+      $("#node-input-outputPath").typedInput({
+        default: 'msg',
+        types: ['msg', 'flow', 'global'],
+        typeField: "#node-input-outputPathType"
+      });
+
+      $("#node-input-debugWidth").typedInput({
+        default: 'num',
+        types: ['num', 'msg', 'flow', 'global'],
+        typeField: "#node-input-debugWidthType"
+      });
+
+      function updateQualityVisibility() {
+        const format = $('#node-input-outputFormat').val();
+        $('#quality-row').toggle(format === 'jpg' || format === 'webp');
+        $('#png-optimize-row').toggle(format === 'png');
+      }
+      $('#node-input-outputFormat').on('change', function () {
+        updateQualityVisibility();
+        markDirty();
+      });
+      updateQualityVisibility();
+
+      function updateDebugVisibility() {
+        $('#debug-width-row').toggle($('#node-input-debugEnabled').is(':checked'));
+      }
+      $('#node-input-debugEnabled').on('change', function () {
+        updateDebugVisibility();
+        markDirty();
+      });
+      updateDebugVisibility();
+
+      node.points = Array.isArray(node.points)
+        ? node.points.map(function (entry) { return mergeDefaults(DEFAULT_POINT, entry); })
+        : [];
+
+      node.lines = Array.isArray(node.lines)
+        ? node.lines.map(function (entry) { return mergeDefaults(DEFAULT_LINE, entry); })
+        : [];
+
+      function buildTypedCell(row, options) {
+        const cell = $('<td style="padding:8px; border:1px solid #ddd; vertical-align:middle;">').appendTo(row);
+        const typeField = $('<input type="hidden">').addClass(options.typeClass).appendTo(cell);
+        const input = $('<input type="text" style="width:100%;">').addClass(options.inputClass).appendTo(cell);
+        if (options.placeholder) {
+          input.attr('placeholder', options.placeholder);
+        }
+        input.typedInput({
+          default: options.defaultType,
+          types: options.types,
+          typeField
+        });
+        input.typedInput('value', options.defaultValue);
+        input.on('change input typedInput:change typedInput:close', function () {
+          options.onChange(input);
+          markDirty();
+        });
+        return input;
+      }
+
+      function buildColorCell(row, options) {
+        const cell = $('<td style="padding:8px; border:1px solid #ddd; vertical-align:middle;">').appendTo(row);
+        const typeField = $('<input type="hidden">').addClass(options.typeClass).appendTo(cell);
+        const controls = $('<div style="display:flex; gap:6px; align-items:center;">').appendTo(cell);
+        const input = $('<input type="text" style="flex:1 1 auto;">').addClass(options.inputClass).appendTo(controls);
+        input.typedInput({
+          default: options.defaultType,
+          types: ['str', 'msg', 'flow', 'global'],
+          typeField
+        });
+        input.typedInput('value', options.defaultValue);
+
+        const picker = $('<input type="color" style="width:38px; height:28px; padding:0; border:1px solid #ccc; border-radius:4px;">')
+          .addClass(options.pickerClass)
+          .attr('title', 'Available when type is string')
+          .appendTo(controls);
+
+        function syncPicker() {
+          const type = input.typedInput('type');
+          const hex = normalizeHexColor(input.typedInput('value'));
+          const isString = type === 'str';
+          if (hex) {
+            picker.val(hex);
+          } else if (!picker.val()) {
+            picker.val('#ffffff');
+          }
+          picker.prop('disabled', !isString);
+          picker.css('opacity', isString ? 1 : 0.5);
+        }
+
+        input.on('change input typedInput:change typedInput:close', function () {
+          options.onChange(input);
+          syncPicker();
+          markDirty();
+        });
+
+        picker.on('input', function () {
+          if (input.typedInput('type') !== 'str') {
+            input.typedInput('type', 'str');
+          }
+          input.typedInput('value', $(this).val());
+          options.onChange(input);
+          markDirty();
+          syncPicker();
+        });
+
+        syncPicker();
+        return input;
+      }
+
+      function createPointRow(point, index) {
+        const row = $('<tr class="rp-point-row">').attr('data-index', index);
+
+        buildTypedCell(row, {
+          typeClass: 'point-x-type',
+          inputClass: 'point-x',
+          defaultType: point.xType,
+          defaultValue: point.xValue,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            point.xType = input.typedInput('type');
+            point.xValue = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'point-y-type',
+          inputClass: 'point-y',
+          defaultType: point.yType,
+          defaultValue: point.yValue,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            point.yType = input.typedInput('type');
+            point.yValue = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'point-radius-type',
+          inputClass: 'point-radius',
+          defaultType: point.radiusType,
+          defaultValue: point.radiusValue,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.00',
+          onChange: function (input) {
+            point.radiusType = input.typedInput('type');
+            point.radiusValue = input.typedInput('value');
+          }
+        });
+
+        buildColorCell(row, {
+          typeClass: 'point-color-type',
+          inputClass: 'point-color',
+          pickerClass: 'point-color-picker',
+          defaultType: point.colorType,
+          defaultValue: point.colorValue,
+          onChange: function (input) {
+            point.colorType = input.typedInput('type');
+            point.colorValue = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'point-opacity-type',
+          inputClass: 'point-opacity',
+          defaultType: point.opacityType,
+          defaultValue: point.opacityValue,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            point.opacityType = input.typedInput('type');
+            point.opacityValue = input.typedInput('value');
+          }
+        });
+
+        const actionsCell = $('<td style="padding:8px; border:1px solid #ddd; text-align:center;">').appendTo(row);
+        const removeButton = $('<button type="button" style="background:#ff4444; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer;">Remove</button>')
+          .appendTo(actionsCell);
+        removeButton.on('click', function () {
+          node.points.splice(index, 1);
+          renderPointsTable();
+          markDirty();
+        });
+
+        return row;
+      }
+
+      function renderPointsTable() {
+        const container = $('#points-container');
+        container.empty();
+
+        const table = $('<table class="rp-draw-table" style="width:100%; border-collapse:collapse; margin:10px 0;">');
+        const thead = $('<thead>').appendTo(table);
+        const headerRow = $('<tr style="background-color:#f0f0f0; font-weight:bold;">').appendTo(thead);
+        ['X', 'Y', 'Radius', 'Color', 'Opacity', 'Actions'].forEach(function (title) {
+          $('<th style="padding:8px; border:1px solid #ddd; text-align:left;">').text(title).appendTo(headerRow);
+        });
+
+        const tbody = $('<tbody>').appendTo(table);
+        if (node.points.length) {
+          node.points.forEach(function (point, index) {
+            tbody.append(createPointRow(point, index));
+          });
+        } else {
+          $('<tr class="rp-point-empty"><td colspan="6" style="padding:12px; border:1px solid #ddd; text-align:center; color:#777;">No points defined. Use "Add point" to create one.</td></tr>')
+            .appendTo(tbody);
+        }
+
+        container.append(table);
+
+        const addButton = $('<button type="button" style="background:#4CAF50; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">Add point</button>');
+        addButton.on('click', function () {
+          node.points.push(mergeDefaults(DEFAULT_POINT));
+          renderPointsTable();
+          markDirty();
+        });
+        container.append(addButton);
+      }
+
+      function createLineRow(line, index) {
+        const row = $('<tr class="rp-line-row">').attr('data-index', index);
+
+        buildTypedCell(row, {
+          typeClass: 'line-x1-type',
+          inputClass: 'line-x1',
+          defaultType: line.x1Type,
+          defaultValue: line.x1Value,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            line.x1Type = input.typedInput('type');
+            line.x1Value = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'line-y1-type',
+          inputClass: 'line-y1',
+          defaultType: line.y1Type,
+          defaultValue: line.y1Value,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            line.y1Type = input.typedInput('type');
+            line.y1Value = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'line-x2-type',
+          inputClass: 'line-x2',
+          defaultType: line.x2Type,
+          defaultValue: line.x2Value,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            line.x2Type = input.typedInput('type');
+            line.x2Value = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'line-y2-type',
+          inputClass: 'line-y2',
+          defaultType: line.y2Type,
+          defaultValue: line.y2Value,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            line.y2Type = input.typedInput('type');
+            line.y2Value = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'line-thickness-type',
+          inputClass: 'line-thickness',
+          defaultType: line.thicknessType,
+          defaultValue: line.thicknessValue,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.00',
+          onChange: function (input) {
+            line.thicknessType = input.typedInput('type');
+            line.thicknessValue = input.typedInput('value');
+          }
+        });
+
+        buildColorCell(row, {
+          typeClass: 'line-color-type',
+          inputClass: 'line-color',
+          pickerClass: 'line-color-picker',
+          defaultType: line.colorType,
+          defaultValue: line.colorValue,
+          onChange: function (input) {
+            line.colorType = input.typedInput('type');
+            line.colorValue = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'line-opacity-type',
+          inputClass: 'line-opacity',
+          defaultType: line.opacityType,
+          defaultValue: line.opacityValue,
+          types: ['num', 'msg', 'flow', 'global'],
+          placeholder: '0.0 - 1.0',
+          onChange: function (input) {
+            line.opacityType = input.typedInput('type');
+            line.opacityValue = input.typedInput('value');
+          }
+        });
+
+        const actionsCell = $('<td style="padding:8px; border:1px solid #ddd; text-align:center;">').appendTo(row);
+        const removeButton = $('<button type="button" style="background:#ff4444; color:#fff; border:none; padding:4px 10px; border-radius:4px; cursor:pointer;">Remove</button>')
+          .appendTo(actionsCell);
+        removeButton.on('click', function () {
+          node.lines.splice(index, 1);
+          renderLinesTable();
+          markDirty();
+        });
+
+        return row;
+      }
+
+      function renderLinesTable() {
+        const container = $('#lines-container');
+        container.empty();
+
+        const table = $('<table class="rp-draw-table" style="width:100%; border-collapse:collapse; margin:10px 0;">');
+        const thead = $('<thead>').appendTo(table);
+        const headerRow = $('<tr style="background-color:#f0f0f0; font-weight:bold;">').appendTo(thead);
+        ['X1', 'Y1', 'X2', 'Y2', 'Thickness', 'Color', 'Opacity', 'Actions'].forEach(function (title) {
+          $('<th style="padding:8px; border:1px solid #ddd; text-align:left;">').text(title).appendTo(headerRow);
+        });
+
+        const tbody = $('<tbody>').appendTo(table);
+        if (node.lines.length) {
+          node.lines.forEach(function (line, index) {
+            tbody.append(createLineRow(line, index));
+          });
+        } else {
+          $('<tr class="rp-line-empty"><td colspan="8" style="padding:12px; border:1px solid #ddd; text-align:center; color:#777;">No lines defined. Use "Add line" to create one.</td></tr>')
+            .appendTo(tbody);
+        }
+
+        container.append(table);
+
+        const addButton = $('<button type="button" style="background:#4CAF50; color:#fff; border:none; padding:6px 12px; border-radius:4px; cursor:pointer;">Add line</button>');
+        addButton.on('click', function () {
+          node.lines.push(mergeDefaults(DEFAULT_LINE));
+          renderLinesTable();
+          markDirty();
+        });
+        container.append(addButton);
+      }
+
+      renderPointsTable();
+      renderLinesTable();
+    },
+    oneditsave: function () {
+      const points = [];
+      $('#points-container').find('tr.rp-point-row').each(function () {
+        const row = $(this);
+        const xInput = row.find('.point-x');
+        const yInput = row.find('.point-y');
+        const radiusInput = row.find('.point-radius');
+        const colorInput = row.find('.point-color');
+        const opacityInput = row.find('.point-opacity');
+
+        points.push({
+          xType: xInput.typedInput('type'),
+          xValue: xInput.typedInput('value'),
+          yType: yInput.typedInput('type'),
+          yValue: yInput.typedInput('value'),
+          radiusType: radiusInput.typedInput('type'),
+          radiusValue: radiusInput.typedInput('value'),
+          colorType: colorInput.typedInput('type'),
+          colorValue: colorInput.typedInput('value'),
+          opacityType: opacityInput.typedInput('type'),
+          opacityValue: opacityInput.typedInput('value')
+        });
+      });
+
+      const lines = [];
+      $('#lines-container').find('tr.rp-line-row').each(function () {
+        const row = $(this);
+        const x1Input = row.find('.line-x1');
+        const y1Input = row.find('.line-y1');
+        const x2Input = row.find('.line-x2');
+        const y2Input = row.find('.line-y2');
+        const thicknessInput = row.find('.line-thickness');
+        const colorInput = row.find('.line-color');
+        const opacityInput = row.find('.line-opacity');
+
+        lines.push({
+          x1Type: x1Input.typedInput('type'),
+          x1Value: x1Input.typedInput('value'),
+          y1Type: y1Input.typedInput('type'),
+          y1Value: y1Input.typedInput('value'),
+          x2Type: x2Input.typedInput('type'),
+          x2Value: x2Input.typedInput('value'),
+          y2Type: y2Input.typedInput('type'),
+          y2Value: y2Input.typedInput('value'),
+          thicknessType: thicknessInput.typedInput('type'),
+          thicknessValue: thicknessInput.typedInput('value'),
+          colorType: colorInput.typedInput('type'),
+          colorValue: colorInput.typedInput('value'),
+          opacityType: opacityInput.typedInput('type'),
+          opacityValue: opacityInput.typedInput('value')
+        });
+      });
+
+      this.points = points;
+      this.lines = lines;
+    }
+  });
+})();
+</script>
+
+<script type="text/x-red" data-template-name="draw">
+<!-- Name -->
+<div class="form-row">
+  <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+  <input type="text" id="node-input-name" placeholder="draw">
+</div>
+
+<hr>
+
+<!-- Standard I/O -->
+<div class="form-row">
+  <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+  <input type="text" id="node-input-inputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-inputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
+  <input type="text" id="node-input-outputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-outputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-outputFormat"><i class="fa fa-picture-o"></i> Output format</label>
+  <select id="node-input-outputFormat" style="width: 200px;">
+    <option value="raw">Raw (fastest)</option>
+    <option value="jpg">JPEG</option>
+    <option value="png">PNG</option>
+    <option value="webp">WebP</option>
+  </select>
+</div>
+<div class="form-row" id="quality-row">
+  <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+  <input type="number" id="node-input-outputQuality" min="1" max="100" style="width: 70px;">
+  <span style="margin-left: 8px; color:#666;">1-100 (JPG/WebP only)</span>
+</div>
+<div class="form-row" id="png-optimize-row" style="display:none;">
+  <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG optimize</label>
+  <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+  <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG output</label>
+</div>
+
+<!-- Debug configuration -->
+<div class="form-row">
+  <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug preview</label>
+  <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+  <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+</div>
+<div class="form-row" id="debug-width-row" style="display:none;">
+  <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug width</label>
+  <input type="text" id="node-input-debugWidth" style="width: 120px;">
+  <input type="hidden" id="node-input-debugWidthType">
+  <span style="margin-left: 8px; color:#666;">pixels</span>
+</div>
+
+<hr>
+
+<!-- Points configuration -->
+<div class="form-row">
+  <label style="width:100%;"><i class="fa fa-dot-circle-o"></i> Points</label>
+  <div id="points-container" style="width:100%;"></div>
+</div>
+<div class="form-tips" style="font-size:0.85em; color:#666;">
+  <b>Point settings:</b>
+  <ul>
+    <li><b>X, Y</b> - normalized coordinates (0.0-1.0) from the top-left of the image.</li>
+    <li><b>Radius</b> - relative point size; larger values draw bigger dots.</li>
+    <li><b>Color</b> - pick a fixed colour or source it from the flow via the typed selector.</li>
+    <li><b>Opacity</b> - blend amount from 0 (transparent) to 1 (solid).</li>
+    <li>Use <b>Add point</b> and <b>Remove</b> to manage rows.</li>
+  </ul>
+</div>
+
+<hr>
+
+<!-- Lines configuration -->
+<div class="form-row">
+  <label style="width:100%;"><i class="fa fa-minus"></i> Lines</label>
+  <div id="lines-container" style="width:100%;"></div>
+</div>
+<div class="form-tips" style="font-size:0.85em; color:#666;">
+  <b>Line settings:</b>
+  <ul>
+    <li><b>X1/Y1 & X2/Y2</b> - start and end coordinates (normalized 0.0-1.0).</li>
+    <li><b>Thickness</b> - relative stroke width; higher values make bolder lines.</li>
+    <li><b>Color & Opacity</b> - pick a stroke colour and blend level, or reference flow data.</li>
+    <li>Use <b>Add line</b> and <b>Remove</b> to maintain the list.</li>
+  </ul>
+</div>
+</script>
+
+<script type="text/x-red" data-help-name="draw">
+  <p><b>draw</b> overlays configurable points and line segments onto an image. The editor provides typed values for every field, plus integrated color pickers for quick selection of fixed colors.</p>
+
+  <h3>Inputs</h3>
+  <p>Accepts a single image from the configured message or context path in either Rosepetal raw format or an encoded buffer.</p>
+
+  <h3>Configuration</h3>
+  <p>Each point entry sets X/Y coordinates, point radius, color, and opacity. Each line entry defines start and end coordinates, thickness, color, and opacity. Coordinates and sizes are normalized (0-1) so they scale with any image resolution. All fields support fixed values, message properties, or flow/global context references through the typed input selector.</p>
+
+  <h3>Output</h3>
+  <p>The annotated image is written to the selected location. Choose <code>raw</code> to retain the native Rosepetal structure or encode to JPG/PNG/WebP with quality and optimization controls.</p>
+
+  <h3>Debug</h3>
+  <p>Enable the debug preview to emit a resized image over the shared debug channel for live inspection in the editor.</p>
+</script>

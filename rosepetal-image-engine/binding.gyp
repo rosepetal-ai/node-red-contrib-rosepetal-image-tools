@@ -16,7 +16,8 @@
         "src/add-mask.cpp",
         "src/add-masks.cpp",
         "src/add-bbs.cpp",
-        "src/image-align.cpp"
+        "src/image-align.cpp",
+        "src/draw.cpp"
       ],
       "include_dirs": [
         "/usr/include/opencv4",

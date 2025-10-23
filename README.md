@@ -41,6 +41,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | **[crop](docs/nodes/transform/crop.md)** | Extract regions with pixel/normalized coords | Dynamic coordinates, bounds checking |
 | **[padding](docs/nodes/transform/padding.md)** | Add configurable margins | Color customization, flexible sizing |
 | **[filter](docs/nodes/transform/filter.md)** | Apply enhancement filters | Blur, sharpen, edge, emboss, Gaussian |
+| **[draw](docs/nodes/transform/draw.md)** | Overlay points and lines on images | Normalized coordinates, typed inputs, C++ compositing |
 
 ### Mix Nodes - Image Composition
 | Node | Purpose | Key Features |

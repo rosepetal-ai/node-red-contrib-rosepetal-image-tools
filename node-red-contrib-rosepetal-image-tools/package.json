@@ -44,6 +44,7 @@
             "concat": "nodes/mix/concat.js",
             "padding": "nodes/transform/padding.js",
             "filter": "nodes/transform/filter.js",
+            "draw": "nodes/transform/draw.js",
             "mosaic": "nodes/mix/mosaic.js",
             "advanced-mosaic": "nodes/mix/advanced-mosaic.js",
             "blend": "nodes/blend/blend.js",

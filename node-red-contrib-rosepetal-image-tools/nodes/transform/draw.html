@@ -39,6 +39,41 @@
     return null;
   }
 
+  const TABLE_CONFIG = Object.freeze({
+    points: {
+      container: '#points-container',
+      rowClass: 'rp-point-row',
+      columns: [
+        { field: 'x', inputClass: 'point-x' },
+        { field: 'y', inputClass: 'point-y' },
+        { field: 'radius', inputClass: 'point-radius' },
+        { field: 'color', inputClass: 'point-color' },
+        { field: 'opacity', inputClass: 'point-opacity' }
+      ]
+    },
+    lines: {
+      container: '#lines-container',
+      rowClass: 'rp-line-row',
+      columns: [
+        { field: 'x1', inputClass: 'line-x1' },
+        { field: 'y1', inputClass: 'line-y1' },
+        { field: 'x2', inputClass: 'line-x2' },
+        { field: 'y2', inputClass: 'line-y2' },
+        { field: 'thickness', inputClass: 'line-thickness' },
+        { field: 'color', inputClass: 'line-color' },
+        { field: 'opacity', inputClass: 'line-opacity' }
+      ]
+    }
+  });
+
+  function getFieldKeys(column) {
+    const base = column.field;
+    return {
+      typeKey: column.typeKey || (base + 'Type'),
+      valueKey: column.valueKey || (base + 'Value')
+    };
+  }
+
   RED.nodes.registerType('draw', {
     category: 'RP Image',
     color: '#DDA0DD',
@@ -435,60 +470,39 @@
       renderLinesTable();
     },
     oneditsave: function () {
-      const points = [];
-      $('#points-container').find('tr.rp-point-row').each(function () {
-        const row = $(this);
-        const xInput = row.find('.point-x');
-        const yInput = row.find('.point-y');
-        const radiusInput = row.find('.point-radius');
-        const colorInput = row.find('.point-color');
-        const opacityInput = row.find('.point-opacity');
+      function readTableValues(tableKey) {
+        const cfg = TABLE_CONFIG[tableKey];
+        const rows = $(cfg.container).find('tr.' + cfg.rowClass);
+        const values = [];
 
-        points.push({
-          xType: xInput.typedInput('type'),
-          xValue: xInput.typedInput('value'),
-          yType: yInput.typedInput('type'),
-          yValue: yInput.typedInput('value'),
-          radiusType: radiusInput.typedInput('type'),
-          radiusValue: radiusInput.typedInput('value'),
-          colorType: colorInput.typedInput('type'),
-          colorValue: colorInput.typedInput('value'),
-          opacityType: opacityInput.typedInput('type'),
-          opacityValue: opacityInput.typedInput('value')
+        rows.each(function () {
+          const row = $(this);
+          const entry = {};
+
+          cfg.columns.forEach(function (column) {
+            const selector = column.inputClass ? '.' + column.inputClass : null;
+            if (!selector) {
+              return;
+            }
+            const input = row.find(selector);
+            if (!input.length || typeof input.typedInput !== 'function') {
+              return;
+            }
+            const keys = getFieldKeys(column);
+            entry[keys.typeKey] = input.typedInput('type');
+            entry[keys.valueKey] = input.typedInput('value');
+          });
+
+          if (Object.keys(entry).length) {
+            values.push(entry);
+          }
         });
-      });
 
-      const lines = [];
-      $('#lines-container').find('tr.rp-line-row').each(function () {
-        const row = $(this);
-        const x1Input = row.find('.line-x1');
-        const y1Input = row.find('.line-y1');
-        const x2Input = row.find('.line-x2');
-        const y2Input = row.find('.line-y2');
-        const thicknessInput = row.find('.line-thickness');
-        const colorInput = row.find('.line-color');
-        const opacityInput = row.find('.line-opacity');
+        return values;
+      }
 
-        lines.push({
-          x1Type: x1Input.typedInput('type'),
-          x1Value: x1Input.typedInput('value'),
-          y1Type: y1Input.typedInput('type'),
-          y1Value: y1Input.typedInput('value'),
-          x2Type: x2Input.typedInput('type'),
-          x2Value: x2Input.typedInput('value'),
-          y2Type: y2Input.typedInput('type'),
-          y2Value: y2Input.typedInput('value'),
-          thicknessType: thicknessInput.typedInput('type'),
-          thicknessValue: thicknessInput.typedInput('value'),
-          colorType: colorInput.typedInput('type'),
-          colorValue: colorInput.typedInput('value'),
-          opacityType: opacityInput.typedInput('type'),
-          opacityValue: opacityInput.typedInput('value')
-        });
-      });
-
-      this.points = points;
-      this.lines = lines;
+      this.points = readTableValues('points');
+      this.lines = readTableValues('lines');
     }
   });
 })();

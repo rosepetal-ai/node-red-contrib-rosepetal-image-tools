@@ -87,8 +87,13 @@ module.exports = function(RED) {
         // Check file accessibility
         await fs.access(filePath, fs.constants.R_OK);
 
+        // Read encoded file once so we can reuse it for both decoding and debug preview
+        const fileBuffer = await fs.readFile(filePath);
+
         // Use Sharp to decode image with full metadata
-        const { data, info } = await sharp(filePath)
+        const sharpInstance = sharp(fileBuffer);
+        const { data, info } = await sharpInstance
+          .clone()
           .raw()
           .toBuffer({ resolveWithObject: true });
 
@@ -132,9 +137,69 @@ module.exports = function(RED) {
           total: imageFiles.length
         };
 
+        // Debug image display if enabled
+        let debugFormat = null;
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
+          try {
+            let debugWidthRaw = config.debugWidth;
+            const debugWidthType = config.debugWidthType || 'num';
+
+            try {
+              debugWidthRaw = NodeUtils.resolveDimension(
+                node,
+                debugWidthType,
+                config.debugWidth,
+                msg
+              );
+            } catch (resolveErr) {
+              node.warn(`Debug width resolution failed (${resolveErr.message}); using default 200`);
+            }
+
+            const debugWidth = Math.max(1, parseInt(debugWidthRaw, 10) || 200);
+
+            // Prefer sending the original encoded buffer when format is supported
+            let debugSource = outputImageObject;
+            let debugFormatHint = 'raw';
+
+            if (info && info.format) {
+              const normalizedFormat = info.format.toLowerCase();
+              if (normalizedFormat === 'jpeg' || normalizedFormat === 'jpg') {
+                debugSource = fileBuffer;
+                debugFormatHint = 'jpg';
+              } else if (normalizedFormat === 'png') {
+                debugSource = fileBuffer;
+                debugFormatHint = 'png';
+              } else if (normalizedFormat === 'webp') {
+                debugSource = fileBuffer;
+                debugFormatHint = 'webp';
+              }
+            }
+
+            const debugResult = await NodeUtils.debugImageDisplay(
+              debugSource,
+              debugFormatHint,
+              90,
+              node,
+              debugEnabled,
+              debugWidth
+            );
+
+            if (debugResult) {
+              debugFormat = debugResult.formatMessage;
+              msg._folderIn.debug = debugFormat;
+            }
+          } catch (debugError) {
+            node.warn(`Debug display error: ${debugError.message}`);
+          }
+        }
+
         // Update status
-        const statusText = `${currentIndex + 1}/${imageFiles.length}: ${fileName}`;
-        node.status({ fill: "green", shape: "dot", text: statusText });
+        const statusParts = [`${currentIndex + 1}/${imageFiles.length}: ${fileName}`];
+        if (debugFormat) {
+          statusParts.push(debugFormat);
+        }
+        node.status({ fill: "green", shape: "dot", text: statusParts.join(' | ') });
 
         // Send message
         node.send(msg);

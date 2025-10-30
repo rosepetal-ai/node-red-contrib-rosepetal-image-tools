@@ -89,6 +89,8 @@ module.exports = function (RED) {
           NodeUtils.setSuccessStatus(node, 1, elapsed, timing);
         }
 
+        NodeUtils.recordPerformanceMetrics(node, msg, timing || {}, elapsed);
+
         send(msg);
         done && done();
       } catch (err) {
@@ -287,4 +289,3 @@ module.exports = function (RED) {
 
   RED.nodes.registerType('draw', DrawNode);
 };
-

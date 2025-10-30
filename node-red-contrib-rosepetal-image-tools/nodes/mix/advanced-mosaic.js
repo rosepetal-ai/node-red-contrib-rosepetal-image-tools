@@ -129,6 +129,8 @@ module.exports = function (RED) {
           });
         }
 
+        NodeUtils.recordPerformanceMetrics(node, msg, timing, totalTime);
+
         send(msg);
         done && done();
       } catch (err) {

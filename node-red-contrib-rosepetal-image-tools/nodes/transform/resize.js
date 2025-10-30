@@ -135,6 +135,12 @@ module.exports = function (RED) {
           });
         }
 
+        NodeUtils.recordPerformanceMetrics(node, msg, {
+          convertMs: totalConvertMs,
+          encodeMs: encodeMs,
+          taskMs: totalTaskMs
+        }, elapsedTime);
+
         RED.util.setMessageProperty(msg, outputPath, out);
 
         send(msg);

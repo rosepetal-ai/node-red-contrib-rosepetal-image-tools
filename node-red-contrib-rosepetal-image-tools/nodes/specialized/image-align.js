@@ -229,6 +229,8 @@ module.exports = function (RED) {
           NodeUtils.setSuccessStatus(node, 1, total, result.timing);
         }
 
+        NodeUtils.recordPerformanceMetrics(node, msg, result.timing || {}, total);
+
         /* ▸ Write the result back to msg ---------------------------------- */
         RED.util.setMessageProperty(msg, outputPath, result.image);
         

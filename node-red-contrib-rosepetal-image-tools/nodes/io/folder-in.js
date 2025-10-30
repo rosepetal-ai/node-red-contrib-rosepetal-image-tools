@@ -5,6 +5,7 @@
  * @author Rosepetal
  */
 
+const { performance } = require('perf_hooks');
 const sharp = require('sharp');
 const fs = require('fs').promises;
 const path = require('path');
@@ -79,6 +80,7 @@ module.exports = function(RED) {
       }
 
       try {
+        const startTime = performance.now();
         const filePath = imageFiles[currentIndex];
         const fileName = path.basename(filePath);
 
@@ -92,10 +94,12 @@ module.exports = function(RED) {
 
         // Use Sharp to decode image with full metadata
         const sharpInstance = sharp(fileBuffer);
+        const decodeStart = performance.now();
         const { data, info } = await sharpInstance
           .clone()
           .raw()
           .toBuffer({ resolveWithObject: true });
+        const decodeMs = performance.now() - decodeStart;
 
         // Determine colorSpace from Sharp info
         let colorSpace;
@@ -200,6 +204,13 @@ module.exports = function(RED) {
           statusParts.push(debugFormat);
         }
         node.status({ fill: "green", shape: "dot", text: statusParts.join(' | ') });
+
+        const totalTime = performance.now() - startTime;
+        const taskMs = Math.max(0, totalTime - decodeMs);
+        NodeUtils.recordPerformanceMetrics(node, msg, {
+          convertMs: decodeMs,
+          taskMs: taskMs
+        }, totalTime);
 
         // Send message
         node.send(msg);

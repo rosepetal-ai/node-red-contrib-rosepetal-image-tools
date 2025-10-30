@@ -112,11 +112,17 @@ module.exports = function (RED) {
           /* node status */
         node.status({
           fill:'green', shape:'dot',
-          text:`OK: ${imgs.length} img in ${(performance.now()-t0).toFixed(2)} ms `
+          text:`OK: ${imgs.length} img in ${elapsedTime.toFixed(2)} ms `
               + `(conv ${(cMs+eMs).toFixed(2)} | task ${tMs.toFixed(2)} ms)`
         });
 
         }
+
+        NodeUtils.recordPerformanceMetrics(node, msg, {
+          convertMs: cMs,
+          encodeMs: eMs,
+          taskMs: tMs
+        }, elapsedTime);
 
         send(msg); done && done();
       } catch (err) {

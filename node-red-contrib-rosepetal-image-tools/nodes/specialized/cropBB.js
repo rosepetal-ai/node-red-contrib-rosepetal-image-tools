@@ -85,6 +85,12 @@ module.exports = function (RED) {
         if (validBboxes.length === 0) {
           node.warn(`No valid bounding boxes found with confidence >= ${minConfidence}`);
           RED.util.setMessageProperty(msg, outputPath, []);
+          const elapsed = performance.now() - t0;
+          NodeUtils.recordPerformanceMetrics(node, msg, {
+            convertMs: 0,
+            encodeMs: 0,
+            taskMs: 0
+          }, elapsed);
           if (done) done();
           return;
         }
@@ -156,6 +162,12 @@ module.exports = function (RED) {
           { convertMs: totalConvertMs, taskMs: totalTaskMs, encodeMs: totalEncodeMs },
           debugFormat
         );
+
+        NodeUtils.recordPerformanceMetrics(node, msg, {
+          convertMs: totalConvertMs,
+          encodeMs: totalEncodeMs,
+          taskMs: totalTaskMs
+        }, totalTime);
 
         node.send(msg);
         if (done) done();

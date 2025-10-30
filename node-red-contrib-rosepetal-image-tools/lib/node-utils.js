@@ -368,5 +368,62 @@ module.exports = function(RED) {
     });
   }
 
+  /**
+   * Normalizes the performance metric key based on the node's display name.
+   * Falls back to the node type when the custom name is missing.
+   * @param {object} node - Node-RED node instance
+   * @returns {string} sanitized key
+   */
+  utils.getPerformanceKey = function(node) {
+    const base = (node && node.name && String(node.name).trim()) ||
+                 (node && node.type) ||
+                 'node';
+    return String(base)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'node';
+  }
+
+  /**
+   * Records performance metrics on the outgoing message under
+   * msg.performance.rpimage.{nodeNameKey}.
+   * @param {object} node - Node-RED node instance
+   * @param {object} msg - The message object being emitted
+   * @param {object} timings - Timing breakdown { convertMs, encodeMs, taskMs, conversion, task }
+   * @param {number|null} totalTime - Total processing time in ms
+   */
+  utils.recordPerformanceMetrics = function(node, msg, timings = {}, totalTime = null) {
+    if (!msg || !node) {
+      return;
+    }
+    
+    const key = utils.getPerformanceKey(node);
+    const path = `performance.rpimage.${key}`;
+
+    const convertMs = typeof timings.conversion === 'number'
+      ? timings.conversion
+      : (typeof timings.convertMs === 'number' ? timings.convertMs : 0) +
+        (typeof timings.encodeMs === 'number' ? timings.encodeMs : 0);
+    const taskMs = typeof timings.task === 'number'
+      ? timings.task
+      : (typeof timings.taskMs === 'number' ? timings.taskMs : null);
+    const totalMs = typeof totalTime === 'number'
+      ? totalTime
+      : (typeof timings.total === 'number' ? timings.total : null);
+
+    const payload = {
+      conversion: Number.isFinite(convertMs) ? convertMs : null,
+      task: Number.isFinite(taskMs) ? taskMs : null,
+      total: Number.isFinite(totalMs) ? totalMs : null
+    };
+
+    try {
+      RED.util.setMessageProperty(msg, path, payload, true);
+    } catch (err) {
+      node.warn(`Failed to record performance metrics: ${err.message}`);
+    }
+  }
+
   return utils;
 }

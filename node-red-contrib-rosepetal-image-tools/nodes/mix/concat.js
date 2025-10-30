@@ -87,6 +87,8 @@ module.exports = function (RED) {
           NodeUtils.setSuccessStatus(node, 1, total, timing);
         }
 
+        NodeUtils.recordPerformanceMetrics(node, msg, timing || {}, total);
+
         send(msg);
         done && done();
       } catch (err) {

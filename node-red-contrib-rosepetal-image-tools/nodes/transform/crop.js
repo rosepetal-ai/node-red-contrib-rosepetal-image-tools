@@ -122,6 +122,12 @@ module.exports = function (RED) {
           });
         }
 
+        NodeUtils.recordPerformanceMetrics(node, msg, {
+          convertMs: totalConvertMs,
+          encodeMs: totalEncodeMs,
+          taskMs: totalTaskMs
+        }, dur);
+
         send(msg);
         done && done();
       } catch (err) {

@@ -17,6 +17,7 @@ module.exports = function(RED) {
     
     // Initialize node state
     node.active = config.active !== false; // Default to true if not set
+    let diskCheckErrorLogged = false;
     
     // Update node appearance based on active state
     updateNodeStatus();
@@ -217,6 +218,15 @@ module.exports = function(RED) {
           }
         }
 
+        const diskInfo = await getDiskUsageInfo(folderPath);
+        if (diskInfo && diskInfo.usedRatio >= 0.9) {
+          const usedPercent = (diskInfo.usedRatio * 100).toFixed(1);
+          node.warn(`Storage at "${folderPath}" is ${usedPercent}% full. Skipping image save to avoid exhausting disk space.`);
+          node.status({ fill: "yellow", shape: "ring", text: `disk ${usedPercent}% full` });
+          if (done) done();
+          return;
+        }
+
         // Convert image to buffer based on format
         let outputBuffer;
         const quality = parseInt(config.outputQuality, 10) || 90;
@@ -379,6 +389,38 @@ module.exports = function(RED) {
         return true;
       } catch {
         return false;
+      }
+    }
+
+    async function getDiskUsageInfo(targetPath) {
+      try {
+        const stats = await fs.statfs(targetPath);
+        const blockSize = Number(stats.bsize) || 0;
+        const totalBlocks = Number(stats.blocks) || 0;
+        const availableBlocks = Number(
+          stats.bavail !== undefined ? stats.bavail :
+          stats.bfree !== undefined ? stats.bfree : 0
+        );
+
+        const totalBytes = totalBlocks * blockSize;
+        const availableBytes = availableBlocks * blockSize;
+
+        if (totalBytes <= 0) {
+          return null;
+        }
+
+        const usedRatio = 1 - (availableBytes / totalBytes);
+        return {
+          totalBytes,
+          availableBytes,
+          usedRatio
+        };
+      } catch (err) {
+        if (!diskCheckErrorLogged) {
+          node.warn(`Disk usage check failed for "${targetPath}": ${err.message}`);
+          diskCheckErrorLogged = true;
+        }
+        return null;
       }
     }
 

@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <algorithm>
 #include <utility>
 #include "utils.h"
 
@@ -336,6 +337,26 @@ private:
             throw std::runtime_error("Unsupported image format for alignment");
         }
     }
+
+    // Prepare grayscale image for ECC by normalizing mean/variance
+    bool PrepareAlignmentImage(const cv::Mat& src, cv::Mat& dst) {
+        constexpr double eps = 1e-6;
+
+        src.convertTo(dst, CV_32F);
+        cv::Scalar mean, stddev;
+        cv::meanStdDev(dst, mean, stddev);
+
+        dst -= static_cast<float>(mean[0]);
+
+        double stdVal = stddev[0];
+        if (!std::isfinite(stdVal) || stdVal <= eps) {
+            return false;
+        }
+
+        float scaleFactor = static_cast<float>(1.0 / stdVal);
+        dst *= scaleFactor;
+        return true;
+    }
     
     // Find transformation matrix using ECC algorithm
     bool FindTransformation(const cv::Mat& refGray, const cv::Mat& targetGray, cv::Mat& transformMatrix) {
@@ -344,12 +365,23 @@ private:
             int width = refGray.cols;
             
             // Downsample images for faster alignment
-            int scaledWidth = static_cast<int>(width * scale);
-            int scaledHeight = static_cast<int>(height * scale);
+            int scaledWidth = std::max(1, static_cast<int>(std::round(width * scale)));
+            int scaledHeight = std::max(1, static_cast<int>(std::round(height * scale)));
             
             cv::Mat refSmall, targetSmall;
             cv::resize(refGray, refSmall, cv::Size(scaledWidth, scaledHeight));
             cv::resize(targetGray, targetSmall, cv::Size(scaledWidth, scaledHeight));
+
+            // Normalize exposure/contrast differences so ECC is less sensitive to lighting changes
+            cv::Mat refPrepared, targetPrepared;
+            bool refPreparedOk = PrepareAlignmentImage(refSmall, refPrepared);
+            bool targetPreparedOk = PrepareAlignmentImage(targetSmall, targetPrepared);
+
+            if (!refPreparedOk || !targetPreparedOk) {
+                // Fallback to min-max normalization when variance is extremely low
+                cv::normalize(refPrepared, refPrepared, 0.0f, 1.0f, cv::NORM_MINMAX);
+                cv::normalize(targetPrepared, targetPrepared, 0.0f, 1.0f, cv::NORM_MINMAX);
+            }
             
             // Initialize transformation matrix for translation-only motion
             transformMatrix = cv::Mat::eye(2, 3, CV_32F);
@@ -359,7 +391,7 @@ private:
                                     maxIterations, terminationEps);
             
             // Find transformation using ECC
-            double correlation = cv::findTransformECC(refSmall, targetSmall, transformMatrix, 
+            double correlation = cv::findTransformECC(refPrepared, targetPrepared, transformMatrix, 
                                                     cv::MOTION_TRANSLATION, criteria);
             
             // Scale transformation matrix back to full resolution

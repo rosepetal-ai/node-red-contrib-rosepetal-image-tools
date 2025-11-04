@@ -1,0 +1,75 @@
+<script type="text/javascript">
+    RED.nodes.registerType('queue', {
+        category: 'RP Image',
+        color: '#87CEEB',
+        defaults: {
+            name: { value: "" },
+            maxQueueSize: { value: 0 },
+            intervalMilliseconds: { value: 0 },
+            timeout: { value: 0 }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-clock-o",
+        label: function() {
+            if (this.name) return this.name;
+            return "Queue";
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="queue">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-maxQueueSize"><i class="fa fa-list"></i> Max Queue Size</label>
+        <input type="number" id="node-input-maxQueueSize" min="0" step="1" style="width: 70%;" placeholder="0">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-intervalMilliseconds"><i class="fa fa-clock-o"></i> Interval (ms)</label>
+        <input type="number" id="node-input-intervalMilliseconds" min="0" step="1" style="width: 70%;" placeholder="0">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-timeout"><i class="fa fa-hourglass-half"></i> Timeout (ms)</label>
+        <input type="number" id="node-input-timeout" min="0" step="1" style="width: 70%;" placeholder="0">
+    </div>
+
+    <div class="form-tips">
+        <b>0</b> means "no limit" for Max Queue Size and Timeout, and allows immediate sending for Interval.
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="queue">
+    <p>Buffers incoming messages and releases them with optional rate limiting and expiration control.</p>
+
+    <h3>Details</h3>
+    <p>The queue node regulates message flow by storing messages up to a configured size, enforcing a minimum delay between outputs, and dropping messages that stay in the queue longer than the allowed timeout.</p>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Max Queue Size <span class="property-type">number</span></dt>
+        <dd>Maximum number of messages stored. Set to 0 for unlimited. Incoming messages beyond the limit are ignored.</dd>
+        <dt>Interval (ms) <span class="property-type">number</span></dt>
+        <dd>Minimum time to wait between forwarded messages. Set to 0 to send immediately whenever messages are available.</dd>
+        <dt>Timeout (ms) <span class="property-type">number</span></dt>
+        <dd>Maximum lifetime for a queued message. Messages exceeding this duration are discarded. Set to 0 to disable timeout.</dd>
+    </dl>
+
+    <h3>Behavior</h3>
+    <ul>
+        <li>Messages are enqueued until the configured capacity is reached.</li>
+        <li>Once the queue contains items and the interval requirement is met, the oldest message is emitted.</li>
+        <li>If enough time has already passed since the last output, the next message is sent immediately.</li>
+        <li>Messages exceeding the timeout are removed from the queue before sending.</li>
+    </ul>
+
+    <h3>Status</h3>
+    <p>The node status reflects whether the queue is idle, collecting, or sending messages.</p>
+</script>

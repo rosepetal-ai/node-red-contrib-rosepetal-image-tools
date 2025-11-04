@@ -32,6 +32,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | **[array-in](docs/nodes/io/array-in.md)** | Collect data into positioned arrays | Dynamic positioning, batch collection |
 | **[array-out](docs/nodes/io/array-out.md)** | Assemble arrays from multiple sources | Timeout protection, ordered assembly |
 | **[array-select](docs/nodes/io/array-select.md)** | Extract elements with flexible selection | Python-like slicing, range selection |
+| **[queue](docs/nodes/io/queue.md)** | Buffer and pace message delivery | FIFO gating, rate control, timed expiry |
 
 ### Transform Nodes - Image Processing
 | Node | Purpose | Key Features |

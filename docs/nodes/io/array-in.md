@@ -20,12 +20,12 @@ The `array-in` node collects data from various sources and tags it with position
 - **Dynamic Position**: Array position can be resolved from message properties
 
 ### Outputs
-The node adds metadata to the message and sets payload for array assembly:
+The node adds metadata to the message and mirrors the extracted data into the payload only when reading from `msg.payload`. For other input paths, the existing payload remains untouched while the metadata provides access to the collected value:
 
 ```javascript
 {
   ...originalMessage,
-  payload: any,           // The extracted data (same as meta.arrayData)
+  payload: any,           // Unchanged unless input is msg.payload; when mirrored matches meta.arrayData
   meta: {
     arrayPosition: number,  // Index where this data belongs in array
     arrayData: any         // The extracted data from input path

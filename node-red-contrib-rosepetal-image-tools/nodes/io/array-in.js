@@ -67,10 +67,20 @@ module.exports = function(RED) {
           msg.meta = {};
         }
 
-        // Add array metadata and set payload
+        // Add array metadata and optionally mirror into payload
         msg.meta.arrayPosition = resolvedPosition;
         msg.meta.arrayData = arrayData;
-        msg.payload = arrayData; // Put data in payload for processing
+
+        const normalizedPath = typeof node.inputPath === 'string'
+          ? node.inputPath.trim()
+          : node.inputPath;
+        const shouldMirrorPayload =
+          node.inputPathType === 'msg' &&
+          normalizedPath === 'payload';
+
+        if (shouldMirrorPayload) {
+          msg.payload = arrayData;
+        }
 
         // Update status
         node.status({ 

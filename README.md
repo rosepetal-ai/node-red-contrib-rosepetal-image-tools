@@ -63,6 +63,12 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 | **[cropBB](docs/nodes/specialized/cropBB.md)** | Extract crops from AI bounding boxes | Object detection integration, confidence filtering |
 | **[image-align](docs/nodes/specialized/image-align.md)** | Ultra-fast image alignment using ECC algorithm | Translation correction, speed presets, real-time processing |
 
+### Utility Nodes - Diagnostics
+| Node | Purpose | Key Features |
+|------|---------|-------------|
+| **clean-debug** | Safe debug output for large payloads | Buffer cleaning, sidebar/console toggles, enable/disable button |
+| **[block-detect](docs/nodes/util/block-detect.md)** | Background watchdog for event-loop blocking | No wires, configurable thresholds, live status metrics |
+
 
 ## Architecture & Performance
 

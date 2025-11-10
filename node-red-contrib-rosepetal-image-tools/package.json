@@ -52,7 +52,8 @@
             "add-mask": "nodes/blend/add-mask.js",
             "add-masks": "nodes/blend/add-masks.js",
             "add-bbs": "nodes/blend/add-bbs.js",
-            "clean-debug": "nodes/util/clean-debug.js"
+            "clean-debug": "nodes/util/clean-debug.js",
+            "block-detect": "nodes/util/block-detect.js"
         }
     },
     "dependencies": {

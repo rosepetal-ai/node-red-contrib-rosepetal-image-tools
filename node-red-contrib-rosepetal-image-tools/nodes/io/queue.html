@@ -4,6 +4,7 @@
         color: '#87CEEB',
         defaults: {
             name: { value: "" },
+            mode: { value: "queue-size" },
             maxQueueSize: { value: 0 },
             intervalMilliseconds: { value: 0 },
             timeout: { value: 0 }
@@ -14,6 +15,31 @@
         label: function() {
             if (this.name) return this.name;
             return "Queue";
+        },
+        oneditprepare: function() {
+            const modeField = $("#node-input-mode");
+            const queueRow = $("#node-row-maxQueueSize");
+            const timeoutRow = $("#node-row-timeout");
+            const queueTip = $("#node-tip-maxQueueSize");
+            const timeoutTip = $("#node-tip-timeout");
+
+            function toggleModeFields() {
+                const mode = modeField.val();
+                if (mode === 'timeout') {
+                    queueRow.hide();
+                    queueTip.hide();
+                    timeoutRow.show();
+                    timeoutTip.show();
+                } else {
+                    queueRow.show();
+                    queueTip.show();
+                    timeoutRow.hide();
+                    timeoutTip.hide();
+                }
+            }
+
+            modeField.on("change", toggleModeFields);
+            toggleModeFields();
         }
     });
 </script>
@@ -27,49 +53,67 @@
     <hr>
 
     <div class="form-row">
+        <label for="node-input-mode"><i class="fa fa-exchange"></i> Mode</label>
+        <select id="node-input-mode">
+            <option value="queue-size">Queue Size Limit</option>
+            <option value="timeout">Timeout</option>
+        </select>
+    </div>
+    <div class="form-tips">
+        <b>Tip:</b> Pick a mode to decide whether the node caps how many messages can wait or keeps unlimited entries that expire after a timeout.
+    </div>
+
+    <div class="form-row" id="node-row-maxQueueSize">
         <label for="node-input-maxQueueSize"><i class="fa fa-list"></i> Max Queue Size</label>
         <input type="number" id="node-input-maxQueueSize" min="0" step="1" style="width: 70%;" placeholder="0">
+    </div>
+    <div class="form-tips" id="node-tip-maxQueueSize">
+        <b>Tip:</b> When using the queue-size mode, this field limits how many messages are buffered; extra messages are dropped until space frees up.
+    </div>
+
+    <div class="form-row" id="node-row-timeout">
+        <label for="node-input-timeout"><i class="fa fa-hourglass-half"></i> Timeout (ms)</label>
+        <input type="number" id="node-input-timeout" min="0" step="1" style="width: 70%;" placeholder="0">
+    </div>
+    <div class="form-tips" id="node-tip-timeout">
+        <b>Tip:</b> Timeout mode keeps buffering all messages but removes entries that stay longer than this value, keeping the data fresh.
     </div>
 
     <div class="form-row">
         <label for="node-input-intervalMilliseconds"><i class="fa fa-clock-o"></i> Interval (ms)</label>
         <input type="number" id="node-input-intervalMilliseconds" min="0" step="1" style="width: 70%;" placeholder="0">
     </div>
-
-    <div class="form-row">
-        <label for="node-input-timeout"><i class="fa fa-hourglass-half"></i> Timeout (ms)</label>
-        <input type="number" id="node-input-timeout" min="0" step="1" style="width: 70%;" placeholder="0">
-    </div>
-
     <div class="form-tips">
-        <b>0</b> means "no limit" for Max Queue Size and Timeout, and allows immediate sending for Interval.
+        <b>Tip:</b> Interval enforces a minimum delay between forwarded messages; set to 0 to send as fast as possible.
     </div>
 </script>
 
 <script type="text/x-red" data-help-name="queue">
     <p>Buffers incoming messages and releases them with optional rate limiting and expiration control.</p>
 
-    <h3>Details</h3>
-    <p>The queue node regulates message flow by storing messages up to a configured size, enforcing a minimum delay between outputs, and dropping messages that stay in the queue longer than the allowed timeout.</p>
+    <h3>Mode</h3>
+    <p>Choose between a queue-size limit or a timeout strategy; only the controls for the selected mode are applied.</p>
 
-    <h3>Properties</h3>
+    <h3>Configuration</h3>
     <dl class="message-properties">
+        <dt>Mode <span class="property-type">enum</span></dt>
+        <dd>Select <code>Queue Size Limit</code> to cap the number of buffered messages or <code>Timeout</code> to drop entries after a duration.</dd>
         <dt>Max Queue Size <span class="property-type">number</span></dt>
-        <dd>Maximum number of messages stored. Set to 0 for unlimited. Incoming messages beyond the limit are ignored.</dd>
-        <dt>Interval (ms) <span class="property-type">number</span></dt>
-        <dd>Minimum time to wait between forwarded messages. Set to 0 to send immediately whenever messages are available.</dd>
+        <dd>Valid only in queue-size mode. Determines how many messages can be held before incoming data is ignored.</dd>
         <dt>Timeout (ms) <span class="property-type">number</span></dt>
-        <dd>Maximum lifetime for a queued message. Messages exceeding this duration are discarded. Set to 0 to disable timeout.</dd>
+        <dd>Valid only in timeout mode. Messages that stay longer than this millisecond value are removed before they reach the output.</dd>
+        <dt>Interval (ms) <span class="property-type">number</span></dt>
+        <dd>Minimum time to wait between forwarded messages. Zero means send immediately when data is available.</dd>
     </dl>
 
     <h3>Behavior</h3>
     <ul>
-        <li>Messages are enqueued until the configured capacity is reached.</li>
-        <li>Once the queue contains items and the interval requirement is met, the oldest message is emitted.</li>
-        <li>If enough time has already passed since the last output, the next message is sent immediately.</li>
-        <li>Messages exceeding the timeout are removed from the queue before sending.</li>
+        <li>Messages are processed in FIFO order while respecting the selected mode.</li>
+        <li>Queue-size mode enforces a hard cap, rejecting excess messages.</li>
+        <li>Timeout mode keeps buffering but evicts stale entries before sending.</li>
+        <li>The interval ensures a steady pace by adding delays between sends when configured.</li>
     </ul>
 
     <h3>Status</h3>
-    <p>The node status reflects whether the queue is idle, collecting, or sending messages.</p>
+    <p>The node status reflects whether the queue is idle, holding messages, or actively sending.</p>
 </script>

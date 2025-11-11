@@ -13,12 +13,21 @@ module.exports = function (RED) {
     const parsedMax = parseInt(config.maxQueueSize, 10);
     const parsedInterval = parseInt(config.intervalMilliseconds, 10);
     const parsedTimeout = parseInt(config.timeout, 10);
+    const parsedMode = config.mode;
 
     node.maxQueueSize = Number.isInteger(parsedMax) && parsedMax > 0 ? parsedMax : 0;
     node.intervalMs =
       Number.isInteger(parsedInterval) && parsedInterval > 0 ? parsedInterval : 0;
     node.timeoutMs =
       Number.isInteger(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : 0;
+
+    node.mode =
+      parsedMode === 'timeout' || parsedMode === 'queue-size'
+        ? parsedMode
+        : 'legacy';
+
+    const useQueueLimit = node.mode !== 'timeout';
+    const useTimeout = node.mode !== 'queue-size';
 
     /* ────────────────────────────
        ░░ 2.  Internal state      ░░
@@ -54,7 +63,7 @@ module.exports = function (RED) {
     }
 
     function pruneExpired() {
-      if (node.timeoutMs <= 0 || state.queue.length === 0) {
+      if (!useTimeout || node.timeoutMs <= 0 || state.queue.length === 0) {
         return 0;
       }
 
@@ -147,6 +156,7 @@ module.exports = function (RED) {
         pruneExpired();
 
         if (
+          useQueueLimit &&
           node.maxQueueSize > 0 &&
           state.queue.length >= node.maxQueueSize
         ) {

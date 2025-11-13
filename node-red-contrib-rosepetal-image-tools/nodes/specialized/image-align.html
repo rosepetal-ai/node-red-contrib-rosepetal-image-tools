@@ -26,8 +26,11 @@
             polygonPathType: { value: "msg" },
             // Custom parameters
             customScale: { value: 0.2 },
+            customScaleType: { value: "num" },
             customMaxIterations: { value: 10 },
-            customTerminationEps: { value: 0.1 }
+            customMaxIterationsType: { value: "num" },
+            customTerminationEps: { value: 0.1 },
+            customTerminationEpsType: { value: "num" }
         },
         inputs: 1,
         outputs: 1,
@@ -64,6 +67,23 @@
                 default: 'num',
                 types: ['num', 'msg', 'flow', 'global'],
                 typeField: "#node-input-debugWidthType"
+            });
+
+            // Initialize custom parameter TypedInputs
+            $("#node-input-customScale").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-customScaleType"
+            });
+            $("#node-input-customMaxIterations").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-customMaxIterationsType"
+            });
+            $("#node-input-customTerminationEps").typedInput({
+                default: 'num',
+                types: ['num', 'msg', 'flow', 'global'],
+                typeField: "#node-input-customTerminationEpsType"
             });
 
             // Output Format Logic
@@ -363,17 +383,20 @@
     <div id="custom-parameters" style="display: none;">
         <div class="form-row">
             <label for="node-input-customScale"><i class="fa fa-search"></i> Scale</label>
-            <input type="number" id="node-input-customScale" min="0.1" max="1.0" step="0.1" style="width: 80px;">
+            <input type="text" id="node-input-customScale" style="width: 200px;">
+            <input type="hidden" id="node-input-customScaleType">
             <span style="margin-left: 10px; color: #666;">0.1-1.0 (image downscale factor)</span>
         </div>
         <div class="form-row">
             <label for="node-input-customMaxIterations"><i class="fa fa-repeat"></i> Max Iterations</label>
-            <input type="number" id="node-input-customMaxIterations" min="1" max="200" step="1" style="width: 80px;">
+            <input type="text" id="node-input-customMaxIterations" style="width: 200px;">
+            <input type="hidden" id="node-input-customMaxIterationsType">
             <span style="margin-left: 10px; color: #666;">1-200 (alignment iterations)</span>
         </div>
         <div class="form-row">
             <label for="node-input-customTerminationEps"><i class="fa fa-bullseye"></i> Termination Eps</label>
-            <input type="number" id="node-input-customTerminationEps" min="0.000001" max="0.1" step="0.001" style="width: 80px;">
+            <input type="text" id="node-input-customTerminationEps" style="width: 200px;">
+            <input type="hidden" id="node-input-customTerminationEpsType">
             <span style="margin-left: 10px; color: #666;">0.000001-0.1 (convergence threshold)</span>
         </div>
     </div>

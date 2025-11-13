@@ -137,11 +137,31 @@ module.exports = function (RED) {
         // Set alignment parameters based on preset
         let scale, maxIterations, terminationEps;
         if (preset === 'custom') {
-          // Use custom parameters from configuration
-          scale = parseFloat(config.customScale) || 0.2;
-          maxIterations = parseInt(config.customMaxIterations) || 10;
-          terminationEps = parseFloat(config.customTerminationEps) || 1e-1;
-          
+          // Resolve custom parameters from msg/flow/global
+          scale = NodeUtils.resolveDimension(
+            node,
+            config.customScaleType || 'num',
+            config.customScale,
+            msg
+          );
+          scale = parseFloat(scale) || 0.2;
+
+          maxIterations = NodeUtils.resolveDimension(
+            node,
+            config.customMaxIterationsType || 'num',
+            config.customMaxIterations,
+            msg
+          );
+          maxIterations = parseInt(maxIterations) || 10;
+
+          terminationEps = NodeUtils.resolveDimension(
+            node,
+            config.customTerminationEpsType || 'num',
+            config.customTerminationEps,
+            msg
+          );
+          terminationEps = parseFloat(terminationEps) || 1e-1;
+
           // Validate ranges
           scale = Math.max(0.1, Math.min(1.0, scale));
           maxIterations = Math.max(1, Math.min(200, maxIterations));

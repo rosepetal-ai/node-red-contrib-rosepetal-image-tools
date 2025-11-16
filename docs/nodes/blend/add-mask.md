@@ -11,7 +11,6 @@ The `add-mask` node applies polygon-based masks to images using coordinate array
 - **Quality Control**: Overlay inspection results on products using detected boundaries
 - **Medical Analysis**: Highlight detected anomalies or structures with polygon masks
 
-![Add-Mask Demo](../../../assets/nodes/blend/add-mask-demo.gif)
 *[PLACEHOLDER - Add GIF showing various masking operations including product cutouts and artistic effects]*
 
 ## Input/Output Specification

@@ -11,7 +11,6 @@ The `advanced-mosaic` node provides sophisticated layout capabilities beyond bas
 - **Dashboard Design**: Position charts and data visualizations with precise control
 - **Poster Creation**: Design promotional materials with sophisticated image arrangements
 
-![Advanced Mosaic Demo](../../../assets/nodes/mix/advanced-mosaic-demo.gif)
 *[PLACEHOLDER - Add GIF showing complex layouts with custom positioning and variable cell sizes]*
 
 ## Input/Output Specification

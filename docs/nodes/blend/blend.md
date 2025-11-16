@@ -11,7 +11,6 @@ The `blend` node combines two images using alpha blending techniques, allowing f
 - **Product Photography**: Combine product shots with environmental backgrounds
 - **UI/UX Design**: Create layered interface elements with transparency effects
 
-![Blend Demo](../../../assets/nodes/blend/blend-demo.gif)
 *[PLACEHOLDER - Add GIF showing various blending operations including opacity, transparency, and color removal]*
 
 ## Input/Output Specification

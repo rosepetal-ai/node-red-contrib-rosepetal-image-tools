@@ -13,7 +13,6 @@ The `image-align` node provides ultra-fast image alignment using OpenCV's Enhanc
 - **Augmented Reality**: Register camera feeds with reference markers for AR overlay
 - **Time-Lapse Photography**: Stabilize sequences by aligning frames to eliminate camera shake
 
-![Image-Align Demo](../../../assets/nodes/specialized/image-align-demo.gif)
 *[PLACEHOLDER - Add GIF showing before/after alignment of two shifted images]*
 
 ## Input/Output Specification

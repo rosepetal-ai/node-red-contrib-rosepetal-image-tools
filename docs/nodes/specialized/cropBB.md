@@ -11,7 +11,6 @@ The `cropBB` node is specialized for AI/ML workflows, extracting image crops fro
 - **Medical Imaging**: Extract abnormalities or regions of interest from diagnostic scans
 - **E-commerce Automation**: Extract product images from catalog photos using AI detection
 
-![CropBB Demo](../../../assets/nodes/specialized/cropBB-demo.gif)
 *[PLACEHOLDER - Add GIF showing AI detection results being converted to individual cropped objects]*
 
 ## Input/Output Specification

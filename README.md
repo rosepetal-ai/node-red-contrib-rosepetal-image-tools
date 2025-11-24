@@ -29,6 +29,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 |------|---------|-------------|
 | **[image-in](docs/nodes/io/image-in.md)** | Load images from filesystem | JPEG/PNG/WebP/etc. support, Sharp backend |
 | **[image-out](docs/nodes/io/image-out.md)** | Save images with timestamp naming | Auto-naming, overwrite protection, format conversion |
+| **[save-file](docs/nodes/io/save-file.md)** | Write any payload to disk | Auto-detect images/JSON/text, overwrite guard, format control |
 | **[array-in](docs/nodes/io/array-in.md)** | Collect data into positioned arrays | Dynamic positioning, batch collection |
 | **[array-out](docs/nodes/io/array-out.md)** | Assemble arrays from multiple sources | Timeout protection, ordered assembly |
 | **[array-select](docs/nodes/io/array-select.md)** | Extract elements with flexible selection | Python-like slicing, range selection |

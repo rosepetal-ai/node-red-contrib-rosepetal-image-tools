@@ -37,6 +37,7 @@
             "array-out": "nodes/io/array-out.js",
             "array-select": "nodes/io/array-select.js",
             "queue": "nodes/io/queue.js",
+            "save-file": "nodes/io/save-file.js",
             "cropBB": "nodes/specialized/cropBB.js",
             "image-align": "nodes/specialized/image-align.js",
             "resize": "nodes/transform/resize.js",

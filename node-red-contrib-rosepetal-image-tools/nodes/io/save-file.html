@@ -1,0 +1,243 @@
+<script type="text/javascript">
+    RED.nodes.registerType('save-file', {
+        category: 'RP Image',
+        color: '#87CEEB',
+        defaults: {
+            name: { value: "" },
+            inputPath: { value: "payload" },
+            inputPathType: { value: "msg" },
+            folderPath: { value: "", required: true },
+            folderPathType: { value: "str" },
+            filename: { value: "" },
+            filenameType: { value: "str" },
+            fileType: { value: "auto" },
+            imageFormat: { value: "jpg" },
+            imageQuality: { value: 90 },
+            pngOptimize: { value: false },
+            jsonIndent: { value: 2 },
+            overwriteProtection: { value: "true" },
+            outputPath: { value: "savedFile" },
+            outputPathType: { value: "msg" }
+        },
+        inputs: 1,
+        outputs: 1,
+        icon: "font-awesome/fa-save",
+        label: function () {
+            return this.name || "Save File";
+        },
+        oneditprepare: function () {
+            const jsonataTypeOption = {
+                value: 'jsonata',
+                label: 'JSONata',
+                icon: 'red/images/typedInput/expr.svg'
+            };
+
+            $("#node-input-inputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-inputPathType"
+            });
+
+            $("#node-input-folderPath").typedInput({
+                default: 'str',
+                types: ['str', 'env', 'msg', 'flow', 'global'],
+                typeField: "#node-input-folderPathType"
+            });
+
+            const filenameTypes = ['str', 'msg', 'flow', 'global', jsonataTypeOption];
+
+            $("#node-input-filename").typedInput({
+                default: 'str',
+                types: filenameTypes,
+                typeField: "#node-input-filenameType"
+            });
+
+            $("#node-input-outputPath").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-outputPathType"
+            });
+
+            const fileTypeField = $("#node-input-fileType");
+            const imageFormatField = $("#node-input-imageFormat");
+            const imageFields = $(".savefile-image-options");
+            const jsonFields = $(".savefile-json-options");
+            const pngOnlyFields = $(".savefile-png-only");
+            const qualityFields = $(".savefile-quality");
+            const imageSeparators = $(".savefile-image-separator");
+            const jsonSeparators = $(".savefile-json-separator");
+            const autoSeparators = $(".savefile-auto-separator");
+
+            function toggleFields() {
+                const current = fileTypeField.val();
+                imageFields.toggle(current === 'image' || current === 'auto');
+                jsonFields.toggle(current === 'json' || current === 'auto');
+                toggleImageFormatFields();
+                toggleSeparators();
+            }
+
+            function toggleImageFormatFields() {
+                const fmt = imageFormatField.val();
+                const showImage = fileTypeField.val() === 'image' || fileTypeField.val() === 'auto';
+                pngOnlyFields.toggle(showImage && fmt === 'png');
+                qualityFields.toggle(showImage && fmt !== 'png');
+            }
+
+            function toggleSeparators() {
+                const ft = fileTypeField.val();
+                const showImageSep = ft === 'image';
+                const showJsonSep = ft === 'json';
+                const showAutoSep = ft === 'auto';
+                imageSeparators.toggle(showImageSep);
+                jsonSeparators.toggle(showJsonSep);
+                autoSeparators.toggle(showAutoSep);
+            }
+
+            fileTypeField.on("change", toggleFields);
+            imageFormatField.on("change", toggleImageFormatFields);
+            toggleFields();
+        }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="save-file">
+    <div class="form-row">
+        <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+        <input type="text" id="node-input-name" placeholder="Name">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label>
+        <input type="text" id="node-input-inputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-inputPathType">
+    </div>
+    <div class="form-tips">
+        <b>Input:</b> Location of the data to save. Defaults to <code>msg.payload</code>.
+    </div>
+
+    <hr>
+
+    <div class="form-row">
+        <label for="node-input-folderPath"><i class="fa fa-folder-open"></i> Folder</label>
+        <input type="text" id="node-input-folderPath" style="width: 70%;" placeholder="/tmp/output">
+        <input type="hidden" id="node-input-folderPathType">
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-filename"><i class="fa fa-file-text-o"></i> Filename</label>
+        <input type="text" id="node-input-filename" style="width: 70%;" placeholder="optional (auto timestamp)">
+        <input type="hidden" id="node-input-filenameType">
+    </div>
+    <div class="form-tips">
+        <b>Filename:</b> Leave blank to auto-generate; omit slashes. Extension is added automatically unless you provide one.
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-fileType"><i class="fa fa-list"></i> File Type</label>
+        <select id="node-input-fileType">
+            <option value="auto">Auto-detect</option>
+            <option value="image">Image</option>
+            <option value="json">JSON</option>
+            <option value="text">Text</option>
+            <option value="binary">Binary</option>
+        </select>
+    </div>
+
+    <div class="form-row savefile-auto-separator">
+        <hr>
+    </div>
+
+    <div class="form-row savefile-image-options savefile-separator savefile-image-separator">
+        <hr>
+    </div>
+    <div class="form-row savefile-image-options">
+        <label for="node-input-imageFormat"><i class="fa fa-picture-o"></i> Image Format</label>
+        <select id="node-input-imageFormat">
+            <option value="jpg">JPG</option>
+            <option value="png">PNG</option>
+            <option value="webp">WebP</option>
+        </select>
+    </div>
+
+    <div class="form-row savefile-image-options savefile-quality">
+        <label for="node-input-imageQuality"><i class="fa fa-sliders"></i> Quality</label>
+        <input type="number" id="node-input-imageQuality" min="1" max="100" step="1" style="width: 30%;" placeholder="90">
+    </div>
+    <div class="form-row savefile-image-options savefile-png-only">
+        <label for="node-input-pngOptimize"><i class="fa fa-leaf"></i> PNG Options</label>
+        <label style="margin-left: 0; width: auto;">
+            <input type="checkbox" id="node-input-pngOptimize" style="margin-right: 5px;"> Optimize PNG
+        </label>
+    </div>
+    <div class="form-row savefile-image-options savefile-separator savefile-image-separator">
+        <hr>
+    </div>
+
+    <div class="form-row savefile-json-options savefile-separator savefile-json-separator">
+        <hr>
+    </div>
+    <div class="form-row savefile-json-options">
+        <label for="node-input-jsonIndent"><i class="fa fa-indent"></i> JSON Indent</label>
+        <input type="number" id="node-input-jsonIndent" min="0" max="8" step="1" style="width: 30%;" placeholder="2">
+    </div>
+    <div class="form-row savefile-json-options savefile-separator savefile-json-separator">
+        <hr>
+    </div>
+
+    <div class="form-row savefile-auto-separator">
+        <hr>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-overwriteProtection"><i class="fa fa-shield"></i> Overwrite</label>
+        <select id="node-input-overwriteProtection">
+            <option value="true">Avoid overwriting (add suffix)</option>
+            <option value="false">Allow overwrite</option>
+        </select>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Result to</label>
+        <input type="text" id="node-input-outputPath" style="width: 70%;">
+        <input type="hidden" id="node-input-outputPathType">
+    </div>
+    <div class="form-tips">
+        <b>Result:</b> Stores <code>{path, filename, type, extension, sizeBytes[, format]}</code> for downstream nodes. Defaults to <code>msg.savedFile</code>.
+    </div>
+</script>
+
+<script type="text/x-red" data-help-name="save-file">
+    <p>Writes incoming data to the local filesystem. Supports raw image objects, encoded image buffers, JSON values, plain text, or arbitrary binary content.</p>
+
+    <h3>Inputs</h3>
+    <dl class="message-properties">
+        <dt>payload (default) <span class="property-type">any</span></dt>
+        <dd>Data to write. Auto-detection treats raw image objects and encoded image buffers as images; objects/arrays as JSON; strings as text; buffers as binary.</dd>
+    </dl>
+
+    <h3>Properties</h3>
+    <dl class="message-properties">
+        <dt>Folder <span class="property-type">string | env | msg | flow | global</span></dt>
+        <dd>Destination directory. Created automatically if missing.</dd>
+        <dt>Filename <span class="property-type">string | msg | flow | global</span></dt>
+        <dd>Optional name without slashes. When blank, a timestamped name is generated. If you include an extension here it is used.</dd>
+        <dt>File Type <span class="property-type">enum</span></dt>
+        <dd>Force saving as image, JSON, text, or binary, or let the node auto-detect from data/extension.</dd>
+        <dt>Image Format / Quality / Optimize PNG <span class="property-type">enum/number/bool</span></dt>
+        <dd>Applies when saving images. Raw image objects are validated and encoded with Sharp.</dd>
+        <dt>JSON Indent <span class="property-type">number</span></dt>
+        <dd>Spacing for pretty-printed JSON output.</dd>
+        <dt>Overwrite <span class="property-type">enum</span></dt>
+        <dd>By default the node avoids overwriting existing files, appending a numeric suffix when needed.</dd>
+        <dt>Result to <span class="property-type">msg | flow | global</span></dt>
+        <dd>Where to store a summary of the saved file: <code>{ path, filename, type, extension, sizeBytes, format? }</code>.</dd>
+    </dl>
+
+    <h3>Behavior</h3>
+    <ul>
+        <li>Auto-detect looks at configured extension, raw image structure, or Sharp metadata for buffers.</li>
+        <li>Image inputs accept encoded buffers or raw objects {data, width, height, channels, colorSpace}.</li>
+        <li>JSON inputs are pretty-printed; JSON strings are preserved if already valid.</li>
+        <li>When overwrite protection is enabled, a numeric suffix is appended if the target file exists.</li>
+    </ul>
+</script>

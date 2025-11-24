@@ -70,12 +70,7 @@ module.exports = function (RED) {
           }
 
           if (maskObj.polygons.length === 0) {
-            node.warn(`Empty polygons array at index ${maskIndex}: polygons[0] is required`);
-            return;
-          }
-
-          if (!Array.isArray(maskObj.polygons[0])) {
-            node.warn(`Invalid polygon coordinates at index ${maskIndex}: polygons[0] must be an array of coordinate pairs`);
+            node.warn(`Empty polygons array at index ${maskIndex}: at least one polygon is required`);
             return;
           }
 
@@ -89,28 +84,47 @@ module.exports = function (RED) {
             return;
           }
 
-          // Validate coordinate format
-          const coordinates = maskObj.polygons[0];
-          for (let i = 0; i < coordinates.length; i++) {
-            const point = coordinates[i];
-            if (!Array.isArray(point) || point.length !== 2) {
-              node.warn(`Invalid coordinate at index ${maskIndex}.polygons[0][${i}]: expected [x, y] pair`);
+          // Validate coordinate format for all polygons in this mask
+          let polygonsFound = false;
+          for (let polyIdx = 0; polyIdx < maskObj.polygons.length; polyIdx++) {
+            const coordinates = maskObj.polygons[polyIdx];
+            if (!Array.isArray(coordinates)) {
+              node.warn(`Invalid polygon at index ${maskIndex}.polygons[${polyIdx}]: expected an array of coordinate pairs`);
               return;
             }
 
-            const [x, y] = point;
-            if (typeof x !== 'number' || typeof y !== 'number') {
-              node.warn(`Invalid coordinate at index ${maskIndex}.polygons[0][${i}]: coordinates must be numbers`);
+            if (coordinates.length === 0) {
+              node.warn(`Empty polygon at index ${maskIndex}.polygons[${polyIdx}]: at least one coordinate is required`);
               return;
             }
 
-            if (x < 0 || x > 1 || y < 0 || y > 1) {
-              node.warn(`Invalid coordinate at index ${maskIndex}.polygons[0][${i}]: coordinates must be in range [0, 1]`);
-              return;
+            for (let i = 0; i < coordinates.length; i++) {
+              const point = coordinates[i];
+              if (!Array.isArray(point) || point.length !== 2) {
+                node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: expected [x, y] pair`);
+                return;
+              }
+
+              const [x, y] = point;
+              if (typeof x !== 'number' || typeof y !== 'number') {
+                node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be numbers`);
+                return;
+              }
+
+              if (x < 0 || x > 1 || y < 0 || y > 1) {
+                node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be in range [0, 1]`);
+                return;
+              }
             }
+
+            polygonsFound = true;
+            totalMaskCount++;
           }
 
-          totalMaskCount++;
+          if (!polygonsFound) {
+            node.warn(`No valid polygons found at index ${maskIndex}: ensure polygons contain coordinate arrays`);
+            return;
+          }
         }
 
         if (totalMaskCount === 0) {

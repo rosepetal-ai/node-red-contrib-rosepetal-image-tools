@@ -194,15 +194,49 @@ public:
 
       if (maskObj.Has("polygons") && maskObj.Has("tag")) {
         Napi::Array polygonsArray = maskObj.Get("polygons").As<Napi::Array>();
-        if (polygonsArray.Length() > 0) {
-          Napi::Array coordinates = polygonsArray.Get(0u).As<Napi::Array>();
-          std::string className = maskObj.Get("tag").As<Napi::String>().Utf8Value();
+        if (polygonsArray.Length() == 0) {
+          continue;
+        }
+
+        std::string className = maskObj.Get("tag").As<Napi::String>().Utf8Value();
+
+        // Resolve color once per class/tag
+        cv::Vec3f resolvedColor;
+        auto colorIt = userColorMap.find(className);
+        if (colorIt != userColorMap.end()) {
+          // User-defined mapping
+          resolvedColor = colorIt->second;
+        } else {
+          // Check if color already cached for this tag
+          auto cachedColorIt = colorCache.find(className);
+          if (cachedColorIt != colorCache.end()) {
+            // Reuse cached color
+            resolvedColor = cachedColorIt->second;
+          } else if (autoGenerateColors) {
+            // Generate new color and cache it
+            resolvedColor = GenerateMaximallyDifferentColor(className, userColorMap);
+          } else {
+            // Fallback to white
+            resolvedColor = cv::Vec3f(1.0f, 1.0f, 1.0f);
+          }
+        }
+
+        // Process every polygon in the array
+        for (size_t polyIdx = 0; polyIdx < polygonsArray.Length(); polyIdx++) {
+          if (!polygonsArray.Get(polyIdx).IsArray()) {
+            continue;
+          }
+
+          Napi::Array coordinates = polygonsArray.Get(polyIdx).As<Napi::Array>();
 
           // Parse polygon coordinates
           std::vector<cv::Point2f> polygon;
           polygon.reserve(coordinates.Length());
 
           for (size_t i = 0; i < coordinates.Length(); i++) {
+            if (!coordinates.Get(i).IsArray()) {
+              continue;
+            }
             Napi::Array point = coordinates.Get(i).As<Napi::Array>();
             if (point.Length() >= 2) {
               float x = point.Get(0u).As<Napi::Number>().FloatValue();
@@ -214,26 +248,7 @@ public:
           if (!polygon.empty()) {
             OptimizedMaskInfo maskInfo;
             maskInfo.className = className;
-
-            // Get color
-            auto colorIt = userColorMap.find(className);
-            if (colorIt != userColorMap.end()) {
-              // User-defined mapping
-              maskInfo.normalizedColor = colorIt->second;
-            } else {
-              // Check if color already cached for this tag
-              auto cachedColorIt = colorCache.find(className);
-              if (cachedColorIt != colorCache.end()) {
-                // Reuse cached color
-                maskInfo.normalizedColor = cachedColorIt->second;
-              } else if (autoGenerateColors) {
-                // Generate new color and cache it
-                maskInfo.normalizedColor = GenerateMaximallyDifferentColor(className, userColorMap);
-              } else {
-                // Fallback to white
-                maskInfo.normalizedColor = cv::Vec3f(1.0f, 1.0f, 1.0f);
-              }
-            }
+            maskInfo.normalizedColor = resolvedColor;
 
             // Create optimized mask with bounding box
             auto [mask, bbox] = CreateOptimizedPolygonMask(polygon, imageMat.size());

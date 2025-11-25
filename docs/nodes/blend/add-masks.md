@@ -10,39 +10,34 @@ This node is ideal for visualizing object detection results, semantic segmentati
 
 ## Input Structure
 
-The node expects a specific nested array structure:
+The node consumes an array of mask objects. It now accepts the exact segmentation output produced by the Rosepetal **inferencer** node (no manual conversion required):
 
+- **Class name**: `tag`, `class_name`, `className`, `label`, or `class`
+- **Geometry** (one of):
+  - `polygons`: array of polygons; each polygon is an array of `[x, y]` points in **normalized** coordinates (0‑1)
+  - `mask`: either a raw mask image `{data, width, height, channels, colorSpace, dtype}` (inferencer “mask” format) or a 2D matrix/array-of-matrices with numeric values (0/1 or 0‑255)
+- Any extra fields are ignored. If both `polygons` and `mask` exist, polygons take priority.
+
+**Example (direct inferencer output)**
 ```javascript
-[
+msg.payload = [
   {
-    "masks": [
-      {
-        "mask": [[[x,y], [x,y], ...]], // Coordinates are always in mask[0]
-        "class_name": "dog"
-      }
-    ]
+    tag: "bottle",
+    polygons: [[[0.1, 0.1], [0.9, 0.1], [0.9, 0.8], [0.1, 0.8]]]
   },
   {
-    "masks": [
-      {
-        "mask": [[[x,y], [x,y], ...]],
-        "class_name": "cat"
-      },
-      {
-        "mask": [[[x,y], [x,y], ...]],
-        "class_name": "zebra"
-      }
-    ]
+    class_name: "person",
+    mask: {
+      width: 512,
+      height: 512,
+      channels: 4,
+      colorSpace: "RGBA",
+      dtype: "uint8",
+      data: <Buffer ...>
+    }
   }
-]
+];
 ```
-
-**Key Structure Requirements:**
-- Each element contains a `masks` array
-- Each mask object has:
-  - `mask`: Array containing one element (mask[0]) with coordinate pairs
-  - `class_name`: String identifier for the mask class
-- Coordinates are normalized (0.0-1.0 range) representing percentages of image dimensions
 
 ## Configuration
 

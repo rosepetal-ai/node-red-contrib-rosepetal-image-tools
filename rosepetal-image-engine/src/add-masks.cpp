@@ -3,6 +3,8 @@
 #include "utils.h"
 #include <unordered_map>
 #include <random>
+#include <cmath>
+#include <algorithm>
 #include <omp.h>
 #include <immintrin.h>  // For AVX2 intrinsics
 
@@ -63,6 +65,130 @@ inline std::pair<cv::Mat, cv::Rect> CreateOptimizedPolygonMask(
 
 // Optimized color generation (cached)
 static std::unordered_map<std::string, cv::Vec3f> colorCache;
+
+// Resolve class name from common field names
+inline std::string ExtractClassName(const Napi::Object& obj) {
+  const std::vector<std::string> keys = {"tag", "class_name", "className", "label", "class"};
+  for (const auto& key : keys) {
+    if (obj.Has(key) && obj.Get(key).IsString()) {
+      std::string value = obj.Get(key).As<Napi::String>().Utf8Value();
+      if (!value.empty()) return value;
+    }
+  }
+  return "";
+}
+
+inline cv::Mat BuildMaskFrom2DArray(const Napi::Array& rows) {
+  const uint32_t rowCount = rows.Length();
+  if (rowCount == 0) return cv::Mat();
+
+  int cols = -1;
+  for (uint32_t y = 0; y < rowCount; y++) {
+    if (rows.Get(y).IsArray()) {
+      cols = static_cast<int>(rows.Get(y).As<Napi::Array>().Length());
+      if (cols > 0) break;
+    }
+  }
+  if (cols <= 0) return cv::Mat();
+
+  cv::Mat mask(rowCount, cols, CV_8UC1, cv::Scalar(0));
+  for (uint32_t y = 0; y < rowCount; y++) {
+    if (!rows.Get(y).IsArray()) continue;
+    Napi::Array row = rows.Get(y).As<Napi::Array>();
+    const uint32_t rowLen = row.Length();
+    for (uint32_t x = 0; x < rowLen && x < static_cast<uint32_t>(cols); x++) {
+      if (row.Get(x).IsNumber()) {
+        double v = row.Get(x).As<Napi::Number>().DoubleValue();
+        if (std::isfinite(v) && v != 0.0) {
+          double scaled = v > 1.0 ? v : v * 255.0;
+          mask.at<uchar>(y, x) = static_cast<uchar>(std::clamp(scaled, 0.0, 255.0));
+        }
+      }
+    }
+  }
+  return mask;
+}
+
+// Handles either a 2D mask matrix or an array of matrices (uses the first valid one)
+inline cv::Mat ConvertMaskArrayToMat(const Napi::Array& arr) {
+  if (arr.Length() == 0) return cv::Mat();
+
+  Napi::Value first = arr.Get(0u);
+  if (first.IsArray()) {
+    Napi::Array firstArr = first.As<Napi::Array>();
+    if (firstArr.Length() > 0 && firstArr.Get(0u).IsArray()) {
+      // Array of masks -> pick the first valid one
+      for (uint32_t i = 0; i < arr.Length(); i++) {
+        if (!arr.Get(i).IsArray()) continue;
+        cv::Mat candidate = BuildMaskFrom2DArray(arr.Get(i).As<Napi::Array>());
+        if (!candidate.empty()) return candidate;
+      }
+      return cv::Mat();
+    }
+  }
+
+  return BuildMaskFrom2DArray(arr);
+}
+
+inline cv::Mat ConvertMaskImageToMat(const Napi::Value& maskVal, const cv::Size& targetSize) {
+  try {
+    cv::Mat maskMat = ConvertToMat(maskVal);
+    if (maskMat.empty()) return cv::Mat();
+
+    cv::Mat singleChannel;
+    if (maskMat.channels() == 4) {
+      cv::extractChannel(maskMat, singleChannel, 3); // Prefer alpha channel
+    } else if (maskMat.channels() == 3) {
+      cv::cvtColor(maskMat, singleChannel, cv::COLOR_BGR2GRAY);
+    } else {
+      singleChannel = maskMat;
+    }
+
+    if (singleChannel.depth() != CV_8U) {
+      cv::Mat tmp;
+      singleChannel.convertTo(tmp, CV_8U, 255.0);
+      singleChannel = tmp;
+    }
+
+    cv::Mat binary;
+    cv::threshold(singleChannel, binary, 0, 255, cv::THRESH_BINARY);
+
+    if (binary.size() != targetSize) {
+      cv::resize(binary, binary, targetSize, 0, 0, cv::INTER_NEAREST);
+    }
+
+    return binary;
+  } catch (const Napi::Error&) {
+    return cv::Mat();
+  } catch (...) {
+    return cv::Mat();
+  }
+}
+
+inline cv::Mat NormalizeMaskBinary(cv::Mat mask, const cv::Size& targetSize) {
+  if (mask.empty()) return mask;
+
+  if (mask.channels() > 1) {
+    cv::Mat gray;
+    cv::cvtColor(mask, gray, cv::COLOR_BGR2GRAY);
+    mask = gray;
+  }
+
+  if (mask.depth() != CV_8U) {
+    cv::Mat tmp;
+    mask.convertTo(tmp, CV_8U, 255.0);
+    mask = tmp;
+  }
+
+  cv::Mat binary;
+  cv::threshold(mask, binary, 0, 255, cv::THRESH_BINARY);
+
+  if (binary.size() != targetSize) {
+    cv::resize(binary, binary, targetSize, 0, 0, cv::INTER_NEAREST);
+  }
+
+  return binary;
+}
 
 // Generate maximally different color from existing colors
 inline cv::Vec3f GenerateMaximallyDifferentColor(
@@ -188,40 +314,38 @@ public:
       }
     }
 
+    auto resolveColor = [&](const std::string& className) -> cv::Vec3f {
+      auto colorIt = userColorMap.find(className);
+      if (colorIt != userColorMap.end()) {
+        return colorIt->second;
+      }
+
+      auto cachedColorIt = colorCache.find(className);
+      if (cachedColorIt != colorCache.end()) {
+        return cachedColorIt->second;
+      }
+
+      if (autoGenerateColors) {
+        return GenerateMaximallyDifferentColor(className, userColorMap);
+      }
+
+      return cv::Vec3f(1.0f, 1.0f, 1.0f);
+    };
+
     // Pre-process all masks and create optimized structures
     for (size_t maskIndex = 0; maskIndex < masksArray.Length(); maskIndex++) {
+      if (!masksArray.Get(maskIndex).IsObject()) continue;
       Napi::Object maskObj = masksArray.Get(maskIndex).As<Napi::Object>();
 
-      if (maskObj.Has("polygons") && maskObj.Has("tag")) {
+      std::string className = ExtractClassName(maskObj);
+      if (className.empty()) continue;
+
+      cv::Vec3f resolvedColor = resolveColor(className);
+      bool addedPolygon = false;
+
+      // --- Polygons path (preferred when present) ---
+      if (maskObj.Has("polygons") && maskObj.Get("polygons").IsArray()) {
         Napi::Array polygonsArray = maskObj.Get("polygons").As<Napi::Array>();
-        if (polygonsArray.Length() == 0) {
-          continue;
-        }
-
-        std::string className = maskObj.Get("tag").As<Napi::String>().Utf8Value();
-
-        // Resolve color once per class/tag
-        cv::Vec3f resolvedColor;
-        auto colorIt = userColorMap.find(className);
-        if (colorIt != userColorMap.end()) {
-          // User-defined mapping
-          resolvedColor = colorIt->second;
-        } else {
-          // Check if color already cached for this tag
-          auto cachedColorIt = colorCache.find(className);
-          if (cachedColorIt != colorCache.end()) {
-            // Reuse cached color
-            resolvedColor = cachedColorIt->second;
-          } else if (autoGenerateColors) {
-            // Generate new color and cache it
-            resolvedColor = GenerateMaximallyDifferentColor(className, userColorMap);
-          } else {
-            // Fallback to white
-            resolvedColor = cv::Vec3f(1.0f, 1.0f, 1.0f);
-          }
-        }
-
-        // Process every polygon in the array
         for (size_t polyIdx = 0; polyIdx < polygonsArray.Length(); polyIdx++) {
           if (!polygonsArray.Get(polyIdx).IsArray()) {
             continue;
@@ -255,6 +379,35 @@ public:
             maskInfo.binaryMask = mask;
             maskInfo.boundingBox = bbox;
 
+            optimizedMasks.push_back(std::move(maskInfo));
+            addedPolygon = true;
+          }
+        }
+      }
+
+      // --- Raw mask path (inferencer 'mask' output) ---
+      if (!addedPolygon && maskObj.Has("mask")) {
+        cv::Mat maskBinary;
+        Napi::Value maskVal = maskObj.Get("mask");
+
+        if (maskVal.IsArray()) {
+          maskBinary = ConvertMaskArrayToMat(maskVal.As<Napi::Array>());
+        } else if (maskVal.IsBuffer() || maskVal.IsObject()) {
+          maskBinary = ConvertMaskImageToMat(maskVal, imageMat.size());
+        }
+
+        maskBinary = NormalizeMaskBinary(maskBinary, imageMat.size());
+
+        if (!maskBinary.empty()) {
+          std::vector<cv::Point> nonZeroPts;
+          cv::findNonZero(maskBinary, nonZeroPts);
+          if (!nonZeroPts.empty()) {
+            cv::Rect bbox = cv::boundingRect(nonZeroPts);
+            OptimizedMaskInfo maskInfo;
+            maskInfo.className = className;
+            maskInfo.normalizedColor = resolvedColor;
+            maskInfo.boundingBox = bbox;
+            maskInfo.binaryMask = maskBinary(bbox).clone();
             optimizedMasks.push_back(std::move(maskInfo));
           }
         }

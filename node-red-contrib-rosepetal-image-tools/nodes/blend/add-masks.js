@@ -54,6 +54,57 @@ module.exports = function (RED) {
           return;
         }
 
+        const getClassName = (maskObj) => {
+          const fields = ['tag', 'class_name', 'className', 'label', 'class'];
+          for (const field of fields) {
+            if (typeof maskObj[field] === 'string' && maskObj[field].trim() !== '') {
+              return maskObj[field].trim();
+            }
+          }
+          return null;
+        };
+
+        const isFiniteNumber = (v) => typeof v === 'number' && Number.isFinite(v);
+
+        const validate2DMask = (matrix) => {
+          if (!Array.isArray(matrix) || matrix.length === 0) return false;
+          for (let y = 0; y < matrix.length; y++) {
+            const row = matrix[y];
+            if (!Array.isArray(row) || row.length === 0) return false;
+            for (let x = 0; x < row.length; x++) {
+              if (!isFiniteNumber(row[x])) {
+                return false;
+              }
+            }
+          }
+          return true;
+        };
+
+        const countMasksInValue = (maskVal) => {
+          if (!maskVal) return 0;
+
+          // Raw image mask from inferencer (rgba buffer with width/height)
+          if (maskVal.data && maskVal.width && maskVal.height) {
+            return NodeUtils.validateImageStructure(maskVal, node) ? 1 : 0;
+          }
+
+          // 2D matrix or array of 2D matrices
+          if (Array.isArray(maskVal) && maskVal.length > 0) {
+            const first = maskVal[0];
+            if (Array.isArray(first) && first.length > 0 && Array.isArray(first[0])) {
+              // Possibly array of masks
+              let validCount = 0;
+              for (const candidate of maskVal) {
+                if (validate2DMask(candidate)) validCount++;
+              }
+              return validCount;
+            }
+            return validate2DMask(maskVal) ? 1 : 0;
+          }
+
+          return 0;
+        };
+
         // Validate masks array structure in detail
         let totalMaskCount = 0;
         for (let maskIndex = 0; maskIndex < masksArray.length; maskIndex++) {
@@ -64,65 +115,72 @@ module.exports = function (RED) {
             return;
           }
 
-          if (!maskObj.hasOwnProperty('polygons') || !Array.isArray(maskObj.polygons)) {
-            node.warn(`Invalid mask object at index ${maskIndex}: 'polygons' property must be an array`);
+          const className = getClassName(maskObj);
+          if (!className) {
+            node.warn(`Mask at index ${maskIndex} is missing a valid class/tag field`);
             return;
           }
 
-          if (maskObj.polygons.length === 0) {
-            node.warn(`Empty polygons array at index ${maskIndex}: at least one polygon is required`);
+          const hasPolygons = Array.isArray(maskObj.polygons);
+          const hasMaskField = Object.prototype.hasOwnProperty.call(maskObj, 'mask');
+
+          if (!hasPolygons && !hasMaskField) {
+            node.warn(`Mask at index ${maskIndex} must include either 'polygons' or 'mask'`);
             return;
           }
 
-          if (!maskObj.hasOwnProperty('tag') || typeof maskObj.tag !== 'string') {
-            node.warn(`Invalid tag at index ${maskIndex}: must be a non-empty string`);
-            return;
+          let entryValid = false;
+
+          if (hasPolygons) {
+            // Validate coordinate format for all polygons in this mask
+            for (let polyIdx = 0; polyIdx < maskObj.polygons.length; polyIdx++) {
+              const coordinates = maskObj.polygons[polyIdx];
+              if (!Array.isArray(coordinates)) {
+                node.warn(`Invalid polygon at index ${maskIndex}.polygons[${polyIdx}]: expected an array of coordinate pairs`);
+                return;
+              }
+
+              if (coordinates.length === 0) {
+                node.warn(`Empty polygon at index ${maskIndex}.polygons[${polyIdx}]: at least one coordinate is required`);
+                return;
+              }
+
+              for (let i = 0; i < coordinates.length; i++) {
+                const point = coordinates[i];
+                if (!Array.isArray(point) || point.length !== 2) {
+                  node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: expected [x, y] pair`);
+                  return;
+                }
+
+                const [x, y] = point;
+                if (!isFiniteNumber(x) || !isFiniteNumber(y)) {
+                  node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be numbers`);
+                  return;
+                }
+
+                if (x < 0 || x > 1 || y < 0 || y > 1) {
+                  node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be in range [0, 1]`);
+                  return;
+                }
+              }
+
+              entryValid = true;
+              totalMaskCount++;
+            }
           }
 
-          if (maskObj.tag.trim() === '') {
-            node.warn(`Empty tag at index ${maskIndex}: tag cannot be empty`);
-            return;
-          }
-
-          // Validate coordinate format for all polygons in this mask
-          let polygonsFound = false;
-          for (let polyIdx = 0; polyIdx < maskObj.polygons.length; polyIdx++) {
-            const coordinates = maskObj.polygons[polyIdx];
-            if (!Array.isArray(coordinates)) {
-              node.warn(`Invalid polygon at index ${maskIndex}.polygons[${polyIdx}]: expected an array of coordinate pairs`);
+          if (!entryValid && hasMaskField) {
+            const maskCount = countMasksInValue(maskObj.mask);
+            if (maskCount === 0) {
+              node.warn(`Invalid mask data at index ${maskIndex}: expected raw mask image or 2D matrix`);
               return;
             }
-
-            if (coordinates.length === 0) {
-              node.warn(`Empty polygon at index ${maskIndex}.polygons[${polyIdx}]: at least one coordinate is required`);
-              return;
-            }
-
-            for (let i = 0; i < coordinates.length; i++) {
-              const point = coordinates[i];
-              if (!Array.isArray(point) || point.length !== 2) {
-                node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: expected [x, y] pair`);
-                return;
-              }
-
-              const [x, y] = point;
-              if (typeof x !== 'number' || typeof y !== 'number') {
-                node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be numbers`);
-                return;
-              }
-
-              if (x < 0 || x > 1 || y < 0 || y > 1) {
-                node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be in range [0, 1]`);
-                return;
-              }
-            }
-
-            polygonsFound = true;
-            totalMaskCount++;
+            totalMaskCount += maskCount;
+            entryValid = true;
           }
 
-          if (!polygonsFound) {
-            node.warn(`No valid polygons found at index ${maskIndex}: ensure polygons contain coordinate arrays`);
+          if (!entryValid) {
+            node.warn(`No valid polygons or mask found at index ${maskIndex}`);
             return;
           }
         }

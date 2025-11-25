@@ -6,7 +6,87 @@
 #include <vector>
 #include <algorithm>
 #include <cmath>
+#include <string>
 #include "utils.h"
+
+// Lightweight helpers for mask handling (aligned with add-masks inputs)
+static inline std::string ExtractClassNameAdvanced(const Napi::Object& obj) {
+  const std::vector<std::string> keys = {"tag", "class_name", "className", "label", "class"};
+  for (const auto& key : keys) {
+    if (obj.Has(key) && obj.Get(key).IsString()) {
+      std::string value = obj.Get(key).As<Napi::String>().Utf8Value();
+      if (!value.empty()) return value;
+    }
+  }
+  return "";
+}
+
+static inline cv::Mat BuildMaskFrom2DArray(const Napi::Array& rows) {
+  const uint32_t rowCount = rows.Length();
+  if (rowCount == 0) return cv::Mat();
+
+  int cols = -1;
+  for (uint32_t y = 0; y < rowCount; y++) {
+    if (rows.Get(y).IsArray()) {
+      cols = static_cast<int>(rows.Get(y).As<Napi::Array>().Length());
+      if (cols > 0) break;
+    }
+  }
+  if (cols <= 0) return cv::Mat();
+
+  cv::Mat mask(rowCount, cols, CV_8UC1, cv::Scalar(0));
+  for (uint32_t y = 0; y < rowCount; y++) {
+    if (!rows.Get(y).IsArray()) continue;
+    Napi::Array row = rows.Get(y).As<Napi::Array>();
+    const uint32_t rowLen = row.Length();
+    for (uint32_t x = 0; x < rowLen && x < static_cast<uint32_t>(cols); x++) {
+      if (row.Get(x).IsNumber()) {
+        double v = row.Get(x).As<Napi::Number>().DoubleValue();
+        if (std::isfinite(v) && v != 0.0) {
+          double scaled = v > 1.0 ? v : v * 255.0;
+          mask.at<uchar>(y, x) = static_cast<uchar>(std::clamp(scaled, 0.0, 255.0));
+        }
+      }
+    }
+  }
+  return mask;
+}
+
+static inline cv::Mat BuildMaskFromPolygons(const Napi::Array& polygons, const cv::Size& size) {
+  if (polygons.Length() == 0 || size.width <= 0 || size.height <= 0) return cv::Mat();
+  cv::Mat mask = cv::Mat::zeros(size, CV_8UC1);
+
+  for (uint32_t idx = 0; idx < polygons.Length(); idx++) {
+    if (!polygons.Get(idx).IsArray()) continue;
+    Napi::Array coords = polygons.Get(idx).As<Napi::Array>();
+    if (coords.Length() == 0) continue;
+
+    std::vector<cv::Point> points;
+    points.reserve(coords.Length());
+
+    for (uint32_t i = 0; i < coords.Length(); i++) {
+      if (!coords.Get(i).IsArray()) continue;
+      Napi::Array point = coords.Get(i).As<Napi::Array>();
+      if (point.Length() >= 2 && point.Get(0u).IsNumber() && point.Get(1u).IsNumber()) {
+        double x = point.Get(0u).As<Napi::Number>().DoubleValue();
+        double y = point.Get(1u).As<Napi::Number>().DoubleValue();
+        int px = static_cast<int>(std::round(x * size.width));
+        int py = static_cast<int>(std::round(y * size.height));
+        px = std::max(0, std::min(size.width - 1, px));
+        py = std::max(0, std::min(size.height - 1, py));
+        points.emplace_back(px, py);
+      }
+    }
+
+    if (points.size() >= 3) {
+      const cv::Point* pts = points.data();
+      int npts = static_cast<int>(points.size());
+      cv::fillPoly(mask, &pts, &npts, 1, cv::Scalar(255), cv::LINE_4);
+    }
+  }
+
+  return mask;
+}
 
 // Helper function to determine the best canvas format from multiple input formats
 std::string DetermineBestCanvasFormatAdvanced(const std::vector<std::string>& channels) {
@@ -38,13 +118,16 @@ public:
                        const std::string& backgroundColor,
                        const Napi::Array& imageConfigsArray,
                        bool normalized, std::string outputFormat,
-                       int quality = 90,
-                       bool pngOptimize = false)
+                       int quality,
+                       bool pngOptimize,
+                       bool hasMasks,
+                       const Napi::Array& masksArray)
     : Napi::AsyncWorker(cb),
       canvasWidth_(canvasWidth), canvasHeight_(canvasHeight),
       backgroundColor_(backgroundColor),
       normalized_(normalized), outputFormat_(std::move(outputFormat)),
-      quality_(quality), pngOptimize_(pngOptimize)
+      quality_(quality), pngOptimize_(pngOptimize),
+      hasMasks_(hasMasks)
   {
     /* ─ SUPER FAST image conversion with timing ─ */
     const int64 t0 = cv::getTickCount();
@@ -81,6 +164,56 @@ public:
       }
       
       imageChannels_.emplace_back(channel);
+    }
+
+    // Optional masks aligned with input images
+    if (hasMasks_) {
+      masks_.resize(images_.size());
+      maskTags_.resize(images_.size());
+      maskOutputs_.resize(images_.size());
+
+      for (uint32_t i = 0; i < masksArray.Length() && i < images_.size(); i++) {
+        Napi::Value mv = masksArray.Get(i);
+        cv::Mat maskMat;
+        std::string tag;
+
+        if (mv.IsObject() && !mv.IsArray()) {
+          Napi::Object mObj = mv.As<Napi::Object>();
+          tag = ExtractClassNameAdvanced(mObj);
+
+          if (mObj.Has("mask")) {
+            Napi::Value inner = mObj.Get("mask");
+            if (inner.IsArray()) {
+              maskMat = BuildMaskFrom2DArray(inner.As<Napi::Array>());
+            } else {
+              maskMat = ConvertToMat(inner);
+            }
+          } else if (mObj.Has("polygons") && mObj.Get("polygons").IsArray()) {
+            maskMat = BuildMaskFromPolygons(mObj.Get("polygons").As<Napi::Array>(), images_[i].size());
+          } else if (mObj.Has("data") && mObj.Has("width") && mObj.Has("height")) {
+            maskMat = ConvertToMat(mv);
+          }
+        } else if (mv.IsArray()) {
+          maskMat = BuildMaskFrom2DArray(mv.As<Napi::Array>());
+        } else if (mv.IsBuffer()) {
+          maskMat = ConvertToMat(mv);
+        }
+
+        if (!maskMat.empty()) {
+          if (maskMat.channels() > 1) {
+            cv::cvtColor(maskMat, maskMat, cv::COLOR_BGR2GRAY);
+          }
+          if (maskMat.depth() != CV_8U) {
+            cv::Mat tmp;
+            maskMat.convertTo(tmp, CV_8U, 255.0);
+            maskMat = tmp;
+          }
+          cv::threshold(maskMat, maskMat, 0, 255, cv::THRESH_BINARY);
+          masks_[i] = maskMat;
+          maskTags_[i] = tag;
+          maskOutputs_[i] = cv::Mat::zeros(canvasHeight_, canvasWidth_, CV_8UC1);
+        }
+      }
     }
     
     // Parse image configurations - ultra-fast operations
@@ -188,6 +321,21 @@ protected:
     Napi::Object result = Napi::Object::New(env);
     result.Set("image", jsImg);
     result.Set("timing", MakeTimingJS(env, convertMs_, taskMs_, encodeMs_));
+
+    if (hasMasks_) {
+      Napi::Array outMasks = Napi::Array::New(env);
+      uint32_t outIdx = 0;
+      for (size_t i = 0; i < maskOutputs_.size(); i++) {
+        if (maskOutputs_[i].empty()) continue;
+        Napi::Object maskObj = Napi::Object::New(env);
+        maskObj.Set("mask", MatToRawJS(env, maskOutputs_[i], "GRAY"));
+        if (!maskTags_[i].empty()) {
+          maskObj.Set("tag", Napi::String::New(env, maskTags_[i]));
+        }
+        outMasks.Set(outIdx++, maskObj);
+      }
+      result.Set("masks", outMasks);
+    }
     
     Callback().Call({ env.Null(), result });
   }
@@ -211,7 +359,12 @@ private:
       return; // Skip invalid indices
     }
     
+    const bool hasMaskForImage = hasMasks_ &&
+                                 config.arrayIndex < static_cast<int>(masks_.size()) &&
+                                 !masks_[config.arrayIndex].empty();
+
     cv::Mat img = images_[config.arrayIndex].clone(); // Work with copy for transformations
+    cv::Mat mask = hasMaskForImage ? masks_[config.arrayIndex].clone() : cv::Mat();
     if (img.empty()) return;
     
     const std::string& imgChannel = imageChannels_[config.arrayIndex];
@@ -229,6 +382,9 @@ private:
       }
       
       cv::resize(img, img, cv::Size(targetWidth, targetHeight), 0, 0, cv::INTER_LINEAR);
+      if (hasMaskForImage && !mask.empty()) {
+        cv::resize(mask, mask, cv::Size(targetWidth, targetHeight), 0, 0, cv::INTER_NEAREST);
+      }
     }
     
     // Step 2: Rotate if needed
@@ -284,6 +440,10 @@ private:
         
         cv::warpAffine(img, img, rotationMatrix, newSize, 
                       cv::INTER_LINEAR, cv::BORDER_CONSTANT, padColor);
+        if (hasMaskForImage && !mask.empty()) {
+          cv::warpAffine(mask, mask, rotationMatrix, newSize,
+                         cv::INTER_NEAREST, cv::BORDER_CONSTANT, cv::Scalar(0));
+        }
       }
     }
     
@@ -306,6 +466,9 @@ private:
     }
     
     PlaceImageOnCanvas(img, config, finalImgChannel);
+    if (hasMaskForImage && !mask.empty()) {
+      PlaceMaskOnCanvas(mask, config);
+    }
   }
   
   // ULTRA-FAST image placement with bounds checking
@@ -454,6 +617,41 @@ private:
       imgToPlace.copyTo(canvas_(dstROI));
     }
   }
+
+  void PlaceMaskOnCanvas(const cv::Mat& mask, const ImageConfig& config) {
+    if (mask.empty()) return;
+    if (config.arrayIndex < 0 || config.arrayIndex >= static_cast<int>(maskOutputs_.size())) return;
+
+    if (maskOutputs_[config.arrayIndex].empty()) {
+      maskOutputs_[config.arrayIndex] = cv::Mat::zeros(canvasHeight_, canvasWidth_, CV_8UC1);
+    }
+
+    int x = normalized_ ? static_cast<int>(std::round(config.x * canvasWidth_)) 
+                        : static_cast<int>(std::lround(config.x));
+    int y = normalized_ ? static_cast<int>(std::round(config.y * canvasHeight_)) 
+                        : static_cast<int>(std::lround(config.y));
+
+    if (x >= canvasWidth_ || y >= canvasHeight_) return;
+    if (x + mask.cols <= 0 || y + mask.rows <= 0) return;
+
+    int srcX = std::max(0, -x);
+    int srcY = std::max(0, -y);
+    int dstX = std::max(0, x);
+    int dstY = std::max(0, y);
+
+    int width = std::min(mask.cols - srcX, canvasWidth_ - dstX);
+    int height = std::min(mask.rows - srcY, canvasHeight_ - dstY);
+
+    if (width <= 0 || height <= 0) return;
+
+    cv::Rect srcROI(srcX, srcY, width, height);
+    cv::Rect dstROI(dstX, dstY, width, height);
+
+    cv::Mat srcRegion = mask(srcROI);
+    cv::Mat dstRegion = maskOutputs_[config.arrayIndex](dstROI);
+
+    cv::max(dstRegion, srcRegion, dstRegion);
+  }
   
   // Member variables
   std::vector<cv::Mat> images_;
@@ -461,6 +659,10 @@ private:
   std::vector<ImageConfig> imageConfigs_;
   cv::Mat canvas_;
   std::string canvasChannel_;
+  std::vector<cv::Mat> masks_;
+  std::vector<std::string> maskTags_;
+  std::vector<cv::Mat> maskOutputs_;
+  bool hasMasks_{false};
   
   int canvasWidth_, canvasHeight_;
   std::string backgroundColor_;
@@ -473,18 +675,17 @@ private:
   std::vector<uchar> encodedBuf_;
 };
 
-/*──────── BINDING: advancedMosaic(imagesArray, width, height, bgColor, imageConfigs, normalized, [outputFormat], [quality], cb) ─*/
+/*──────── BINDING: advancedMosaic(imagesArray, width, height, bgColor, imageConfigs, normalized, [options|outputFormat], ...) ─*/
 Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
   
-  // Ultra-fast parameter validation
-  if (info.Length() < 7 || info.Length() > 10 || !info[info.Length()-1].IsFunction()) {
+  if (info.Length() < 7 || !info[info.Length() - 1].IsFunction()) {
     return Napi::TypeError::New(env,
-      "advancedMosaic(imagesArray, width, height, bgColor, imageConfigs, normalized, [outputFormat], [quality], [pngOptimize], callback)")
+      "advancedMosaic(imagesArray, width, height, bgColor, imageConfigs, normalized, [options|outputFormat], [quality], [pngOptimize], callback)")
       .Value();
   }
   
-  // Parse parameters with minimal overhead
+  // Parse required parameters
   int i = 0;
   Napi::Array imagesArray = info[i++].As<Napi::Array>();
   int canvasWidth = info[i++].As<Napi::Number>().Int32Value();
@@ -493,24 +694,37 @@ Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   Napi::Array imageConfigs = info[i++].As<Napi::Array>();
   bool normalized = info[i++].As<Napi::Boolean>().Value();
   
-  // Handle optional parameters
+  // Optional parameters (either legacy positional or options object)
   std::string outputFormat = "raw";
   int quality = 90;
   bool pngOptimize = false;
+  bool hasMasks = false;
+  Napi::Array masksArray;
+
+  // If next argument is an object (not array/function), treat it as options
+  if (info.Length() - i > 1 && info[i].IsObject() && !info[i].IsArray() && !info[i].IsFunction()) {
+    Napi::Object opts = info[i++].As<Napi::Object>();
+    if (opts.Has("outputFormat")) outputFormat = opts.Get("outputFormat").As<Napi::String>().Utf8Value();
+    if (opts.Has("quality")) quality = opts.Get("quality").As<Napi::Number>().Int32Value();
+    if (opts.Has("pngOptimize")) pngOptimize = opts.Get("pngOptimize").As<Napi::Boolean>().Value();
+    if (opts.Has("masks") && opts.Get("masks").IsArray()) {
+      masksArray = opts.Get("masks").As<Napi::Array>();
+      hasMasks = true;
+    }
+  }
   
+  // Legacy positional parsing
   if (info.Length() - i >= 2) {
     outputFormat = info[i++].As<Napi::String>().Utf8Value();
   }
-  
   if (info.Length() - i >= 2) {
     quality = info[i++].As<Napi::Number>().Int32Value();
   }
-  
   if (info.Length() - i >= 2) {
     pngOptimize = info[i++].As<Napi::Boolean>().Value();
   }
   
-  Napi::Function callback = info[i].As<Napi::Function>();
+  Napi::Function callback = info[info.Length() - 1].As<Napi::Function>();
   
   // Validate canvas dimensions
   if (canvasWidth <= 0 || canvasHeight <= 0) {
@@ -519,7 +733,8 @@ Napi::Value AdvancedMosaic(const Napi::CallbackInfo& info) {
   
   // Launch ULTRA-FAST worker
   (new AdvancedMosaicWorker(callback, imagesArray, canvasWidth, canvasHeight, 
-                           backgroundColor, imageConfigs, normalized, outputFormat, quality, pngOptimize))->Queue();
+                           backgroundColor, imageConfigs, normalized, outputFormat, quality, pngOptimize,
+                           hasMasks, masksArray))->Queue();
   
   return env.Undefined();
 }

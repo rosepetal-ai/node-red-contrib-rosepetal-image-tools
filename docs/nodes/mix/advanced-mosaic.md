@@ -24,6 +24,7 @@ The `advanced-mosaic` node provides sophisticated layout capabilities beyond bas
 - **Complex Layout**: Single composite image with precisely positioned elements
 - **Custom Canvas**: Canvas sized according to layout requirements or fixed dimensions
 - **Format Options**: Raw image object or encoded file formats
+- **Mask Propagation (optional)**: When enabled, a second output array containing masks transformed with the exact same resize/rotate/position steps. Each mask index aligns with the source image index and is ready for downstream drawing/overlay nodes.
 
 ## Configuration Options
 
@@ -73,6 +74,20 @@ The `advanced-mosaic` node provides sophisticated layout capabilities beyond bas
 - **JPEG**: Compressed (transparency becomes background color)
 - **PNG**: Full transparency and quality preservation
 - **WebP**: Modern format with transparency and compression
+- **Mask Propagation**: Enable the *Propagate masks* checkbox to feed a mask array (one per input image index). The node applies the same resize/rotate/position to each mask and emits a transformed mask array for downstream overlay/drawing without manual conversions.
+
+## Mask Propagation Input Format
+
+When *Propagate masks* is enabled, supply `msg.masks` (or the configured path) as an **array aligned to the input images array**. Index `i` is the mask for image `i`. Each entry can be one of:
+
+- **Polygon mask**: `{ tag?: "class", polygons: [ [ [x,y], [x,y], ... ] , ... ] }` where points are normalized 0–1.
+- **Raw mask image**: `{ mask: { data, width, height, channels, colorSpace, dtype } , tag?: "class" }` (RGBA/LA/GRAY accepted; alpha preferred).
+- **2D matrix mask**: `{ mask: [[0,1,1,...], ...], tag?: "class" }` or simply a 2D/array-of-2D numeric matrix.
+
+Rules:
+- Array length should match the images array; missing entries are ignored.
+- `tag`/`class`/`class_name`/`label` are passed through if present.
+- Masks are binarized, resized with `INTER_NEAREST`, rotated, and positioned exactly like their source image. The output `masks` array mirrors the input order and is ready for downstream drawing nodes.
 
 ## Performance Notes
 

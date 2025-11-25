@@ -24,6 +24,11 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const propagateMasks = !!config.propagateMasks;
+        const masksPath = config.masksPath || 'masks';
+        const masksPathType = config.masksPathType || 'msg';
+        const masksOutputPath = config.masksOutputPath || 'masks';
+        const masksOutputPathType = config.masksOutputPathType || 'msg';
 
         /* Canvas configuration */
         const canvasWidth = Number(NodeUtils.resolveDimension(node, config.canvasWidthType, config.canvasWidth, msg));
@@ -57,21 +62,60 @@ module.exports = function (RED) {
           throw new Error('Canvas dimensions must be positive numbers');
         }
 
+        /* Optional mask propagation */
+        let masksArray = null;
+        if (propagateMasks) {
+          try {
+            if (masksPathType === 'msg') {
+              masksArray = RED.util.getMessageProperty(msg, masksPath);
+            } else if (masksPathType === 'flow') {
+              masksArray = node.context().flow.get(masksPath);
+            } else if (masksPathType === 'global') {
+              masksArray = node.context().global.get(masksPath);
+            }
+          } catch (e) {
+            node.warn(`Failed to read masks from ${masksPathType}.${masksPath}: ${e.message}`);
+          }
+
+          if (!Array.isArray(masksArray)) {
+            node.warn('Mask propagation enabled but masks input is not an array; skipping mask propagation.');
+            masksArray = null;
+          }
+        }
+
         /* Single ultra-fast C++ call */
-        const { image, timing = {} } = await CppProcessor.advancedMosaic(
+        const options = {
+          outputFormat,
+          quality: outputQuality,
+          pngOptimize
+        };
+        if (masksArray) {
+          options.masks = masksArray;
+        }
+
+        const { image, masks: transformedMasks, timing = {} } = await CppProcessor.advancedMosaic(
           imageArray,
           canvasWidth,
           canvasHeight,
           backgroundColor,
           validImageConfigs,
           normalized,
-          outputFormat,
-          outputQuality,
-          pngOptimize
+          options
         );
+
+        const maskCount = Array.isArray(transformedMasks) ? transformedMasks.length : (propagateMasks && masksArray ? masksArray.length : 0);
 
         /* Set output */
         RED.util.setMessageProperty(msg, outputPath, image);
+        if (propagateMasks && transformedMasks) {
+          if (masksOutputPathType === 'msg') {
+            RED.util.setMessageProperty(msg, masksOutputPath, transformedMasks);
+          } else if (masksOutputPathType === 'flow') {
+            node.context().flow.set(masksOutputPath, transformedMasks);
+          } else if (masksOutputPathType === 'global') {
+            node.context().global.set(masksOutputPath, transformedMasks);
+          }
+        }
 
         /* Performance status - same format as other nodes */
         const { convertMs = 0, taskMs = 0, encodeMs = 0 } = timing;
@@ -118,7 +162,7 @@ module.exports = function (RED) {
         if (!debugFormat) {
           const statusText = validImageConfigs.length === 0 
             ? `OK: empty canvas in ${totalTime.toFixed(2)} ms`
-            : `OK: ${validImageConfigs.length} img in ${totalTime.toFixed(2)} ms ` +
+            : `OK: ${validImageConfigs.length} img${maskCount ? `/${maskCount} mask` : ''} in ${totalTime.toFixed(2)} ms ` +
               `(conv ${(convertMs + encodeMs).toFixed(2)} ms | ` +
               `task ${taskMs.toFixed(2)} ms)`;
           

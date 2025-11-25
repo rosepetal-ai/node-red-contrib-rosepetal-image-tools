@@ -24,7 +24,11 @@
       canvasHeight:{value:"600"},  canvasHeightType:{value:"num"},
       backgroundColor:{value:"#000000"},
       
-      imageConfigs:{value:[]}  // Array of {arrayIndex, x, y, width, height, rotation, zIndex} objects
+      imageConfigs:{value:[]},  // Array of {arrayIndex, x, y, width, height, rotation, zIndex} objects
+
+      propagateMasks:{value:false},
+      masksPath:{value:"masks"}, masksPathType:{value:"msg"},
+      masksOutputPath:{value:"masks"}, masksOutputPathType:{value:"msg"}
     },
   
     inputs:1, outputs:1,
@@ -42,6 +46,14 @@
       $("#node-input-outputPath").typedInput({
         default:'msg',types:['msg','flow','global'],
         typeField:"#node-input-outputPathType"
+      });
+      $("#node-input-masksPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-masksPathType"
+      });
+      $("#node-input-masksOutputPath").typedInput({
+        default:'msg',types:['msg','flow','global'],
+        typeField:"#node-input-masksOutputPathType"
       });
   
       /* Canvas dimension typedInputs */
@@ -93,6 +105,22 @@
       debugCheckbox.on('change', function() {
           updateDebugWidthVisibility();
       });
+
+      // Mask propagation visibility
+      const propagateCheckbox = $('#node-input-propagateMasks');
+      const masksPathRow = $('#mask-path-row');
+      const masksOutputPathRow = $('#mask-output-path-row');
+      function updateMaskVisibility() {
+        if (propagateCheckbox.is(':checked')) {
+          masksPathRow.show();
+          masksOutputPathRow.show();
+        } else {
+          masksPathRow.hide();
+          masksOutputPathRow.hide();
+        }
+      }
+      propagateCheckbox.on('change', updateMaskVisibility);
+      updateMaskVisibility();
 
       /* Initialize image configurations if empty */
       if (!node.imageConfigs || node.imageConfigs.length === 0) {
@@ -1784,6 +1812,21 @@
   <label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output to</label>
   <input type="text" id="node-input-outputPath" style="width: 70%;">
   <input type="hidden" id="node-input-outputPathType">
+</div>
+<div class="form-row">
+  <label for="node-input-propagateMasks"><i class="fa fa-object-group"></i> Propagate masks</label>
+  <input type="checkbox" id="node-input-propagateMasks" style="display:inline-block; width:auto; vertical-align:baseline;">
+  <span style="margin-left: 6px; color: #666;">Apply same transforms to mask array</span>
+</div>
+<div class="form-row" id="mask-path-row">
+  <label for="node-input-masksPath"><i class="fa fa-sign-in"></i> Masks from</label>
+  <input type="text" id="node-input-masksPath" style="width: 70%;">
+  <input type="hidden" id="node-input-masksPathType">
+</div>
+<div class="form-row" id="mask-output-path-row">
+  <label for="node-input-masksOutputPath"><i class="fa fa-sign-out"></i> Masks to</label>
+  <input type="text" id="node-input-masksOutputPath" style="width: 70%;">
+  <input type="hidden" id="node-input-masksOutputPathType">
 </div>
 <div class="form-row">
   <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>

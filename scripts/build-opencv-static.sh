@@ -9,8 +9,8 @@
 set -e
 
 OPENCV_VERSION="${OPENCV_VERSION:-4.9.0}"
-BUILD_DIR="${1:-/tmp/opencv-build}"
-INSTALL_DIR="${2:-/opt/opencv-static}"
+BUILD_DIR="${BUILD_DIR:-${1:-/tmp/opencv-build}}"
+INSTALL_DIR="${INSTALL_DIR:-${2:-$HOME/opencv-static}}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}"
 
 echo "=========================================="

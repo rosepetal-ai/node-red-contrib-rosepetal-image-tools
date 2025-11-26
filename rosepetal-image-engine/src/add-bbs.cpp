@@ -6,7 +6,8 @@
 #include <string>
 #include <cmath>
 #include <algorithm>
-#include <omp.h>
+// OpenMP is only used through pragmas; omit the header to avoid requiring libomp headers on macOS.
+// #include <omp.h>
 #include <emmintrin.h>  // SSE2 for faster operations
 
 // Structure for bounding box information

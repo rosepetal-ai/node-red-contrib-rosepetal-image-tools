@@ -36,6 +36,7 @@
             ["OS=='linux'", {
               "libraries": [
                 "<(opencv_lib_dir)/libopencv_imgcodecs.a",
+                "<(opencv_lib_dir)/libopencv_video.a",
                 "<(opencv_lib_dir)/libopencv_imgproc.a",
                 "<(opencv_lib_dir)/libopencv_core.a",
                 "<(opencv_lib_dir)/opencv4/3rdparty/liblibjpeg-turbo.a",
@@ -60,6 +61,7 @@
             ["OS=='mac'", {
               "libraries": [
                 "<(opencv_lib_dir)/libopencv_imgcodecs.a",
+                "<(opencv_lib_dir)/libopencv_video.a",
                 "<(opencv_lib_dir)/libopencv_imgproc.a",
                 "<(opencv_lib_dir)/libopencv_core.a",
                 "<(opencv_lib_dir)/opencv4/3rdparty/liblibjpeg-turbo.a",
@@ -80,6 +82,7 @@
             ["OS=='win'", {
               "libraries": [
                 "<(opencv_lib_dir)/opencv_imgcodecs4.lib",
+                "<(opencv_lib_dir)/opencv_video4.lib",
                 "<(opencv_lib_dir)/opencv_imgproc4.lib",
                 "<(opencv_lib_dir)/opencv_core4.lib",
                 "<(opencv_lib_dir)/opencv4/3rdparty/libjpeg-turbo.lib",

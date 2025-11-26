@@ -60,7 +60,7 @@ cmake .. \
     -DBUILD_SHARED_LIBS=OFF \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     \
-    -DBUILD_LIST=core,imgproc,imgcodecs \
+    -DBUILD_LIST=core,imgproc,imgcodecs,video \
     \
     -DWITH_JPEG=ON \
     -DWITH_PNG=ON \

@@ -57,7 +57,7 @@ $CMakeArgs = @(
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
 
     # Only required modules
-    "-DBUILD_LIST=core,imgproc,imgcodecs",
+    "-DBUILD_LIST=core,imgproc,imgcodecs,video",
 
     # Image format support (bundled)
     "-DWITH_JPEG=ON",

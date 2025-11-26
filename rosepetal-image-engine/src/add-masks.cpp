@@ -5,8 +5,13 @@
 #include <random>
 #include <cmath>
 #include <algorithm>
-#include <omp.h>
-#include <immintrin.h>  // For AVX2 intrinsics
+// OpenMP is only used via pragmas; header is not required unless functions are called.
+// We avoid including it to keep macOS builds (without libomp headers) happy.
+// #include <omp.h>
+
+#if defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86)
+#include <immintrin.h>  // AVX2 intrinsics (not used on non-x86 builds)
+#endif
 
 // Optimized structure to hold mask information
 struct OptimizedMaskInfo {

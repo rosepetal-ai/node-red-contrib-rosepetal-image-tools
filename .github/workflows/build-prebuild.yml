@@ -1,0 +1,470 @@
+# Build and publish pre-built native binaries for all supported platforms
+# Follows Sharp's pattern: platform-specific npm packages with statically linked OpenCV
+
+name: Build Pre-built Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to npm'
+        required: false
+        default: 'false'
+        type: boolean
+
+env:
+  OPENCV_VERSION: '4.9.0'
+
+jobs:
+  # =============================================================================
+  # Linux x64 (glibc) - Ubuntu
+  # =============================================================================
+  linux-x64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build \
+            libjpeg-dev libpng-dev libwebp-dev zlib1g-dev
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linux-x64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          OPENCV_VERSION=${{ env.OPENCV_VERSION }} \
+          INSTALL_DIR=~/opencv-static \
+          scripts/build-opencv-static.sh
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        run: |
+          npm install
+          npx node-gyp rebuild \
+            --opencv_include_dir=$HOME/opencv-static/include/opencv4 \
+            --opencv_lib_dir=$HOME/opencv-static/lib
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linux-x64/lib
+          cp rosepetal-image-engine/build/Release/addon.node npm/linux-x64/lib/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linux-x64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: npm/linux-x64/
+
+  # =============================================================================
+  # Linux ARM64 (glibc) - Ubuntu ARM
+  # =============================================================================
+  linux-arm64:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake ninja-build \
+            libjpeg-dev libpng-dev libwebp-dev zlib1g-dev
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linux-arm64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          OPENCV_VERSION=${{ env.OPENCV_VERSION }} \
+          INSTALL_DIR=~/opencv-static \
+          scripts/build-opencv-static.sh
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        run: |
+          npm install
+          npx node-gyp rebuild \
+            --opencv_include_dir=$HOME/opencv-static/include/opencv4 \
+            --opencv_lib_dir=$HOME/opencv-static/lib
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linux-arm64/lib
+          cp rosepetal-image-engine/build/Release/addon.node npm/linux-arm64/lib/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linux-arm64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64
+          path: npm/linux-arm64/
+
+  # =============================================================================
+  # Linux x64 (musl) - Alpine
+  # =============================================================================
+  linuxmusl-x64:
+    runs-on: ubuntu-22.04
+    container:
+      image: node:20-alpine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache \
+            build-base cmake ninja python3 \
+            libjpeg-turbo-dev libpng-dev libwebp-dev zlib-dev \
+            linux-headers
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linuxmusl-x64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          OPENCV_VERSION=${{ env.OPENCV_VERSION }} \
+          INSTALL_DIR=~/opencv-static \
+          scripts/build-opencv-static.sh
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        run: |
+          npm install
+          npx node-gyp rebuild \
+            --opencv_include_dir=$HOME/opencv-static/include/opencv4 \
+            --opencv_lib_dir=$HOME/opencv-static/lib
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linuxmusl-x64/lib
+          cp rosepetal-image-engine/build/Release/addon.node npm/linuxmusl-x64/lib/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linuxmusl-x64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linuxmusl-x64
+          path: npm/linuxmusl-x64/
+
+  # =============================================================================
+  # Linux ARM64 (musl) - Alpine ARM
+  # =============================================================================
+  linuxmusl-arm64:
+    runs-on: ubuntu-22.04-arm
+    container:
+      image: node:20-alpine
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache \
+            build-base cmake ninja python3 \
+            libjpeg-turbo-dev libpng-dev libwebp-dev zlib-dev \
+            linux-headers
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linuxmusl-arm64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          OPENCV_VERSION=${{ env.OPENCV_VERSION }} \
+          INSTALL_DIR=~/opencv-static \
+          scripts/build-opencv-static.sh
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        run: |
+          npm install
+          npx node-gyp rebuild \
+            --opencv_include_dir=$HOME/opencv-static/include/opencv4 \
+            --opencv_lib_dir=$HOME/opencv-static/lib
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/linuxmusl-arm64/lib
+          cp rosepetal-image-engine/build/Release/addon.node npm/linuxmusl-arm64/lib/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/linuxmusl-arm64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linuxmusl-arm64
+          path: npm/linuxmusl-arm64/
+
+  # =============================================================================
+  # macOS x64 (Intel)
+  # =============================================================================
+  darwin-x64:
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install build dependencies
+        run: |
+          brew install cmake ninja jpeg libpng webp
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-darwin-x64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          OPENCV_VERSION=${{ env.OPENCV_VERSION }} \
+          INSTALL_DIR=~/opencv-static \
+          scripts/build-opencv-static.sh
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        run: |
+          npm install
+          npx node-gyp rebuild \
+            --opencv_include_dir=$HOME/opencv-static/include/opencv4 \
+            --opencv_lib_dir=$HOME/opencv-static/lib
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/darwin-x64/lib
+          cp rosepetal-image-engine/build/Release/addon.node npm/darwin-x64/lib/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/darwin-x64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-x64
+          path: npm/darwin-x64/
+
+  # =============================================================================
+  # macOS ARM64 (Apple Silicon)
+  # =============================================================================
+  darwin-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install build dependencies
+        run: |
+          brew install cmake ninja jpeg libpng webp
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: ~/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-darwin-arm64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          chmod +x scripts/build-opencv-static.sh
+          OPENCV_VERSION=${{ env.OPENCV_VERSION }} \
+          INSTALL_DIR=~/opencv-static \
+          scripts/build-opencv-static.sh
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        run: |
+          npm install
+          npx node-gyp rebuild \
+            --opencv_include_dir=$HOME/opencv-static/include/opencv4 \
+            --opencv_lib_dir=$HOME/opencv-static/lib
+
+      - name: Copy addon to package
+        run: |
+          mkdir -p npm/darwin-arm64/lib
+          cp rosepetal-image-engine/build/Release/addon.node npm/darwin-arm64/lib/
+
+      - name: Test addon loads
+        run: |
+          node -e "const addon = require('./npm/darwin-arm64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-arm64
+          path: npm/darwin-arm64/
+
+  # =============================================================================
+  # Windows x64
+  # =============================================================================
+  win32-x64:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Cache OpenCV
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: C:\opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-win32-x64-static-v2
+
+      - name: Build OpenCV static
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $env:OPENCV_VERSION = "${{ env.OPENCV_VERSION }}"
+          $env:INSTALL_DIR = "C:\opencv-static"
+          .\scripts\build-opencv-static.ps1
+
+      - name: Build native addon
+        working-directory: rosepetal-image-engine
+        shell: pwsh
+        run: |
+          npm install
+          npx node-gyp rebuild `
+            --opencv_include_dir=C:\opencv-static\include `
+            --opencv_lib_dir=C:\opencv-static\x64\vc17\staticlib
+
+      - name: Copy addon to package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path npm\win32-x64\lib
+          Copy-Item rosepetal-image-engine\build\Release\addon.node npm\win32-x64\lib\
+
+      - name: Test addon loads
+        shell: pwsh
+        run: |
+          node -e "const addon = require('./npm/win32-x64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: win32-x64
+          path: npm/win32-x64/
+
+  # =============================================================================
+  # Publish all packages to npm
+  # =============================================================================
+  publish:
+    needs: [linux-x64, linux-arm64, linuxmusl-x64, linuxmusl-arm64, darwin-x64, darwin-arm64, win32-x64]
+    runs-on: ubuntu-22.04
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare packages
+        run: |
+          # Copy artifacts to npm directories
+          for platform in linux-x64 linux-arm64 linuxmusl-x64 linuxmusl-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            cp -r artifacts/$platform/* npm/$platform/
+          done
+
+      - name: Verify all addons exist
+        run: |
+          for platform in linux-x64 linux-arm64 linuxmusl-x64 linuxmusl-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            if [ ! -f "npm/$platform/lib/addon.node" ]; then
+              echo "ERROR: Missing addon.node for $platform"
+              exit 1
+            fi
+            echo "✓ Found addon.node for $platform ($(stat -c%s "npm/$platform/lib/addon.node") bytes)"
+          done
+
+      - name: Publish platform packages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          for platform in linux-x64 linux-arm64 linuxmusl-x64 linuxmusl-arm64 darwin-x64 darwin-arm64 win32-x64; do
+            echo "Publishing @rosepetal/rosepetal-engine-$platform..."
+            cd npm/$platform
+            npm publish --access public || echo "Package may already exist"
+            cd ../..
+          done
+
+      - name: Publish main package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          npm publish --access public || echo "Package may already exist"

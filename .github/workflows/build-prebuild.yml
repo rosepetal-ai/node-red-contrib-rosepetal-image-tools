@@ -44,25 +44,24 @@ jobs:
         id: cache-opencv
         uses: actions/cache@v4
         with:
-          path: ~/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-linux-x64-static-v3
+          path: /home/runner/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linux-x64-static-v4
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         env:
           OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
-          INSTALL_DIR: ~/opencv-static
+          INSTALL_DIR: /home/runner/opencv-static
         run: |
           chmod +x scripts/build-opencv-static.sh
           bash scripts/build-opencv-static.sh
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
-        env:
-          npm_config_opencv_include_dir: /home/runner/opencv-static/include/opencv4
-          npm_config_opencv_lib_dir: /home/runner/opencv-static/lib
         run: |
           npm install
+          npm config set opencv_include_dir /home/runner/opencv-static/include/opencv4
+          npm config set opencv_lib_dir /home/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -105,25 +104,24 @@ jobs:
         id: cache-opencv
         uses: actions/cache@v4
         with:
-          path: ~/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-linux-arm64-static-v3
+          path: /home/runner/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linux-arm64-static-v4
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         env:
           OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
-          INSTALL_DIR: ~/opencv-static
+          INSTALL_DIR: /home/runner/opencv-static
         run: |
           chmod +x scripts/build-opencv-static.sh
           bash scripts/build-opencv-static.sh
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
-        env:
-          npm_config_opencv_include_dir: /home/runner/opencv-static/include/opencv4
-          npm_config_opencv_lib_dir: /home/runner/opencv-static/lib
         run: |
           npm install
+          npm config set opencv_include_dir /home/runner/opencv-static/include/opencv4
+          npm config set opencv_lib_dir /home/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -163,25 +161,24 @@ jobs:
         id: cache-opencv
         uses: actions/cache@v4
         with:
-          path: ~/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-linuxmusl-x64-static-v3
+          path: /root/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-linuxmusl-x64-static-v4
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         env:
           OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
-          INSTALL_DIR: ~/opencv-static
+          INSTALL_DIR: /root/opencv-static
         run: |
           chmod +x scripts/build-opencv-static.sh
           bash scripts/build-opencv-static.sh
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
-        env:
-          npm_config_opencv_include_dir: /root/opencv-static/include/opencv4
-          npm_config_opencv_lib_dir: /root/opencv-static/lib
         run: |
           npm install
+          npm config set opencv_include_dir /root/opencv-static/include/opencv4
+          npm config set opencv_lib_dir /root/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -221,25 +218,24 @@ jobs:
         id: cache-opencv
         uses: actions/cache@v4
         with:
-          path: ~/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-darwin-x64-static-v3
+          path: /Users/runner/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-darwin-x64-static-v4
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         env:
           OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
-          INSTALL_DIR: ~/opencv-static
+          INSTALL_DIR: /Users/runner/opencv-static
         run: |
           chmod +x scripts/build-opencv-static.sh
           bash scripts/build-opencv-static.sh
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
-        env:
-          npm_config_opencv_include_dir: /Users/runner/opencv-static/include/opencv4
-          npm_config_opencv_lib_dir: /Users/runner/opencv-static/lib
         run: |
           npm install
+          npm config set opencv_include_dir /Users/runner/opencv-static/include/opencv4
+          npm config set opencv_lib_dir /Users/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -279,25 +275,24 @@ jobs:
         id: cache-opencv
         uses: actions/cache@v4
         with:
-          path: ~/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-darwin-arm64-static-v3
+          path: /Users/runner/opencv-static
+          key: opencv-${{ env.OPENCV_VERSION }}-darwin-arm64-static-v4
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         env:
           OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
-          INSTALL_DIR: ~/opencv-static
+          INSTALL_DIR: /Users/runner/opencv-static
         run: |
           chmod +x scripts/build-opencv-static.sh
           bash scripts/build-opencv-static.sh
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
-        env:
-          npm_config_opencv_include_dir: /Users/runner/opencv-static/include/opencv4
-          npm_config_opencv_lib_dir: /Users/runner/opencv-static/lib
         run: |
           npm install
+          npm config set opencv_include_dir /Users/runner/opencv-static/include/opencv4
+          npm config set opencv_lib_dir /Users/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -334,7 +329,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-win32-x64-static-v3
+          key: opencv-${{ env.OPENCV_VERSION }}-win32-x64-static-v4
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -353,11 +348,10 @@ jobs:
       - name: Build native addon
         working-directory: rosepetal-image-engine
         shell: pwsh
-        env:
-          npm_config_opencv_include_dir: C:\opencv-static\include\opencv4
-          npm_config_opencv_lib_dir: C:\opencv-static\lib
         run: |
           npm install
+          npm config set opencv_include_dir "C:\opencv-static\include\opencv4"
+          npm config set opencv_lib_dir "C:\opencv-static\lib"
           npx node-gyp rebuild
 
       - name: Copy addon to package

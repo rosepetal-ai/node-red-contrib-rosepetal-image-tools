@@ -58,10 +58,12 @@ jobs:
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
+        env:
+          npm_config_opencv_include_dir: /home/runner/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /home/runner/opencv-static/lib
+          PKG_CONFIG_PATH: /home/runner/opencv-static/lib/pkgconfig
         run: |
           npm install
-          npm config set opencv_include_dir /home/runner/opencv-static/include/opencv4
-          npm config set opencv_lib_dir /home/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -118,10 +120,12 @@ jobs:
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
+        env:
+          npm_config_opencv_include_dir: /home/runner/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /home/runner/opencv-static/lib
+          PKG_CONFIG_PATH: /home/runner/opencv-static/lib/pkgconfig
         run: |
           npm install
-          npm config set opencv_include_dir /home/runner/opencv-static/include/opencv4
-          npm config set opencv_lib_dir /home/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -175,10 +179,12 @@ jobs:
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
+        env:
+          npm_config_opencv_include_dir: /root/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /root/opencv-static/lib
+          PKG_CONFIG_PATH: /root/opencv-static/lib/pkgconfig
         run: |
           npm install
-          npm config set opencv_include_dir /root/opencv-static/include/opencv4
-          npm config set opencv_lib_dir /root/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -232,10 +238,12 @@ jobs:
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
+        env:
+          npm_config_opencv_include_dir: /Users/runner/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /Users/runner/opencv-static/lib
+          PKG_CONFIG_PATH: /Users/runner/opencv-static/lib/pkgconfig
         run: |
           npm install
-          npm config set opencv_include_dir /Users/runner/opencv-static/include/opencv4
-          npm config set opencv_lib_dir /Users/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -289,10 +297,12 @@ jobs:
 
       - name: Build native addon
         working-directory: rosepetal-image-engine
+        env:
+          npm_config_opencv_include_dir: /Users/runner/opencv-static/include/opencv4
+          npm_config_opencv_lib_dir: /Users/runner/opencv-static/lib
+          PKG_CONFIG_PATH: /Users/runner/opencv-static/lib/pkgconfig
         run: |
           npm install
-          npm config set opencv_include_dir /Users/runner/opencv-static/include/opencv4
-          npm config set opencv_lib_dir /Users/runner/opencv-static/lib
           npx node-gyp rebuild
 
       - name: Copy addon to package
@@ -348,10 +358,12 @@ jobs:
       - name: Build native addon
         working-directory: rosepetal-image-engine
         shell: pwsh
+        env:
+          npm_config_opencv_include_dir: 'C:\opencv-static\include\opencv4'
+          npm_config_opencv_lib_dir: 'C:\opencv-static\lib'
+          PKG_CONFIG_PATH: 'C:\opencv-static\lib\pkgconfig'
         run: |
           npm install
-          npm config set opencv_include_dir "C:\opencv-static\include\opencv4"
-          npm config set opencv_lib_dir "C:\opencv-static\lib"
           npx node-gyp rebuild
 
       - name: Copy addon to package

@@ -1,0 +1,6 @@
+# Ensure shell scripts always use LF line endings
+*.sh text eol=lf
+*.ps1 text eol=crlf
+
+# Default to auto for everything else
+* text=auto

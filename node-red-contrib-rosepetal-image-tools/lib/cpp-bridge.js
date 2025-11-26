@@ -194,7 +194,7 @@ function loadAddon() {
   // 4. Provide helpful error message
   const supportedPlatforms = [
     'linux-x64', 'linux-arm64',
-    'linuxmusl-x64', 'linuxmusl-arm64',
+    'linuxmusl-x64',
     'darwin-x64', 'darwin-arm64',
     'win32-x64'
   ];

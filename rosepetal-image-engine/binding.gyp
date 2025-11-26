@@ -79,13 +79,13 @@
             }],
             ["OS=='win'", {
               "libraries": [
-                "<(opencv_lib_dir)/opencv_imgcodecs490.lib",
-                "<(opencv_lib_dir)/opencv_imgproc490.lib",
-                "<(opencv_lib_dir)/opencv_core490.lib",
-                "<(opencv_lib_dir)/libjpeg-turbo.lib",
-                "<(opencv_lib_dir)/libpng.lib",
-                "<(opencv_lib_dir)/libwebp.lib",
-                "<(opencv_lib_dir)/zlib.lib"
+                "<(opencv_lib_dir)/opencv_imgcodecs4.lib",
+                "<(opencv_lib_dir)/opencv_imgproc4.lib",
+                "<(opencv_lib_dir)/opencv_core4.lib",
+                "<(opencv_lib_dir)/opencv4/3rdparty/libjpeg-turbo.lib",
+                "<(opencv_lib_dir)/opencv4/3rdparty/libpng.lib",
+                "<(opencv_lib_dir)/opencv4/3rdparty/libwebp.lib",
+                "<(opencv_lib_dir)/opencv4/3rdparty/zlib.lib"
               ],
               "msvs_settings": {
                 "VCCLCompilerTool": {

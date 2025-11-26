@@ -35,7 +35,6 @@
     "@rosepetal/rosepetal-engine-linux-x64": "1.0.1",
     "@rosepetal/rosepetal-engine-linux-arm64": "1.0.1",
     "@rosepetal/rosepetal-engine-linuxmusl-x64": "1.0.1",
-    "@rosepetal/rosepetal-engine-linuxmusl-arm64": "1.0.1",
     "@rosepetal/rosepetal-engine-darwin-x64": "1.0.1",
     "@rosepetal/rosepetal-engine-darwin-arm64": "1.0.1",
     "@rosepetal/rosepetal-engine-win32-x64": "1.0.1"

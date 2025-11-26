@@ -155,8 +155,11 @@ Write-Host ""
 Write-Host "To use with node-gyp:"
 Write-Host "  npx node-gyp rebuild \"
 Write-Host "    --opencv_include_dir=$InstallDir\include\opencv4 \"
-Write-Host "    --opencv_lib_dir=$InstallDir\x64\vc17\staticlib"
+Write-Host "    --opencv_lib_dir=$InstallDir\lib"
 Write-Host ""
 Write-Host "Libraries built:"
-Get-ChildItem "$InstallDir\x64\vc17\staticlib\*.lib" | Select-Object Name, Length
+Get-ChildItem "$InstallDir\lib\*.lib" -ErrorAction SilentlyContinue | Select-Object Name, Length
+Write-Host ""
+Write-Host "3rdparty libraries:"
+Get-ChildItem "$InstallDir\lib\opencv4\3rdparty\*.lib" -ErrorAction SilentlyContinue | Select-Object Name, Length
 Write-Host "=========================================="

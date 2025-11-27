@@ -19,7 +19,7 @@
     "opencv",
     "performance"
   ],
-  "author": "Rosepetal SL <dev@rosepetal.ai> (https://www.rosepetal.ai)",
+  "author": "Rosepetal SL (https://www.rosepetal.ai)",
   "contributors": [
     {
       "name": "Nil Allue",
@@ -32,12 +32,11 @@
   },
   "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
   "optionalDependencies": {
-    "@rosepetal/rosepetal-engine-linux-x64": "1.0.1",
-    "@rosepetal/rosepetal-engine-linux-arm64": "1.0.1",
-    "@rosepetal/rosepetal-engine-linuxmusl-x64": "1.0.1",
-    "@rosepetal/rosepetal-engine-darwin-x64": "1.0.1",
-    "@rosepetal/rosepetal-engine-darwin-arm64": "1.0.1",
-    "@rosepetal/rosepetal-engine-win32-x64": "1.0.1"
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64": "1.0.1",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-arm64": "1.0.1",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-linuxmusl-x64": "1.0.1",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-x64": "1.0.1",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-arm64": "1.0.1"
   },
   "node-red": {
       "version": ">=1.0.0",

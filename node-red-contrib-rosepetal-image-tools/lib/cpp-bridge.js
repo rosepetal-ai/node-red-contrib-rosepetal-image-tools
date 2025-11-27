@@ -3,7 +3,7 @@
  * Follows Sharp's pattern for platform-specific binary loading.
  *
  * Loading order:
- * 1. Try platform-specific package (@rosepetal/rosepetal-engine-{platform})
+ * 1. Try platform-specific package (@rosepetal/node-red-contrib-rosepetal-image-tools-{platform})
  * 2. Fallback to local build (development mode)
  * 3. Fallback to node-gyp rebuild if build tools available
  * 4. Error with helpful message
@@ -70,7 +70,7 @@ function detectMusl() {
  * @returns {object|null} The loaded addon or null
  */
 function tryLoadFromPackage(platformId) {
-  const packageName = `@rosepetal/rosepetal-engine-${platformId}`;
+  const packageName = `@rosepetal/node-red-contrib-rosepetal-image-tools-${platformId}`;
 
   try {
     // Try to resolve and load the platform-specific package
@@ -195,8 +195,7 @@ function loadAddon() {
   const supportedPlatforms = [
     'linux-x64', 'linux-arm64',
     'linuxmusl-x64',
-    'darwin-x64', 'darwin-arm64',
-    'win32-x64'
+    'darwin-x64', 'darwin-arm64'
   ];
 
   throw new Error(

@@ -1,14 +1,14 @@
 {
-  "name": "@rosepetal/rosepetal-engine-linux-x64",
+  "name": "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64",
   "version": "1.0.1",
-  "description": "Prebuilt rosepetal-image-engine binary for Linux x64 (glibc)",
+  "description": "Prebuilt native binary for Linux x64 (glibc)",
   "os": ["linux"],
   "cpu": ["x64"],
   "libc": ["glibc"],
   "main": "lib/addon.node",
   "files": ["lib/addon.node"],
   "license": "Apache-2.0",
-  "author": "Rosepetal SL <dev@rosepetal.ai> (https://www.rosepetal.ai)",
+  "author": "Rosepetal SL (https://www.rosepetal.ai)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools.git"

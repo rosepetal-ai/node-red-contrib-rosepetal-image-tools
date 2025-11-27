@@ -1,13 +1,13 @@
 {
-  "name": "@rosepetal/rosepetal-engine-darwin-x64",
+  "name": "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-x64",
   "version": "1.0.1",
-  "description": "Prebuilt rosepetal-image-engine binary for macOS x64 (Intel)",
+  "description": "Prebuilt native binary for macOS x64 (Intel)",
   "os": ["darwin"],
   "cpu": ["x64"],
   "main": "lib/addon.node",
   "files": ["lib/addon.node"],
   "license": "Apache-2.0",
-  "author": "Rosepetal SL <dev@rosepetal.ai> (https://www.rosepetal.ai)",
+  "author": "Rosepetal SL (https://www.rosepetal.ai)",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools.git"

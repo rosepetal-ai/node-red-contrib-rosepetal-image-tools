@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Prebuilt native binary for Linux x64 (glibc)",
   "os": ["linux"],
   "cpu": ["x64"],

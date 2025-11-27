@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-rosepetal-image-tools",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Node-RED Image Processing Toolkit",
   "main": "install.sh",
   "directories": {
@@ -32,11 +32,11 @@
   },
   "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
   "optionalDependencies": {
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64": "1.0.1",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-arm64": "1.0.1",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-linuxmusl-x64": "1.0.1",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-x64": "1.0.1",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-arm64": "1.0.1"
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64": "1.1.0",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-arm64": "1.1.0",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-linuxmusl-x64": "1.1.0",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-x64": "1.1.0",
+    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-arm64": "1.1.0"
   },
   "node-red": {
       "version": ">=1.0.0",

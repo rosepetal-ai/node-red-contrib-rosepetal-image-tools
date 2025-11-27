@@ -31,6 +31,9 @@
     "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
   },
   "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
+  "dependencies": {
+    "sharp": "^0.34.2"
+  },
   "optionalDependencies": {
     "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64": "1.1.0",
     "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-arm64": "1.1.0",
@@ -60,7 +63,12 @@
             "advanced-mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/advanced-mosaic.js",
             "blend": "node-red-contrib-rosepetal-image-tools/nodes/blend/blend.js",
             "add-mask": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-mask.js",
-            "add-masks": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-masks.js"
+            "add-masks": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-masks.js",
+            "add-bbs": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-bbs.js",
+            "queue": "node-red-contrib-rosepetal-image-tools/nodes/io/queue.js",
+            "save-file": "node-red-contrib-rosepetal-image-tools/nodes/io/save-file.js",
+            "clean-debug": "node-red-contrib-rosepetal-image-tools/nodes/util/clean-debug.js",
+            "block-detect": "node-red-contrib-rosepetal-image-tools/nodes/util/block-detect.js"
         }
     }
 }

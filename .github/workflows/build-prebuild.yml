@@ -359,8 +359,9 @@ jobs:
         working-directory: rosepetal-image-engine
         shell: pwsh
         run: |
-          npm install
-          npx node-gyp rebuild --opencv_include_dir="C:\opencv-static\include\opencv4" --opencv_lib_dir="C:\opencv-static\lib"
+          npm install --ignore-scripts
+          npx node-gyp configure --opencv_include_dir="C:\opencv-static\include\opencv4" --opencv_lib_dir="C:\opencv-static\lib"
+          npx node-gyp build
 
       - name: Copy addon to package
         shell: pwsh

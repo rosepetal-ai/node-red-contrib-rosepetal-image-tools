@@ -99,6 +99,7 @@ cmake .. \
     -DWITH_LAPACK=OFF \
     -DWITH_IPP=OFF \
     -DWITH_TBB=OFF \
+    -DWITH_ITT=OFF \
     -DWITH_OPENMP=OFF \
     -DWITH_PTHREADS_PF=ON \
     \

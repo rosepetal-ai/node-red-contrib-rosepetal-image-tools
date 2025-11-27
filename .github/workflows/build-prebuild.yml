@@ -45,7 +45,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-linux-x64-static-v5
+          key: opencv-${{ env.OPENCV_VERSION }}-linux-x64-static-v6
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -107,7 +107,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /home/runner/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-linux-arm64-static-v5
+          key: opencv-${{ env.OPENCV_VERSION }}-linux-arm64-static-v6
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -166,7 +166,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /root/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-linuxmusl-x64-static-v5
+          key: opencv-${{ env.OPENCV_VERSION }}-linuxmusl-x64-static-v6
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -225,7 +225,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /Users/runner/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-darwin-x64-static-v5
+          key: opencv-${{ env.OPENCV_VERSION }}-darwin-x64-static-v6
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -284,7 +284,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /Users/runner/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-darwin-arm64-static-v5
+          key: opencv-${{ env.OPENCV_VERSION }}-darwin-arm64-static-v6
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -339,7 +339,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-win32-x64-static-v5
+          key: opencv-${{ env.OPENCV_VERSION }}-win32-x64-static-v6
 
       - name: Build OpenCV static
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -358,13 +358,9 @@ jobs:
       - name: Build native addon
         working-directory: rosepetal-image-engine
         shell: pwsh
-        env:
-          npm_config_opencv_include_dir: 'C:\opencv-static\include\opencv4'
-          npm_config_opencv_lib_dir: 'C:\opencv-static\lib'
-          PKG_CONFIG_PATH: 'C:\opencv-static\lib\pkgconfig'
         run: |
           npm install
-          npx node-gyp rebuild
+          npx node-gyp rebuild --opencv_include_dir="C:\opencv-static\include\opencv4" --opencv_lib_dir="C:\opencv-static\lib"
 
       - name: Copy addon to package
         shell: pwsh

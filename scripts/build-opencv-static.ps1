@@ -101,6 +101,7 @@ $CMakeArgs = @(
     "-DWITH_LAPACK=OFF",
     "-DWITH_IPP=OFF",
     "-DWITH_TBB=OFF",
+    "-DWITH_ITT=OFF",
     "-DWITH_OPENMP=OFF",
     "-DWITH_PROTOBUF=OFF",
     "-DWITH_QUIRC=OFF",

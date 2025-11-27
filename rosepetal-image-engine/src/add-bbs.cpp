@@ -8,7 +8,7 @@
 #include <algorithm>
 // OpenMP is only used through pragmas; omit the header to avoid requiring libomp headers on macOS.
 // #include <omp.h>
-#include <emmintrin.h>  // SSE2 for faster operations
+// SSE2 header removed - was unused and breaks ARM builds (emmintrin.h is x86/x64 only)
 
 // Structure for bounding box information
 struct BBoxInfo {

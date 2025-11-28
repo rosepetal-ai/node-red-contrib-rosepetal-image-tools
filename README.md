@@ -6,16 +6,26 @@ A comprehensive Node-RED package providing 17 specialized nodes for high-perform
 
 ## 🚀 Quick Start
 
-### Installation
-```bash
-# Quick setup
-./install.sh
+### Installation (users)
+**From Node-RED (Palette Manager)**
+- Open Palette Manager → Install → search `@rosepetal/node-red-contrib-rosepetal-image-tools`.
 
-# Manual installation
+**From npm (CLI, default)**
+```bash
+cd ~/.node-red
+npm install @rosepetal/node-red-contrib-rosepetal-image-tools
+```
+
+### Development installation (build from source)
+For contributors or platforms without a prebuilt binary:
+```bash
+./install.sh
+# or manual steps:
 cd rosepetal-image-engine && npm install && npm run build
 cd ../node-red-contrib-rosepetal-image-tools && npm install
 cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 ```
+> npm installs fetch prebuilt binaries for common platforms; build from source only if you are developing or a prebuilt is unavailable.
 
 ### Requirements
 - Node.js 16+ with node-gyp support

@@ -15,6 +15,9 @@
             outputFormat: { value: "jpg" },
             outputQuality: { value: 90 },
             pngOptimize: { value: false },
+            webpLossless: { value: false },
+            webpEffort: { value: "" },
+            webpSmartSubsample: { value: false },
             overwriteProtection: { value: true },
             maxImages: { value: "" },
             maxImagesType: { value: "num" },
@@ -129,16 +132,34 @@
                 const format = $('#node-input-outputFormat').val();
                 const qualityRow = $('#quality-row');
                 const pngOptimizeRow = $('#png-optimize-row');
+                const webpLosslessRow = $('#webp-lossless-row');
+                const webpEffortRow = $('#webp-effort-row');
+                const webpSmartSubsampleRow = $('#webp-smartsubsample-row');
                 
-                if (format === 'jpg' || format === 'webp') {
+                if (format === 'jpg') {
                     qualityRow.show();
                     pngOptimizeRow.hide();
+                    webpLosslessRow.hide();
+                    webpEffortRow.hide();
+                    webpSmartSubsampleRow.hide();
+                } else if (format === 'webp') {
+                    qualityRow.show();
+                    pngOptimizeRow.hide();
+                    webpLosslessRow.show();
+                    webpEffortRow.show();
+                    webpSmartSubsampleRow.show();
                 } else if (format === 'png') {
                     qualityRow.hide();
                     pngOptimizeRow.show();
+                    webpLosslessRow.hide();
+                    webpEffortRow.hide();
+                    webpSmartSubsampleRow.hide();
                 } else {
                     qualityRow.hide();
                     pngOptimizeRow.hide();
+                    webpLosslessRow.hide();
+                    webpEffortRow.hide();
+                    webpSmartSubsampleRow.hide();
                 }
             }
             
@@ -357,6 +378,24 @@
         <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
         <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
     </div>
+
+    <div class="form-row" id="webp-lossless-row" style="display: none;">
+        <label for="node-input-webpLossless"><i class="fa fa-lock"></i> WebP Lossless</label>
+        <input type="checkbox" id="node-input-webpLossless" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-webpLossless" style="width:auto; margin-left:5px;">Encode WebP without loss</label>
+    </div>
+
+    <div class="form-row" id="webp-smartsubsample-row" style="display: none;">
+        <label for="node-input-webpSmartSubsample"><i class="fa fa-magic"></i> WebP Smart Subsample</label>
+        <input type="checkbox" id="node-input-webpSmartSubsample" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-webpSmartSubsample" style="width:auto; margin-left:5px;">Improve chroma downsampling (lossy WebP only)</label>
+    </div>
+
+    <div class="form-row" id="webp-effort-row" style="display: none;">
+        <label for="node-input-webpEffort"><i class="fa fa-tachometer"></i> WebP Effort</label>
+        <input type="number" id="node-input-webpEffort" min="0" max="6" placeholder="4" style="width: 70px;">
+        <span style="margin-left: 10px; color: #666;">0-6 (higher = smaller file, slower)</span>
+    </div>
     
     <hr>
     
@@ -413,6 +452,15 @@
         
         <dt>Quality <span class="property-type">number</span></dt>
         <dd>Quality setting for JPEG and WebP formats (1-100). Higher values mean better quality but larger file sizes.</dd>
+
+        <dt>WebP Lossless <span class="property-type">boolean</span></dt>
+        <dd>When enabled and WebP is selected, encodes using lossless WebP (ignores the lossy quality slider).</dd>
+
+        <dt>WebP Effort <span class="property-type">number</span></dt>
+        <dd>Optional 0-6 encoder effort when WebP is selected. Higher values are slower but can yield slightly smaller files. Leave blank to use the default.</dd>
+
+        <dt>WebP Smart Subsample <span class="property-type">boolean</span></dt>
+        <dd>For lossy WebP only: enables smarter chroma downsampling to reduce color artifacts (slower).</dd>
         
         <dt>PNG Optimize <span class="property-type">boolean</span></dt>
         <dd>When enabled, applies maximum compression to PNG files. This creates smaller files but takes more processing time.</dd>

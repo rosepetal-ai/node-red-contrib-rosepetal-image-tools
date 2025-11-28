@@ -166,6 +166,12 @@ module.exports = function(RED) {
           format = 'jpg';
         }
         let fileExtension = format === 'jpg' ? 'jpg' : format;
+        const webpLossless = config.webpLossless === true || config.webpLossless === 'true';
+        const webpSmartSubsample = config.webpSmartSubsample === true || config.webpSmartSubsample === 'true';
+        const parsedEffort = parseInt(config.webpEffort, 10);
+        const hasWebpEffort = Number.isInteger(parsedEffort);
+        // Sharp expects 0-6 (6 = slowest/smallest); clamp to be safe
+        const webpEffort = hasWebpEffort ? Math.min(6, Math.max(0, parsedEffort)) : null;
 
         // Build filename (timestamp-based fallback)
         const now = new Date();
@@ -247,8 +253,15 @@ module.exports = function(RED) {
           }
           
           // Check if we need to re-encode or can save directly
-          if (inputFormat === format || (inputFormat === 'jpeg' && format === 'jpg')) {
-            // Same format, we can save directly without re-encoding (fastest)
+          const sameFormat =
+            inputFormat === format ||
+            (inputFormat === 'jpeg' && format === 'jpg');
+
+          const needsWebpReencode =
+            format === 'webp' && (webpLossless || hasWebpEffort);
+
+          if (sameFormat && !needsWebpReencode) {
+            // Same format and no special WebP options: save directly (fastest)
             outputBuffer = image;
           } else {
             // Different format or unknown input, re-encode using Sharp
@@ -265,7 +278,13 @@ module.exports = function(RED) {
                 outputBuffer = await sharpInstance.png(pngOptions).toBuffer();
                 break;
               case 'webp':
-                outputBuffer = await sharpInstance.webp({ quality }).toBuffer();
+                {
+                  const webpOptions = { quality };
+                  if (webpLossless) webpOptions.lossless = true;
+                  if (!webpLossless && webpSmartSubsample) webpOptions.smartSubsample = true;
+                  if (hasWebpEffort) webpOptions.effort = webpEffort;
+                  outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
+                }
                 break;
               default:
                 throw new Error(`Unsupported format: ${format}`);
@@ -318,7 +337,13 @@ module.exports = function(RED) {
               outputBuffer = await sharpInstance.png(pngOptions).toBuffer();
               break;
             case 'webp':
-              outputBuffer = await sharpInstance.webp({ quality }).toBuffer();
+              {
+                const webpOptions = { quality };
+                if (webpLossless) webpOptions.lossless = true;
+                if (!webpLossless && webpSmartSubsample) webpOptions.smartSubsample = true;
+                if (hasWebpEffort) webpOptions.effort = webpEffort;
+                outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
+              }
               break;
             default:
               throw new Error(`Unsupported format: ${format}`);

@@ -103,6 +103,70 @@ module.exports = function (RED) {
       for (let i = 0; i < pointsConfig.length; i++) {
         const cfg = pointsConfig[i] || {};
         try {
+          if (cfg.mode === 'list') {
+            const list = resolveList(
+              cfg.listType,
+              cfg.listValue,
+              msg,
+              `points[${i}].list`,
+              2
+            );
+
+            const radius = resolvePositiveNormalized(
+              cfg.radiusType,
+              cfg.radiusValue,
+              msg,
+              `points[${i}].radius`,
+              0.01
+            );
+            const opacity = resolveOpacity(
+              cfg.opacityType,
+              cfg.opacityValue,
+              msg,
+              `points[${i}].opacity`,
+              1
+            );
+            const color = resolveColor(
+              cfg.colorType,
+              cfg.colorValue,
+              msg,
+              `points[${i}].color`,
+              '#ff0000'
+            );
+
+            let added = 0;
+            for (let idx = 0; idx < list.length; idx++) {
+              const entry = list[idx];
+              try {
+                const [xVal, yVal] = resolveListNumbers(
+                  entry,
+                  2,
+                  `points[${i}].list[${idx}]`
+                );
+                const x = resolveNormalizedRawNumber(xVal, `points[${i}].list[${idx}].x`);
+                const y = resolveNormalizedRawNumber(yVal, `points[${i}].list[${idx}].y`);
+
+                resolved.push({
+                  x,
+                  y,
+                  radius,
+                  r: color.r,
+                  g: color.g,
+                  b: color.b,
+                  a: opacity * color.a
+                });
+                added++;
+              } catch (err) {
+                node.warn(err.message);
+              }
+            }
+
+            if (!added) {
+              node.warn(`points[${i}] list contains no valid entries`);
+            }
+            continue;
+          }
+
           const x = resolveNormalizedNumber(cfg.xType, cfg.xValue, msg, `points[${i}].x`);
           const y = resolveNormalizedNumber(cfg.yType, cfg.yValue, msg, `points[${i}].y`);
           const radius = resolvePositiveNormalized(
@@ -148,6 +212,87 @@ module.exports = function (RED) {
       for (let i = 0; i < linesConfig.length; i++) {
         const cfg = linesConfig[i] || {};
         try {
+          if (cfg.mode === 'list') {
+            const list = resolveList(
+              cfg.listType,
+              cfg.listValue,
+              msg,
+              `lines[${i}].list`,
+              4
+            );
+
+            const thickness = resolvePositiveNormalized(
+              cfg.thicknessType,
+              cfg.thicknessValue,
+              msg,
+              `lines[${i}].thickness`,
+              0.005
+            );
+            const opacity = resolveOpacity(
+              cfg.opacityType,
+              cfg.opacityValue,
+              msg,
+              `lines[${i}].opacity`,
+              1
+            );
+            const color = resolveColor(
+              cfg.colorType,
+              cfg.colorValue,
+              msg,
+              `lines[${i}].color`,
+              '#00ff00'
+            );
+
+            let added = 0;
+            for (let idx = 0; idx < list.length; idx++) {
+              const entry = list[idx];
+              try {
+                const [x1Val, y1Val, x2Val, y2Val] = resolveListNumbers(
+                  entry,
+                  4,
+                  `lines[${i}].list[${idx}]`
+                );
+
+                const x1 = resolveNormalizedRawNumber(
+                  x1Val,
+                  `lines[${i}].list[${idx}].x1`
+                );
+                const y1 = resolveNormalizedRawNumber(
+                  y1Val,
+                  `lines[${i}].list[${idx}].y1`
+                );
+                const x2 = resolveNormalizedRawNumber(
+                  x2Val,
+                  `lines[${i}].list[${idx}].x2`
+                );
+                const y2 = resolveNormalizedRawNumber(
+                  y2Val,
+                  `lines[${i}].list[${idx}].y2`
+                );
+
+                resolved.push({
+                  x1,
+                  y1,
+                  x2,
+                  y2,
+                  thickness,
+                  r: color.r,
+                  g: color.g,
+                  b: color.b,
+                  a: opacity * color.a
+                });
+                added++;
+              } catch (err) {
+                node.warn(err.message);
+              }
+            }
+
+            if (!added) {
+              node.warn(`lines[${i}] list contains no valid entries`);
+            }
+            continue;
+          }
+
           const x1 = resolveNormalizedNumber(cfg.x1Type, cfg.x1Value, msg, `lines[${i}].x1`);
           const y1 = resolveNormalizedNumber(cfg.y1Type, cfg.y1Value, msg, `lines[${i}].y1`);
           const x2 = resolveNormalizedNumber(cfg.x2Type, cfg.x2Value, msg, `lines[${i}].x2`);
@@ -245,6 +390,73 @@ module.exports = function (RED) {
         throw new Error(`${fieldLabel} must resolve to a number`);
       }
       return num;
+    }
+
+    function resolveNormalizedRawNumber(value, fieldLabel) {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num < 0 || num > 1) {
+        throw new Error(`${fieldLabel} must be a number between 0 and 1`);
+      }
+      return num;
+    }
+
+    function resolveList(type, value, msg, fieldLabel, expectedLength) {
+      const inputType = type || 'json';
+      let resolved = value;
+
+      if (
+        (value === undefined || value === null || value === '') &&
+        (inputType === 'json' || inputType === 'str')
+      ) {
+        throw new Error(`${fieldLabel} list is required`);
+      }
+
+      if (inputType === 'msg' || inputType === 'flow' || inputType === 'global') {
+        try {
+          resolved = RED.util.evaluateNodeProperty(value, inputType, node, msg);
+        } catch (err) {
+          throw new Error(`${fieldLabel} resolution error: ${err.message}`);
+        }
+      }
+
+      if (typeof resolved === 'string') {
+        try {
+          resolved = JSON.parse(resolved);
+        } catch (err) {
+          throw new Error(`${fieldLabel} must be valid JSON array: ${err.message}`);
+        }
+      }
+
+      if (!Array.isArray(resolved)) {
+        const expectedMsg = expectedLength ? ` of length-${expectedLength} entries` : '';
+        throw new Error(`${fieldLabel} must resolve to an array${expectedMsg}`);
+      }
+
+      if (resolved.length === 0) {
+        const expectedMsg = expectedLength ? ` (each item length ${expectedLength})` : '';
+        throw new Error(`${fieldLabel} array is empty${expectedMsg}`);
+      }
+
+      return resolved;
+    }
+
+    function resolveListNumbers(entry, expectedLength, fieldLabel) {
+      if (!Array.isArray(entry)) {
+        throw new Error(`${fieldLabel} must be an array`);
+      }
+      if (entry.length < expectedLength) {
+        throw new Error(`${fieldLabel} must have at least ${expectedLength} numbers`);
+      }
+
+      const values = entry.slice(0, expectedLength).map((v, idx) => {
+        const num = Number(v);
+        if (!Number.isFinite(num)) {
+          throw new Error(`${fieldLabel}[${idx}] must be a number`);
+        }
+        return num;
+      });
+
+      return values;
     }
 
     function resolveColor(type, value, msg, fieldLabel, fallback) {

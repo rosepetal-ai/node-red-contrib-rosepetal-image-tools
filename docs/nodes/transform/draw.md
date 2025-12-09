@@ -32,6 +32,7 @@ Each list entry configures one point:
 - **Radius**: Normalized size relative to the shortest image dimension (minimum 1 pixel).
 - **Color**: Hex string (e.g. `#FF0066`). Can be resolved from context if needed.
 - **Opacity**: Overlay strength (`0.0 – 1.0`). Combined with any alpha channel supplied in the color.
+- **List mode**: Flip the row to *List* to provide `[[x,y], ...]` in one go (from JSON, msg, flow, or global). The row’s radius/color/opacity apply to every list entry.
 
 Click **+** to add points and **🗑** to remove. Fields keep their typed-input settings, allowing mixed static and dynamic values.
 
@@ -41,6 +42,7 @@ Each list entry defines a polyline segment:
 - **Thickness**: Normalized width relative to the shortest dimension (minimum 1 pixel).
 - **Color**: Hex string or dynamic string.
 - **Opacity**: Blend factor (`0.0 – 1.0`).
+- **List mode**: Use *List* to feed multiple lines at once as `[[x0,y0,x1,y1], ...]`. Thickness/color/opacity are reused for each segment.
 
 ### Debugging
 - **Debug switch**: Streams a preview via the standard Rosepetal debug channel.

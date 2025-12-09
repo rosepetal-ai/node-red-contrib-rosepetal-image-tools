@@ -1,6 +1,8 @@
 <script type="text/javascript">
 (function() {
   const DEFAULT_POINT = Object.freeze({
+    mode: 'single',
+    listType: 'json', listValue: '',
     xType: 'num', xValue: '0.5',
     yType: 'num', yValue: '0.5',
     radiusType: 'num', radiusValue: '0.02',
@@ -9,6 +11,8 @@
   });
 
   const DEFAULT_LINE = Object.freeze({
+    mode: 'single',
+    listType: 'json', listValue: '',
     x1Type: 'num', x1Value: '0.1',
     y1Type: 'num', y1Value: '0.1',
     x2Type: 'num', x2Value: '0.9',
@@ -44,6 +48,7 @@
       container: '#points-container',
       rowClass: 'rp-point-row',
       columns: [
+        { field: 'list', inputClass: 'point-list' },
         { field: 'x', inputClass: 'point-x' },
         { field: 'y', inputClass: 'point-y' },
         { field: 'radius', inputClass: 'point-radius' },
@@ -55,6 +60,7 @@
       container: '#lines-container',
       rowClass: 'rp-line-row',
       columns: [
+        { field: 'list', inputClass: 'line-list' },
         { field: 'x1', inputClass: 'line-x1' },
         { field: 'y1', inputClass: 'line-y1' },
         { field: 'x2', inputClass: 'line-x2' },
@@ -218,8 +224,57 @@
         return input;
       }
 
+      function togglePointMode(row, point) {
+        const isList = point.mode === 'list';
+        const xyInputs = row.find('.point-x, .point-y');
+        xyInputs.each(function () {
+          const input = $(this);
+          input.prop('disabled', isList);
+          input.closest('td').css('opacity', isList ? 0.5 : 1);
+        });
+
+        const listInput = row.find('.point-list');
+        listInput.each(function () {
+          const input = $(this);
+          const disabled = !isList;
+          input.prop('disabled', disabled);
+          input.closest('td').css('opacity', disabled ? 0.5 : 1);
+        });
+      }
+
+      function toggleLineMode(row, line) {
+        const isList = line.mode === 'list';
+        const coordInputs = row.find('.line-x1, .line-y1, .line-x2, .line-y2');
+        coordInputs.each(function () {
+          const input = $(this);
+          input.prop('disabled', isList);
+          input.closest('td').css('opacity', isList ? 0.5 : 1);
+        });
+
+        const listInput = row.find('.line-list');
+        listInput.each(function () {
+          const input = $(this);
+          const disabled = !isList;
+          input.prop('disabled', disabled);
+          input.closest('td').css('opacity', disabled ? 0.5 : 1);
+        });
+      }
+
       function createPointRow(point, index) {
         const row = $('<tr class="rp-point-row">').attr('data-index', index);
+
+        const modeCell = $('<td style="padding:8px; border:1px solid #ddd; vertical-align:middle;">').appendTo(row);
+        const modeSelect = $('<select style="width:100%;">')
+          .addClass('point-mode')
+          .append('<option value="single">Single values</option>')
+          .append('<option value="list">List</option>')
+          .val(point.mode || 'single')
+          .appendTo(modeCell);
+        modeSelect.on('change', function () {
+          point.mode = $(this).val();
+          togglePointMode(row, point);
+          markDirty();
+        });
 
         buildTypedCell(row, {
           typeClass: 'point-x-type',
@@ -244,6 +299,19 @@
           onChange: function (input) {
             point.yType = input.typedInput('type');
             point.yValue = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
+          typeClass: 'point-list-type',
+          inputClass: 'point-list',
+          defaultType: point.listType,
+          defaultValue: point.listValue,
+          types: ['json', 'msg', 'flow', 'global'],
+          placeholder: '[[0.1,0.2], ...]',
+          onChange: function (input) {
+            point.listType = input.typedInput('type');
+            point.listValue = input.typedInput('value');
           }
         });
 
@@ -294,6 +362,7 @@
           markDirty();
         });
 
+        togglePointMode(row, point);
         return row;
       }
 
@@ -304,7 +373,7 @@
         const table = $('<table class="rp-draw-table" style="width:100%; border-collapse:collapse; margin:10px 0;">');
         const thead = $('<thead>').appendTo(table);
         const headerRow = $('<tr style="background-color:#f0f0f0; font-weight:bold;">').appendTo(thead);
-        ['X', 'Y', 'Radius', 'Color', 'Opacity', 'Actions'].forEach(function (title) {
+        ['Mode', 'X', 'Y', 'List', 'Radius', 'Color', 'Opacity', 'Actions'].forEach(function (title) {
           $('<th style="padding:8px; border:1px solid #ddd; text-align:left;">').text(title).appendTo(headerRow);
         });
 
@@ -314,7 +383,7 @@
             tbody.append(createPointRow(point, index));
           });
         } else {
-          $('<tr class="rp-point-empty"><td colspan="6" style="padding:12px; border:1px solid #ddd; text-align:center; color:#777;">No points defined. Use "Add point" to create one.</td></tr>')
+          $('<tr class="rp-point-empty"><td colspan="8" style="padding:12px; border:1px solid #ddd; text-align:center; color:#777;">No points defined. Use "Add point" to create one.</td></tr>')
             .appendTo(tbody);
         }
 
@@ -331,6 +400,19 @@
 
       function createLineRow(line, index) {
         const row = $('<tr class="rp-line-row">').attr('data-index', index);
+
+        const modeCell = $('<td style="padding:8px; border:1px solid #ddd; vertical-align:middle;">').appendTo(row);
+        const modeSelect = $('<select style="width:100%;">')
+          .addClass('line-mode')
+          .append('<option value="single">Single values</option>')
+          .append('<option value="list">List</option>')
+          .val(line.mode || 'single')
+          .appendTo(modeCell);
+        modeSelect.on('change', function () {
+          line.mode = $(this).val();
+          toggleLineMode(row, line);
+          markDirty();
+        });
 
         buildTypedCell(row, {
           typeClass: 'line-x1-type',
@@ -385,6 +467,19 @@
         });
 
         buildTypedCell(row, {
+          typeClass: 'line-list-type',
+          inputClass: 'line-list',
+          defaultType: line.listType,
+          defaultValue: line.listValue,
+          types: ['json', 'msg', 'flow', 'global'],
+          placeholder: '[[0,0,1,1], ...]',
+          onChange: function (input) {
+            line.listType = input.typedInput('type');
+            line.listValue = input.typedInput('value');
+          }
+        });
+
+        buildTypedCell(row, {
           typeClass: 'line-thickness-type',
           inputClass: 'line-thickness',
           defaultType: line.thicknessType,
@@ -431,6 +526,7 @@
           markDirty();
         });
 
+        toggleLineMode(row, line);
         return row;
       }
 
@@ -441,7 +537,7 @@
         const table = $('<table class="rp-draw-table" style="width:100%; border-collapse:collapse; margin:10px 0;">');
         const thead = $('<thead>').appendTo(table);
         const headerRow = $('<tr style="background-color:#f0f0f0; font-weight:bold;">').appendTo(thead);
-        ['X1', 'Y1', 'X2', 'Y2', 'Thickness', 'Color', 'Opacity', 'Actions'].forEach(function (title) {
+        ['Mode', 'X1', 'Y1', 'X2', 'Y2', 'List', 'Thickness', 'Color', 'Opacity', 'Actions'].forEach(function (title) {
           $('<th style="padding:8px; border:1px solid #ddd; text-align:left;">').text(title).appendTo(headerRow);
         });
 
@@ -451,7 +547,7 @@
             tbody.append(createLineRow(line, index));
           });
         } else {
-          $('<tr class="rp-line-empty"><td colspan="8" style="padding:12px; border:1px solid #ddd; text-align:center; color:#777;">No lines defined. Use "Add line" to create one.</td></tr>')
+          $('<tr class="rp-line-empty"><td colspan="10" style="padding:12px; border:1px solid #ddd; text-align:center; color:#777;">No lines defined. Use "Add line" to create one.</td></tr>')
             .appendTo(tbody);
         }
 
@@ -478,6 +574,12 @@
         rows.each(function () {
           const row = $(this);
           const entry = {};
+
+          if (tableKey === 'points') {
+            entry.mode = row.find('.point-mode').val() || 'single';
+          } else if (tableKey === 'lines') {
+            entry.mode = row.find('.line-mode').val() || 'single';
+          }
 
           cfg.columns.forEach(function (column) {
             const selector = column.inputClass ? '.' + column.inputClass : null;
@@ -575,6 +677,7 @@
     <li><b>Radius</b> - relative point size; larger values draw bigger dots.</li>
     <li><b>Color</b> - pick a fixed colour or source it from the flow via the typed selector.</li>
     <li><b>Opacity</b> - blend amount from 0 (transparent) to 1 (solid).</li>
+    <li><b>Mode</b> - switch to <em>List</em> to feed [[x,y], ...] from msg/flow/global/JSON for bulk points.</li>
     <li>Use <b>Add point</b> and <b>Remove</b> to manage rows.</li>
   </ul>
 </div>
@@ -592,6 +695,7 @@
     <li><b>X1/Y1 & X2/Y2</b> - start and end coordinates (normalized 0.0-1.0).</li>
     <li><b>Thickness</b> - relative stroke width; higher values make bolder lines.</li>
     <li><b>Color & Opacity</b> - pick a stroke colour and blend level, or reference flow data.</li>
+    <li><b>Mode</b> - switch to <em>List</em> to feed [[x0,y0,x1,y1], ...] for multiple segments.</li>
     <li>Use <b>Add line</b> and <b>Remove</b> to maintain the list.</li>
   </ul>
 </div>
@@ -605,6 +709,7 @@
 
   <h3>Configuration</h3>
   <p>Each point entry sets X/Y coordinates, point radius, color, and opacity. Each line entry defines start and end coordinates, thickness, color, and opacity. Coordinates and sizes are normalized (0-1) so they scale with any image resolution. All fields support fixed values, message properties, or flow/global context references through the typed input selector.</p>
+  <p>Switch a row to <b>List</b> mode to emit multiple shapes from one card. For points, supply <code>[[x,y], ...]</code>. For lines, supply <code>[[x0,y0,x1,y1], ...]</code>. The row's radius/thickness/color/opacity apply to every entry in the list.</p>
 
   <h3>Output</h3>
   <p>The annotated image is written to the selected location. Choose <code>raw</code> to retain the native Rosepetal structure or encode to JPG/PNG/WebP with quality and optimization controls.</p>

@@ -287,9 +287,9 @@ module.exports = function (RED) {
               }
             }
 
-            if (!added) {
-              node.warn(`lines[${i}] list contains no valid entries`);
-            }
+            // if (!added) {
+            //   node.warn(`lines[${i}] list contains no valid entries`);
+            // }
             continue;
           }
 

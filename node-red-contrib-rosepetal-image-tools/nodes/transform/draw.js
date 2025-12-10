@@ -161,9 +161,9 @@ module.exports = function (RED) {
               }
             }
 
-            if (!added) {
-              node.warn(`points[${i}] list contains no valid entries`);
-            }
+            // if (!added) {
+            //   node.warn(`points[${i}] list contains no valid entries`);
+            // }
             continue;
           }
 

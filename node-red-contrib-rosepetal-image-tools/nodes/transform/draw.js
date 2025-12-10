@@ -434,7 +434,7 @@ module.exports = function (RED) {
 
       if (resolved.length === 0) {
         const expectedMsg = expectedLength ? ` (each item length ${expectedLength})` : '';
-        throw new Error(`${fieldLabel} array is empty${expectedMsg}`);
+        //throw new Error(`${fieldLabel} array is empty${expectedMsg}`);
       }
 
       return resolved;

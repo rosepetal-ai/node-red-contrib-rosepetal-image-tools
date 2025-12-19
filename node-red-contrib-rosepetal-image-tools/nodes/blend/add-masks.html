@@ -123,7 +123,7 @@
           const index = classMappingIndex++;
 
           const rowHtml = `
-            <div class="class-mapping-row" draggable="true" data-index="${index}" style="margin-bottom: 10px; display: flex; align-items: center;">
+            <div class="class-mapping-row" data-index="${index}" style="margin-bottom: 10px; display: flex; align-items: center;">
               <span class="drag-handle" style="cursor: grab; margin-right: 8px; color: #888; padding: 4px;">
                 <i class="fa fa-bars"></i>
               </span>
@@ -261,92 +261,130 @@
           } : null;
         }
 
-        // Setup drag-and-drop for reordering class mappings
+        // Setup drag-and-drop for reordering class mappings (mouse-based for smooth sliding)
         function setupDragAndDrop() {
           const container = $('#class-mappings-container');
-          let draggedItem = null;
+          let dragState = null;
 
           // Add CSS styles for drag states (only once)
           if (!$('#drag-drop-styles').length) {
             $('head').append(`
               <style id="drag-drop-styles">
                 .class-mapping-row {
-                  transition: border-color 0.15s ease, margin 0.15s ease;
+                  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+                  position: relative;
+                  z-index: 0;
+                  user-select: none;
                 }
                 .class-mapping-row.dragging {
-                  opacity: 0.5;
-                  background: #f0f0f0;
-                  border-radius: 3px;
+                  opacity: 0.95;
+                  background: #f8f9fa;
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                  z-index: 100;
                 }
-                .class-mapping-row.drag-over-above {
-                  border-top: 2px solid #0066cc;
-                  margin-top: -2px;
+                .class-mapping-row.no-transition {
+                  transition: none !important;
                 }
-                .class-mapping-row.drag-over-below {
-                  border-bottom: 2px solid #0066cc;
-                  margin-bottom: -2px;
+                .drag-handle {
+                  cursor: grab;
                 }
-                .drag-handle:active { cursor: grabbing; }
+                .drag-handle:active {
+                  cursor: grabbing;
+                }
               </style>
             `);
           }
 
           // Remove existing handlers to prevent duplicates
-          container.off('dragstart.mapping dragend.mapping dragover.mapping dragleave.mapping drop.mapping');
+          container.off('.mapping');
 
-          container.on('dragstart.mapping', '.class-mapping-row', function(e) {
-            draggedItem = this;
-            $(this).addClass('dragging');
-            e.originalEvent.dataTransfer.effectAllowed = 'move';
-            e.originalEvent.dataTransfer.setData('text/html', this.innerHTML);
+          // MOUSEDOWN on drag handle - Start drag
+          container.on('mousedown.mapping', '.drag-handle', function(e) {
+            e.preventDefault();
+            const row = $(this).closest('.class-mapping-row');
+            const rows = container.find('.class-mapping-row').toArray();
+
+            // Store drag state
+            dragState = {
+              element: row[0],
+              startY: e.clientY,
+              startIndex: rows.indexOf(row[0]),
+              rowHeight: row.outerHeight(true),
+              rows: rows,
+              currentIndex: rows.indexOf(row[0])
+            };
+
+            row.addClass('dragging');
+
+            // Add document listeners for mouse movement
+            $(document).on('mousemove.drag', onMouseMove);
+            $(document).on('mouseup.drag', onMouseUp);
           });
 
-          container.on('dragend.mapping', '.class-mapping-row', function() {
-            $(this).removeClass('dragging');
-            $('.class-mapping-row').removeClass('drag-over-above drag-over-below');
+          function onMouseMove(e) {
+            if (!dragState) return;
+
+            const deltaY = e.clientY - dragState.startY;
+            const moveCount = Math.round(deltaY / dragState.rowHeight);
+            const newIndex = Math.max(0, Math.min(
+              dragState.startIndex + moveCount,
+              dragState.rows.length - 1
+            ));
+
+            // Apply transforms to create sliding effect
+            dragState.rows.forEach((row, i) => {
+              if (row === dragState.element) return;
+
+              const $row = $(row);
+              if (i > dragState.startIndex && i <= newIndex) {
+                // Items between original and new position (dragging down) - slide UP
+                $row.css('transform', `translateY(-${dragState.rowHeight}px)`);
+              } else if (i < dragState.startIndex && i >= newIndex) {
+                // Items between new and original position (dragging up) - slide DOWN
+                $row.css('transform', `translateY(${dragState.rowHeight}px)`);
+              } else {
+                $row.css('transform', '');
+              }
+            });
+
+            dragState.currentIndex = newIndex;
+
+            // Move the dragged item to follow cursor
+            $(dragState.element).css('transform', `translateY(${deltaY}px)`);
+          }
+
+          function onMouseUp() {
+            if (!dragState) return;
+
+            const $dragged = $(dragState.element);
+            const finalIndex = dragState.currentIndex;
+
+            // Remove transforms from all items
+            dragState.rows.forEach(row => $(row).css('transform', ''));
+            $dragged.removeClass('dragging');
+
+            // Reorder DOM if position changed
+            if (finalIndex !== dragState.startIndex) {
+              $dragged.addClass('no-transition');
+              const rows = container.find('.class-mapping-row');
+
+              if (finalIndex < dragState.startIndex) {
+                // Moving up - insert before the target
+                rows.eq(finalIndex).before($dragged);
+              } else {
+                // Moving down - insert after the target
+                rows.eq(finalIndex).after($dragged);
+              }
+
+              // Re-enable transitions after DOM update
+              requestAnimationFrame(() => $dragged.removeClass('no-transition'));
+            }
+
+            // Cleanup
+            $(document).off('.drag');
+            dragState = null;
             updateRowIndices();
-          });
-
-          container.on('dragover.mapping', '.class-mapping-row', function(e) {
-            e.preventDefault();
-            e.originalEvent.dataTransfer.dropEffect = 'move';
-            if (this !== draggedItem) {
-              const rect = this.getBoundingClientRect();
-              const midY = rect.top + rect.height / 2;
-
-              // Clear previous indicators
-              $(this).removeClass('drag-over-above drag-over-below');
-
-              // Show indicator at actual drop position
-              if (e.originalEvent.clientY < midY) {
-                $(this).addClass('drag-over-above');
-              } else {
-                $(this).addClass('drag-over-below');
-              }
-            }
-          });
-
-          container.on('dragleave.mapping', '.class-mapping-row', function() {
-            $(this).removeClass('drag-over-above drag-over-below');
-          });
-
-          container.on('drop.mapping', '.class-mapping-row', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this !== draggedItem && draggedItem) {
-              const $this = $(this);
-              const $dragged = $(draggedItem);
-              const rect = this.getBoundingClientRect();
-              const midY = rect.top + rect.height / 2;
-
-              if (e.originalEvent.clientY < midY) {
-                $this.before($dragged);
-              } else {
-                $this.after($dragged);
-              }
-            }
-            $('.class-mapping-row').removeClass('drag-over-above drag-over-below');
-          });
+          }
         }
 
         // Update row indices after reordering

@@ -112,6 +112,9 @@
           if (mappings.length === 0) {
             addClassMappingRow(); // Add one empty row by default
           }
+
+          // Initialize drag-and-drop after all rows are created
+          setupDragAndDrop();
         }
 
         // Add new class mapping row
@@ -121,9 +124,12 @@
 
           const rowHtml = `
             <div class="class-mapping-row" data-index="${index}" style="margin-bottom: 10px; display: flex; align-items: center;">
+              <span class="drag-handle" style="cursor: grab; margin-right: 8px; color: #888; padding: 4px;">
+                <i class="fa fa-bars"></i>
+              </span>
               <input type="text" placeholder="Class name (e.g., dog)"
                      class="class-name-input" value="${className}"
-                     style="width: 200px; margin-right: 10px;">
+                     style="width: 180px; margin-right: 10px;">
               <input type="color" class="class-color-input" value="${color}"
                      style="width: 60px; height: 30px; margin-right: 10px;">
               <button type="button" class="remove-class-mapping editor-button"
@@ -141,6 +147,7 @@
 
           container.append(rowHtml);
           updateEventHandlers();
+          setupDragAndDrop();
           validateClassNames();
           validateColors();
         }
@@ -252,6 +259,139 @@
             g: parseInt(result[2], 16),
             b: parseInt(result[3], 16)
           } : null;
+        }
+
+        // Setup drag-and-drop for reordering class mappings (mouse-based for smooth sliding)
+        function setupDragAndDrop() {
+          const container = $('#class-mappings-container');
+          let dragState = null;
+
+          // Add CSS styles for drag states (only once)
+          if (!$('#drag-drop-styles').length) {
+            $('head').append(`
+              <style id="drag-drop-styles">
+                .class-mapping-row {
+                  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+                  position: relative;
+                  z-index: 0;
+                  user-select: none;
+                }
+                .class-mapping-row.dragging {
+                  opacity: 0.95;
+                  background: #f8f9fa;
+                  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                  z-index: 100;
+                }
+                .class-mapping-row.no-transition {
+                  transition: none !important;
+                }
+                .drag-handle {
+                  cursor: grab;
+                }
+                .drag-handle:active {
+                  cursor: grabbing;
+                }
+              </style>
+            `);
+          }
+
+          // Remove existing handlers to prevent duplicates
+          container.off('.mapping');
+
+          // MOUSEDOWN on drag handle - Start drag
+          container.on('mousedown.mapping', '.drag-handle', function(e) {
+            e.preventDefault();
+            const row = $(this).closest('.class-mapping-row');
+            const rows = container.find('.class-mapping-row').toArray();
+
+            // Store drag state
+            dragState = {
+              element: row[0],
+              startY: e.clientY,
+              startIndex: rows.indexOf(row[0]),
+              rowHeight: row.outerHeight(true),
+              rows: rows,
+              currentIndex: rows.indexOf(row[0])
+            };
+
+            row.addClass('dragging');
+
+            // Add document listeners for mouse movement
+            $(document).on('mousemove.drag', onMouseMove);
+            $(document).on('mouseup.drag', onMouseUp);
+          });
+
+          function onMouseMove(e) {
+            if (!dragState) return;
+
+            const deltaY = e.clientY - dragState.startY;
+            const moveCount = Math.round(deltaY / dragState.rowHeight);
+            const newIndex = Math.max(0, Math.min(
+              dragState.startIndex + moveCount,
+              dragState.rows.length - 1
+            ));
+
+            // Apply transforms to create sliding effect
+            dragState.rows.forEach((row, i) => {
+              if (row === dragState.element) return;
+
+              const $row = $(row);
+              if (i > dragState.startIndex && i <= newIndex) {
+                // Items between original and new position (dragging down) - slide UP
+                $row.css('transform', `translateY(-${dragState.rowHeight}px)`);
+              } else if (i < dragState.startIndex && i >= newIndex) {
+                // Items between new and original position (dragging up) - slide DOWN
+                $row.css('transform', `translateY(${dragState.rowHeight}px)`);
+              } else {
+                $row.css('transform', '');
+              }
+            });
+
+            dragState.currentIndex = newIndex;
+
+            // Move the dragged item to follow cursor
+            $(dragState.element).css('transform', `translateY(${deltaY}px)`);
+          }
+
+          function onMouseUp() {
+            if (!dragState) return;
+
+            const $dragged = $(dragState.element);
+            const finalIndex = dragState.currentIndex;
+
+            // Remove transforms from all items
+            dragState.rows.forEach(row => $(row).css('transform', ''));
+            $dragged.removeClass('dragging');
+
+            // Reorder DOM if position changed
+            if (finalIndex !== dragState.startIndex) {
+              $dragged.addClass('no-transition');
+              const rows = container.find('.class-mapping-row');
+
+              if (finalIndex < dragState.startIndex) {
+                // Moving up - insert before the target
+                rows.eq(finalIndex).before($dragged);
+              } else {
+                // Moving down - insert after the target
+                rows.eq(finalIndex).after($dragged);
+              }
+
+              // Re-enable transitions after DOM update
+              requestAnimationFrame(() => $dragged.removeClass('no-transition'));
+            }
+
+            // Cleanup
+            $(document).off('.drag');
+            dragState = null;
+            updateRowIndices();
+          }
+        }
+
+        // Update row indices after reordering
+        function updateRowIndices() {
+          $('.class-mapping-row').each(function(index) {
+            $(this).attr('data-index', index);
+          });
         }
 
         // Save configuration before closing
@@ -478,7 +618,9 @@
       </button>
     </div>
     <div style="margin-top: 5px; font-size: 11px; color: #666;">
-      Define colors for specific class names. Undefined classes will automatically use random colors.
+      <i class="fa fa-arrows-v"></i> Drag to reorder priority.
+      <strong>First = highest priority</strong> when masks overlap.
+      Undefined classes use auto-generated colors.
     </div>
   </div>
 </script>

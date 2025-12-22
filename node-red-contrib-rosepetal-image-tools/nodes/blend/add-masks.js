@@ -206,13 +206,16 @@ module.exports = function (RED) {
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
 
-        // Build class color map from configuration
+        // Build class color map and priority order from configuration
         const classColorMap = {};
+        const classPriorityOrder = [];  // Preserves order for priority-based painting
         const classColorMappings = config.classColorMappings || [];
 
         for (const mapping of classColorMappings) {
           if (mapping.className && mapping.className.trim() !== '' && mapping.color) {
-            classColorMap[mapping.className.trim()] = mapping.color;
+            const cls = mapping.className.trim();
+            classColorMap[cls] = mapping.color;
+            classPriorityOrder.push(cls);  // First in list = highest priority
           }
         }
 
@@ -222,6 +225,7 @@ module.exports = function (RED) {
                 baseImg,
                 masksArray,
                 classColorMap,
+                classPriorityOrder,  // Priority order for overlap resolution
                 maskStrength,
                 true, // Always auto-generate colors for undefined classes
                 outputFormat,

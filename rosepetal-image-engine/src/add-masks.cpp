@@ -20,6 +20,8 @@ struct OptimizedMaskInfo {
   cv::Vec3f normalizedColor; // Pre-normalized color (0-1 range)
   std::vector<cv::Point> pixelPoints; // Actual polygon points in pixels
   std::string className;
+  int priority;              // Priority for overlap resolution (lower = higher priority)
+  int originalIndex;         // Original input order for tie-breaking
 };
 
 // Optimized polygon mask creation with bounding box
@@ -288,6 +290,7 @@ public:
                           const Napi::Value& jsImg,
                           const Napi::Array& masksArray,
                           const Napi::Object& classColorMap,
+                          const Napi::Array& classPriorityOrder,
                           double maskStrength,
                           bool autoGenerateColors,
                           std::string outputFormat,
@@ -303,6 +306,15 @@ public:
 
     // Convert JavaScript image to OpenCV Mat
     imageMat = ConvertToMat(jsImg);
+
+    // Build priority map from ordered array (lower index = higher priority)
+    std::unordered_map<std::string, int> priorityMap;
+    for (size_t i = 0; i < classPriorityOrder.Length(); i++) {
+      if (classPriorityOrder.Get(i).IsString()) {
+        std::string cls = classPriorityOrder.Get(i).As<Napi::String>().Utf8Value();
+        priorityMap[cls] = static_cast<int>(i);
+      }
+    }
 
     // Parse class color map
     std::unordered_map<std::string, cv::Vec3f> userColorMap;
@@ -335,6 +347,16 @@ public:
       }
 
       return cv::Vec3f(1.0f, 1.0f, 1.0f);
+    };
+
+    // Lambda to resolve priority for a class name
+    auto resolvePriority = [&](const std::string& className, int originalIndex) -> int {
+      auto it = priorityMap.find(className);
+      if (it != priorityMap.end()) {
+        return it->second;  // Mapped class: use priority from order
+      }
+      // Unmapped class: use INT_MAX base + original index for tie-breaking
+      return INT_MAX / 2 + originalIndex;
     };
 
     // Pre-process all masks and create optimized structures
@@ -378,6 +400,8 @@ public:
             OptimizedMaskInfo maskInfo;
             maskInfo.className = className;
             maskInfo.normalizedColor = resolvedColor;
+            maskInfo.priority = resolvePriority(className, static_cast<int>(maskIndex));
+            maskInfo.originalIndex = static_cast<int>(maskIndex);
 
             // Create optimized mask with bounding box
             auto [mask, bbox] = CreateOptimizedPolygonMask(polygon, imageMat.size());
@@ -411,6 +435,8 @@ public:
             OptimizedMaskInfo maskInfo;
             maskInfo.className = className;
             maskInfo.normalizedColor = resolvedColor;
+            maskInfo.priority = resolvePriority(className, static_cast<int>(maskIndex));
+            maskInfo.originalIndex = static_cast<int>(maskIndex);
             maskInfo.boundingBox = bbox;
             maskInfo.binaryMask = maskBinary(bbox).clone();
             optimizedMasks.push_back(std::move(maskInfo));
@@ -418,6 +444,14 @@ public:
         }
       }
     }
+
+    // Sort masks by priority (lower priority value = higher precedence)
+    // Use stable_sort to preserve original order for equal priorities
+    std::stable_sort(optimizedMasks.begin(), optimizedMasks.end(),
+      [](const OptimizedMaskInfo& a, const OptimizedMaskInfo& b) {
+        if (a.priority != b.priority) return a.priority < b.priority;
+        return a.originalIndex < b.originalIndex;  // Tie-breaker: input order
+      });
 
     imageFormat = DetectChannelFormatShared(jsImg, imageMat);
     outputChannel = imageFormat;
@@ -453,8 +487,12 @@ protected:
     // Pre-calculate color space conversion if needed
     const bool isRGB = (outputChannel == "RGB" || outputChannel == "RGBA");
 
-    // Process masks with optimized bounding box approach
-    #pragma omp parallel for schedule(dynamic)
+    // Create painted-pixel tracking matrix (single channel, same size as image)
+    // Used to ensure each pixel is only painted once by the highest-priority mask
+    cv::Mat painted = cv::Mat::zeros(rows, cols, CV_8UC1);
+
+    // Process masks SEQUENTIALLY to respect priority order
+    // Masks are already sorted by priority (lower value = higher priority)
     for (size_t maskIdx = 0; maskIdx < optimizedMasks.size(); maskIdx++) {
       const auto& maskInfo = optimizedMasks[maskIdx];
       const cv::Rect& bbox = maskInfo.boundingBox;
@@ -471,38 +509,46 @@ protected:
       }
 
       // Get color components (pre-scaled to 0-255)
-      const float r = maskInfo.normalizedColor[isRGB ? 0 : 2] * 255.0f;
-      const float g = maskInfo.normalizedColor[1] * 255.0f;
-      const float b = maskInfo.normalizedColor[isRGB ? 2 : 0] * 255.0f;
+      const float cr = maskInfo.normalizedColor[isRGB ? 0 : 2] * 255.0f;
+      const float cg = maskInfo.normalizedColor[1] * 255.0f;
+      const float cb = maskInfo.normalizedColor[isRGB ? 2 : 0] * 255.0f;
 
       // Process only the bounding box region
       for (int y = 0; y < safeBbox.height; y++) {
+        const int globalY = safeBbox.y + y;
         const uchar* maskRow = maskRegion.ptr<uchar>(y);
-        uchar* imgRow = result.ptr<uchar>(safeBbox.y + y) + safeBbox.x * channels;
+        uchar* paintedRow = painted.ptr<uchar>(globalY);
+        uchar* imgRow = result.ptr<uchar>(globalY);
 
-        // Vectorized processing for better performance
-        #pragma omp simd
         for (int x = 0; x < safeBbox.width; x++) {
+          const int globalX = safeBbox.x + x;
+
+          // Skip if already painted by higher-priority mask
+          if (paintedRow[globalX] > 0) continue;
+
           if (maskRow[x] > 0) {
+            // Mark as painted
+            paintedRow[globalX] = 255;
+
+            // Apply alpha blending
             const float alpha = maskStrength;
             const float invAlpha = 1.0f - alpha;
+            const int idx = globalX * channels;
 
             if (channels == 1) {
               // Grayscale
-              float gray = (r + g + b) / 3.0f;
-              imgRow[x] = static_cast<uchar>(imgRow[x] * invAlpha + gray * alpha);
+              float gray = (cr + cg + cb) / 3.0f;
+              imgRow[idx] = static_cast<uchar>(imgRow[idx] * invAlpha + gray * alpha);
             } else if (channels == 3) {
               // RGB/BGR
-              int idx = x * 3;
-              imgRow[idx] = static_cast<uchar>(imgRow[idx] * invAlpha + b * alpha);
-              imgRow[idx + 1] = static_cast<uchar>(imgRow[idx + 1] * invAlpha + g * alpha);
-              imgRow[idx + 2] = static_cast<uchar>(imgRow[idx + 2] * invAlpha + r * alpha);
+              imgRow[idx]     = static_cast<uchar>(imgRow[idx]     * invAlpha + cb * alpha);
+              imgRow[idx + 1] = static_cast<uchar>(imgRow[idx + 1] * invAlpha + cg * alpha);
+              imgRow[idx + 2] = static_cast<uchar>(imgRow[idx + 2] * invAlpha + cr * alpha);
             } else if (channels == 4) {
               // RGBA/BGRA
-              int idx = x * 4;
-              imgRow[idx] = static_cast<uchar>(imgRow[idx] * invAlpha + b * alpha);
-              imgRow[idx + 1] = static_cast<uchar>(imgRow[idx + 1] * invAlpha + g * alpha);
-              imgRow[idx + 2] = static_cast<uchar>(imgRow[idx + 2] * invAlpha + r * alpha);
+              imgRow[idx]     = static_cast<uchar>(imgRow[idx]     * invAlpha + cb * alpha);
+              imgRow[idx + 1] = static_cast<uchar>(imgRow[idx + 1] * invAlpha + cg * alpha);
+              imgRow[idx + 2] = static_cast<uchar>(imgRow[idx + 2] * invAlpha + cr * alpha);
               // Keep alpha channel unchanged
             }
           }
@@ -547,8 +593,8 @@ private:
 Napi::Value AddMasks(const Napi::CallbackInfo& info) {
   Napi::Env env = info.Env();
 
-  if (info.Length() < 6 || info.Length() > 9 || !info[info.Length() - 1].IsFunction()) {
-    Napi::TypeError::New(env, "addMasks(image, masksArray, classColorMap, maskStrength, autoGenerateColors, [outputFormat], [quality], [pngOptimize], callback)")
+  if (info.Length() < 7 || info.Length() > 10 || !info[info.Length() - 1].IsFunction()) {
+    Napi::TypeError::New(env, "addMasks(image, masksArray, classColorMap, classPriorityOrder, maskStrength, autoGenerateColors, [outputFormat], [quality], [pngOptimize], callback)")
       .ThrowAsJavaScriptException();
     return env.Null();
   }
@@ -556,34 +602,35 @@ Napi::Value AddMasks(const Napi::CallbackInfo& info) {
   Napi::Value jsImg = info[0];
   Napi::Array masksArray = info[1].As<Napi::Array>();
   Napi::Object classColorMap = info[2].As<Napi::Object>();
-  double maskStrength = info[3].As<Napi::Number>().DoubleValue();
-  bool autoGenerateColors = info[4].As<Napi::Boolean>().Value();
+  Napi::Array classPriorityOrder = info[3].As<Napi::Array>();
+  double maskStrength = info[4].As<Napi::Number>().DoubleValue();
+  bool autoGenerateColors = info[5].As<Napi::Boolean>().Value();
 
   maskStrength = std::max(0.0, std::min(1.0, maskStrength));
 
   std::string outputFormat = "raw";
   int quality = 90;
   bool pngOptimize = false;
-  size_t cbIdx = 5;
-
-  if (info.Length() >= 7) {
-    outputFormat = info[5].As<Napi::String>().Utf8Value();
-    cbIdx = 6;
-  }
+  size_t cbIdx = 6;
 
   if (info.Length() >= 8) {
-    quality = info[6].As<Napi::Number>().Int32Value();
+    outputFormat = info[6].As<Napi::String>().Utf8Value();
     cbIdx = 7;
   }
 
-  if (info.Length() == 9) {
-    pngOptimize = info[7].As<Napi::Boolean>().Value();
+  if (info.Length() >= 9) {
+    quality = info[7].As<Napi::Number>().Int32Value();
     cbIdx = 8;
+  }
+
+  if (info.Length() == 10) {
+    pngOptimize = info[8].As<Napi::Boolean>().Value();
+    cbIdx = 9;
   }
 
   (new AddMasksOptimizedWorker(
     info[cbIdx].As<Napi::Function>(),
-    jsImg, masksArray, classColorMap, maskStrength, autoGenerateColors,
+    jsImg, masksArray, classColorMap, classPriorityOrder, maskStrength, autoGenerateColors,
     outputFormat, quality, pngOptimize
   ))->Queue();
 

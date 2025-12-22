@@ -76,6 +76,43 @@ Colors are assigned using this priority order:
 2. **Auto-generated**: Seeded random colors (always enabled)
 3. **Default fallback**: White color (#ffffff)
 
+## Mask Priority System
+
+When multiple masks overlap on the same pixel, only **one mask is painted** based on priority order.
+
+### Priority Rules
+
+1. **Class Color Mappings Priority**: Classes listed first in the "Class Color Mappings"
+   configuration have higher priority. Drag rows to reorder.
+
+2. **Unmapped Class Tie-breaking**: If neither overlapping mask has a class defined
+   in the mappings, the mask that appears first in the input results array wins.
+
+3. **Mixed Priority**: Mapped classes always take priority over unmapped classes.
+
+### Example
+
+Configuration:
+```
+Class Color Mappings (drag to reorder):
+  1. "person"  → #FF0000 (red)    ← Highest priority
+  2. "car"     → #00FF00 (green)
+  3. "dog"     → #0000FF (blue)   ← Lowest mapped priority
+```
+
+If a pixel is covered by both "person" and "car" masks, only the **red (person)**
+color will be painted.
+
+If a pixel is covered by "cat" and "bird" (both unmapped), the one appearing
+first in the input array will be painted.
+
+### Reordering Classes
+
+In the Node-RED editor:
+1. Click and drag the ☰ handle next to any class row
+2. Drop it in the desired position
+3. Top = highest priority, bottom = lowest priority
+
 ## Processing Flow
 
 1. **Structure Validation**: Validates the nested array structure
@@ -170,10 +207,11 @@ Final blending:
 ```
 
 ### Overlap Handling
-When masks overlap, the blending algorithm:
-- Accumulates color contributions from all overlapping masks
-- Normalizes by total weight to prevent over-saturation
-- Maintains visual clarity even with complex overlaps
+When masks overlap, the **highest priority mask wins** and paints the pixel:
+- Priority determined by order in Class Color Mappings (first = highest)
+- Unmapped classes have lower priority than mapped classes
+- Among unmapped classes, input array order determines priority
+- Alpha blending still applies: `result = original × (1 - strength) + mask_color × strength`
 
 ## Integration Patterns
 

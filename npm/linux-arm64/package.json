@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-arm64",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Prebuilt native binary for Linux ARM64 (glibc)",
   "os": ["linux"],
   "cpu": ["arm64"],

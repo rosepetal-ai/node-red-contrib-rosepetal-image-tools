@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-rosepetal-image-tools-linuxmusl-x64",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Prebuilt native binary for Linux x64 (musl/Alpine)",
   "os": ["linux"],
   "cpu": ["x64"],

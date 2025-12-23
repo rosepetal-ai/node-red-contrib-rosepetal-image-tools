@@ -203,65 +203,6 @@ jobs:
           path: npm/linuxmusl-x64/
 
   # =============================================================================
-  # macOS x64 (Intel)
-  # =============================================================================
-  darwin-x64:
-    runs-on: macos-13
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - name: Install build dependencies
-        run: |
-          brew install cmake ninja jpeg libpng webp
-
-      - name: Cache OpenCV
-        id: cache-opencv
-        uses: actions/cache@v4
-        with:
-          path: /Users/runner/opencv-static
-          key: opencv-${{ env.OPENCV_VERSION }}-darwin-x64-static-v6
-
-      - name: Build OpenCV static
-        if: steps.cache-opencv.outputs.cache-hit != 'true'
-        env:
-          OPENCV_VERSION: ${{ env.OPENCV_VERSION }}
-          INSTALL_DIR: /Users/runner/opencv-static
-        run: |
-          chmod +x scripts/build-opencv-static.sh
-          bash scripts/build-opencv-static.sh
-
-      - name: Build native addon
-        working-directory: rosepetal-image-engine
-        env:
-          npm_config_opencv_include_dir: /Users/runner/opencv-static/include/opencv4
-          npm_config_opencv_lib_dir: /Users/runner/opencv-static/lib
-          PKG_CONFIG_PATH: /Users/runner/opencv-static/lib/pkgconfig
-        run: |
-          npm install
-          npx node-gyp rebuild
-
-      - name: Copy addon to package
-        run: |
-          mkdir -p npm/darwin-x64/lib
-          cp rosepetal-image-engine/build/Release/addon.node npm/darwin-x64/lib/
-
-      - name: Test addon loads
-        run: |
-          node -e "const addon = require('./npm/darwin-x64/lib/addon.node'); console.log('Addon loaded successfully, exports:', Object.keys(addon))"
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: darwin-x64
-          path: npm/darwin-x64/
-
-  # =============================================================================
   # macOS ARM64 (Apple Silicon)
   # =============================================================================
   darwin-arm64:
@@ -333,7 +274,7 @@ jobs:
   # Publish all packages to npm
   # =============================================================================
   publish:
-    needs: [linux-x64, linux-arm64, linuxmusl-x64, darwin-x64, darwin-arm64]
+    needs: [linux-x64, linux-arm64, linuxmusl-x64, darwin-arm64]
     runs-on: ubuntu-22.04
     if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish == 'true'
     steps:
@@ -353,13 +294,13 @@ jobs:
       - name: Prepare packages
         run: |
           # Copy artifacts to npm directories
-          for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-x64 darwin-arm64; do
+          for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-arm64; do
             cp -r artifacts/$platform/* npm/$platform/
           done
 
       - name: Verify all addons exist
         run: |
-          for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-x64 darwin-arm64; do
+          for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-arm64; do
             if [ ! -f "npm/$platform/lib/addon.node" ]; then
               echo "ERROR: Missing addon.node for $platform"
               exit 1
@@ -371,7 +312,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-x64 darwin-arm64; do
+          for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-arm64; do
             echo "Publishing @rosepetal/node-red-contrib-rosepetal-image-tools-$platform..."
             cd npm/$platform
             npm publish --access public || echo "Package may already exist"

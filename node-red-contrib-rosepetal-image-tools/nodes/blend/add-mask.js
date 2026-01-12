@@ -18,6 +18,10 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      // Capture original payload for error passthrough
+      const outputPath = config.outputPath || 'payload';
+      const originalPayload = RED.util.getMessageProperty(msg, outputPath);
+
       try {
         const t0 = performance.now();
         node.status({});                                      // clear status
@@ -30,38 +34,50 @@ module.exports = function (RED) {
         // Validate base image
         const baseImg = NodeUtils.validateImageStructure(image, node);
         if (!baseImg) {
-          node.warn("Base image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Base image is invalid or missing', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
 
         // Validate polygon coordinates
         if (!Array.isArray(polygon)) {
-          node.warn("Polygon coordinates must be an array");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Polygon coordinates must be an array', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
-        
+
         if (polygon.length === 0) {
-          node.warn("Polygon coordinates array is empty");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Polygon coordinates array is empty', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
-        
+
         // Validate polygon coordinate format
         for (let i = 0; i < polygon.length; i++) {
           const point = polygon[i];
           if (!Array.isArray(point) || point.length !== 2) {
-            node.warn(`Invalid polygon coordinate at index ${i}: expected [x, y] pair`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid polygon coordinate at index ${i}: expected [x, y] pair`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
-          
+
           const [x, y] = point;
           if (typeof x !== 'number' || typeof y !== 'number') {
-            node.warn(`Invalid polygon coordinate at index ${i}: coordinates must be numbers`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid polygon coordinate at index ${i}: coordinates must be numbers`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
-          
+
           if (x < 0 || x > 1 || y < 0 || y > 1) {
-            node.warn(`Invalid polygon coordinate at index ${i}: coordinates must be in range [0, 1]`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid polygon coordinate at index ${i}: coordinates must be in range [0, 1]`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
         }
 
@@ -142,7 +158,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'add-mask processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'add-mask processing',
+          { originalPayload, outputPath, outputType: 'single' }
+        );
       }
     });
   }

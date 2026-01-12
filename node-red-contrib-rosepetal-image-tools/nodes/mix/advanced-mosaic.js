@@ -14,13 +14,17 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      /* I/O paths - needed early for error passthrough */
+      const inputPath = config.inputPath || 'payload';
+      const outputPath = config.outputPath || 'payload';
+
+      /* Get input and capture first image for error passthrough */
+      const inputImages = RED.util.getMessageProperty(msg, inputPath);
+      const firstImage = Array.isArray(inputImages) ? inputImages[0] : inputImages;
+
       try {
         const t0 = performance.now();
         node.status({});
-
-        /* I/O paths */
-        const inputPath = config.inputPath || 'payload';
-        const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
@@ -38,15 +42,16 @@ module.exports = function (RED) {
 
         /* Image configurations */
         const imageConfigs = config.imageConfigs || [];
-        
-        /* Input images array */
-        const inputImages = RED.util.getMessageProperty(msg, inputPath);
+
+        /* Input images array (inputImages already captured above for error passthrough) */
         const imageArray = Array.isArray(inputImages) ? inputImages : [inputImages];
 
         // Validate input images - advanced mosaic expects array input
         if (!NodeUtils.validateListImage(imageArray, node)) {
-          // Warning already sent, don't send message
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Invalid image list', msg, send, done,
+            { originalPayload: firstImage, outputPath, outputType: 'single' }
+          );
         }
 
         /* Validate image configurations */
@@ -178,10 +183,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.warn(`Error during advanced mosaic processing: ${err.message}`);
-        // Don't send message on error
-        if (done) { done(); }
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'advanced-mosaic processing',
+          { originalPayload: firstImage, outputPath, outputType: 'single' }
+        );
       }
     });
   }

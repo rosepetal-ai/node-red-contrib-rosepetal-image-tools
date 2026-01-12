@@ -38,10 +38,15 @@ module.exports = function (RED) {
         const inputImages = RED.util.getMessageProperty(msg, inputPath);
         const imageArray = Array.isArray(inputImages) ? inputImages : [inputImages];
 
+        // Capture first image for error passthrough
+        const firstImage = imageArray[0];
+
         // Validate input images - mosaic expects array input
         if (!NodeUtils.validateListImage(imageArray, node)) {
-          // Warning already sent, don't send message
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Invalid image list', msg, send, done,
+            { originalPayload: firstImage, outputPath, outputType: 'single' }
+          );
         }
 
         /* Validate positions - allow empty positions to show just background canvas */
@@ -134,10 +139,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.warn(`Error during mosaic processing: ${err.message}`);
-        // Don't send message on error
-        if (done) { done(); }
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'mosaic processing',
+          { originalPayload: firstImage, outputPath, outputType: 'single' }
+        );
       }
     });
   }

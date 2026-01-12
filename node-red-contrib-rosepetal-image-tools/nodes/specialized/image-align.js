@@ -14,11 +14,14 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      // Capture source image early for error passthrough
+      const outputPath = config.outputPath || 'payload';
+      const targetImage = RED.util.getMessageProperty(msg, config.targetImagePath || 'payload.target');
+
       try {
         const startTime = performance.now();
         node.status({});
-        
-        const outputPath = config.outputPath || 'payload';
+
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
@@ -29,19 +32,22 @@ module.exports = function (RED) {
         /* ▸ Read images from message ------------------------------------ */
         // Get images directly from specified paths
         const referenceImage = RED.util.getMessageProperty(msg, config.referenceImagePath || 'payload.reference');
-        const targetImage = RED.util.getMessageProperty(msg, config.targetImagePath || 'payload.target');
 
         // Validate input images
         const ref = NodeUtils.validateImageStructure(referenceImage, node);
         if (!ref) {
-          node.warn("Reference image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Reference image is invalid or missing', msg, send, done,
+            { originalPayload: targetImage, outputPath, outputType: 'single' }
+          );
         }
 
         const target = NodeUtils.validateImageStructure(targetImage, node);
         if (!target) {
-          node.warn("Target image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Target image is invalid or missing', msg, send, done,
+            { originalPayload: targetImage, outputPath, outputType: 'single' }
+          );
         }
 
         // Read and validate polygon(s) if transform polygon is enabled
@@ -284,10 +290,13 @@ module.exports = function (RED) {
         }
 
         send(msg);
-        
+
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'image alignment');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'image-align processing',
+          { originalPayload: targetImage, outputPath, outputType: 'single' }
+        );
       }
     });
   }

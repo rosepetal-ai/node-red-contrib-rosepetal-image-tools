@@ -13,21 +13,24 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      const inputPath = config.inputPath || 'payload';
+      const outputPath = config.outputPath || 'payload';
+      const originalPayload = RED.util.getMessageProperty(msg, inputPath);
+
       try {
         const startTime = performance.now();
         node.status({});
 
-        const inputPath = config.inputPath || 'payload';
-        const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality, 10) || 90;
         const pngOptimize = config.pngOptimize || false;
 
-        const image = RED.util.getMessageProperty(msg, inputPath);
-        const baseImage = NodeUtils.validateImageStructure(image, node);
+        const baseImage = NodeUtils.validateImageStructure(originalPayload, node);
         if (!baseImage) {
-          node.warn('Input image is invalid or missing');
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Invalid image structure', msg, send, done,
+            { originalPayload, outputPath, outputType: 'preserve' }
+          );
         }
 
         const resolvedPoints = resolvePoints(config.points || [], msg);
@@ -94,7 +97,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'draw processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'draw processing',
+          { originalPayload, outputPath, outputType: 'preserve' }
+        );
       }
     });
 

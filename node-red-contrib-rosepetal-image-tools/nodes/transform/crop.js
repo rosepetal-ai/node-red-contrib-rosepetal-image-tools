@@ -13,13 +13,16 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      /* rutas I/O */
+      const inputPath  = config.inputPath  || 'payload';
+      const outputPath = config.outputPath || 'payload';
+
+      /* Capture original payload for error passthrough */
+      const originalPayload = RED.util.getMessageProperty(msg, inputPath);
+
       try {
         const t0 = performance.now();
         node.status({});
-
-        /* rutas I/O */
-        const inPath  = config.inputPath  || 'payload';
-        const outPath = config.outputPath || 'payload';
 
         /* flags */
         const normalized = !!config.coordNorm;
@@ -28,19 +31,22 @@ module.exports = function (RED) {
         const pngOptimize = config.pngOptimize || false;
 
         /* imagen o lista de imágenes */
-        const original = RED.util.getMessageProperty(msg, inPath);
-        const imgs     = Array.isArray(original) ? original : [original];
+        const imgs = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
 
         // Validate input images
-        if (Array.isArray(original)) {
-          if (!NodeUtils.validateListImage(original, node)) {
-            // Warning already sent, don't send message
-            return;
+        if (Array.isArray(originalPayload)) {
+          if (!NodeUtils.validateListImage(originalPayload, node)) {
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image list structure', msg, send, done,
+              { originalPayload, outputPath, outputType: 'preserve' }
+            );
           }
         } else {
-          if (!NodeUtils.validateSingleImage(original, node)) {
-            // Warning already sent, don't send message
-            return;
+          if (!NodeUtils.validateSingleImage(originalPayload, node)) {
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image structure', msg, send, done,
+              { originalPayload, outputPath, outputType: 'preserve' }
+            );
           }
         }
 
@@ -67,8 +73,8 @@ module.exports = function (RED) {
           }, { totalConvertMs: 0, totalTaskMs: 0, totalEncodeMs: 0, images: [] });
 
         /* salida */
-        const out = Array.isArray(original) ? images : images[0];
-        RED.util.setMessageProperty(msg, outPath, out);
+        const out = Array.isArray(originalPayload) ? images : images[0];
+        RED.util.setMessageProperty(msg, outputPath, out);
 
         /* status con mismo formato que resize/rotate */
         const dur = performance.now() - t0;
@@ -87,7 +93,7 @@ module.exports = function (RED) {
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(original) ? images[0] : images[0];
+            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
@@ -104,7 +110,7 @@ module.exports = function (RED) {
                 convertMs: totalConvertMs,
                 taskMs: totalTaskMs,
                 encodeMs: totalEncodeMs
-              }, debugFormat + (Array.isArray(original) ? ' (first)' : ''));
+              }, debugFormat + (Array.isArray(originalPayload) ? ' (first)' : ''));
             }
           } catch (debugError) {
             node.warn(`Debug display error: ${debugError.message}`);
@@ -131,10 +137,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.warn(`Error during crop processing: ${err.message}`);
-        // Don't send message on error
-        if (done) { done(); }
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'crop processing',
+          { originalPayload, outputPath, outputType: 'preserve' }
+        );
       }
     });
   }

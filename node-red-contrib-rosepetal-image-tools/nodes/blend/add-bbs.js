@@ -18,6 +18,10 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      // Capture original payload for error passthrough
+      const outputPath = config.outputPath || 'payload';
+      const originalPayload = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
+
       try {
         const t0 = performance.now();
         node.status({});                                      // clear status
@@ -30,14 +34,18 @@ module.exports = function (RED) {
         // Validate base image
         const baseImg = NodeUtils.validateImageStructure(image, node);
         if (!baseImg) {
-          node.warn("Base image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Base image is invalid or missing', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
 
         // Validate boxes input - expect direct array format
         if (!Array.isArray(boxesArray)) {
-          node.warn("Boxes input must be an array");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Boxes input must be an array', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
 
         if (boxesArray.length === 0) {
@@ -60,42 +68,56 @@ module.exports = function (RED) {
           const boxObj = boxesArray[boxIndex];
 
           if (!boxObj || typeof boxObj !== 'object') {
-            node.warn(`Invalid box object at index ${boxIndex}: expected object`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid box object at index ${boxIndex}: expected object`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           if (!boxObj.hasOwnProperty('raw_boxes') || !Array.isArray(boxObj.raw_boxes)) {
-            node.warn(`Invalid box object at index ${boxIndex}: 'raw_boxes' property must be an array`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid box object at index ${boxIndex}: 'raw_boxes' property must be an array`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           if (boxObj.raw_boxes.length !== 4) {
-            node.warn(`Invalid box format at index ${boxIndex}: expected 4 corner points`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid box format at index ${boxIndex}: expected 4 corner points`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           // Validate 4-corner format
           const [[x1, y1], [x2, y1_check], [x2_check, y2], [x1_check, y2_check]] = boxObj.raw_boxes;
 
           if (x2 !== x2_check || x1 !== x1_check || y1 !== y1_check || y2 !== y2_check) {
-            node.warn(`Inconsistent corner points at index ${boxIndex}`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Inconsistent corner points at index ${boxIndex}`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           // Check normalized range
           if (x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1 || y1 < 0 || y1 > 1 || y2 < 0 || y2 > 1) {
-            node.warn(`Box coordinates out of range [0,1] at index ${boxIndex}`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Box coordinates out of range [0,1] at index ${boxIndex}`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           if (!boxObj.hasOwnProperty('tag') || typeof boxObj.tag !== 'string') {
-            node.warn(`Invalid tag at index ${boxIndex}: must be a non-empty string`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid tag at index ${boxIndex}: must be a non-empty string`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           if (boxObj.tag.trim() === '') {
-            node.warn(`Empty tag at index ${boxIndex}: tag cannot be empty`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Empty tag at index ${boxIndex}: tag cannot be empty`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           totalBoxCount++;
@@ -207,7 +229,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'add-bbs processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'add-bbs processing',
+          { originalPayload, outputPath, outputType: 'single' }
+        );
       }
     });
   }

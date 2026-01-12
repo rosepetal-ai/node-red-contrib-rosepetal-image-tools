@@ -215,6 +215,106 @@ module.exports = function(RED) {
   }
 
   /**
+   * Error handling with passthrough - always sends output even on error.
+   * Use this to ensure flow continues even when processing fails.
+   * @param {object} node - Node-RED node instance
+   * @param {Error|string} error - The error that occurred
+   * @param {object} msg - The message object
+   * @param {function} send - The send callback
+   * @param {function} done - The done callback
+   * @param {string} operation - Operation name for context
+   * @param {object} passthroughOptions - Options for passthrough behavior
+   * @param {*} passthroughOptions.originalPayload - The original input payload to pass through
+   * @param {string} passthroughOptions.outputPath - Where to write output (default: 'payload')
+   * @param {string} passthroughOptions.outputType - 'preserve' | 'array' | 'single' | 'empty-array'
+   */
+  utils.handleNodeErrorWithPassthrough = function(node, error, msg, send, done, operation, passthroughOptions = {}) {
+    const {
+      originalPayload,
+      outputPath = 'payload',
+      outputType = 'preserve'
+    } = passthroughOptions;
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
+    // Build error object
+    msg.error = {
+      message: errorMessage,
+      operation: operation,
+      timestamp: new Date().toISOString(),
+      nodeId: node.id,
+      nodeName: node.name || node.type
+    };
+
+    if (errorStack) {
+      msg.error.stack = errorStack;
+    }
+
+    // Determine output based on outputType
+    let output;
+    switch (outputType) {
+      case 'preserve':
+        output = originalPayload;
+        break;
+      case 'array':
+        output = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
+        break;
+      case 'single':
+        output = Array.isArray(originalPayload) ? originalPayload[0] : originalPayload;
+        break;
+      case 'empty-array':
+        output = [];
+        break;
+      default:
+        output = originalPayload;
+    }
+
+    // Set output
+    RED.util.setMessageProperty(msg, outputPath, output);
+
+    // Log error and set status
+    node.warn(errorMessage);
+    node.status({ fill: "red", shape: "ring", text: `Error: ${errorMessage.substring(0, 30)}` });
+
+    // Send message with error info
+    send(msg);
+
+    // Call done without error to prevent flow interruption
+    if (done) {
+      done();
+    }
+  }
+
+  /**
+   * Validation error handling with passthrough - for validation failures before try-catch.
+   * @param {object} node - Node-RED node instance
+   * @param {string} errorMessage - The validation error message
+   * @param {object} msg - The message object
+   * @param {function} send - The send callback
+   * @param {function} done - The done callback
+   * @param {object} passthroughOptions - Same options as handleNodeErrorWithPassthrough
+   */
+  utils.handleValidationErrorWithPassthrough = function(node, errorMessage, msg, send, done, passthroughOptions = {}) {
+    const error = new Error(errorMessage);
+    error.validationError = true;
+
+    // Add validationError flag to the options
+    const options = { ...passthroughOptions };
+
+    utils.handleNodeErrorWithPassthrough(
+      node, error, msg, send, done,
+      'validation',
+      options
+    );
+
+    // Mark the error object with validation flag after it's created
+    if (msg.error) {
+      msg.error.validationError = true;
+    }
+  }
+
+  /**
    * Standardized success status formatting
    * @param {object} node - Node-RED node instance  
    * @param {number} count - Number of items processed

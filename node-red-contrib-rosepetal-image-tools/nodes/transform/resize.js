@@ -31,13 +31,17 @@ module.exports = function (RED) {
         // Validate input images
         if (Array.isArray(originalPayload)) {
           if (!NodeUtils.validateListImage(originalPayload, node)) {
-            // Warning already sent, don't send message
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image list structure', msg, send, done,
+              { originalPayload, outputPath, outputType: 'preserve' }
+            );
           }
         } else {
           if (!NodeUtils.validateSingleImage(originalPayload, node)) {
-            // Warning already sent, don't send message
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image structure', msg, send, done,
+              { originalPayload, outputPath, outputType: 'preserve' }
+            );
           }
         }
 
@@ -146,7 +150,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'resize processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'resize processing',
+          { originalPayload, outputPath, outputType: 'preserve' }
+        );
       }
     });
   }

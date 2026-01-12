@@ -18,26 +18,34 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      // Capture original payload for error passthrough
+      const outputPath = config.outputPath || 'payload';
+      const image = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
+      const originalPayload = image;
+
       try {
         const t0 = performance.now();
         node.status({});                                      // clear status
 
         /* ▸ Read image and masks array from message ------------------------ */
         // Get base image and masks array from specified paths
-        const image = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
         const masksArray = RED.util.getMessageProperty(msg, config.masksPath || 'payload');
 
         // Validate base image
         const baseImg = NodeUtils.validateImageStructure(image, node);
         if (!baseImg) {
-          node.warn("Base image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Base image is invalid or missing', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
 
         // Validate masks array - expect direct array format
         if (!Array.isArray(masksArray)) {
-          node.warn("Masks input must be an array");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Masks input must be an array', msg, send, done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
         }
 
         if (masksArray.length === 0) {
@@ -111,22 +119,28 @@ module.exports = function (RED) {
           const maskObj = masksArray[maskIndex];
 
           if (!maskObj || typeof maskObj !== 'object') {
-            node.warn(`Invalid mask object at index ${maskIndex}: expected object`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Invalid mask object at index ${maskIndex}: expected object`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           const className = getClassName(maskObj);
           if (!className) {
-            node.warn(`Mask at index ${maskIndex} is missing a valid class/tag field`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Mask at index ${maskIndex} is missing a valid class/tag field`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           const hasPolygons = Array.isArray(maskObj.polygons);
           const hasMaskField = Object.prototype.hasOwnProperty.call(maskObj, 'mask');
 
           if (!hasPolygons && !hasMaskField) {
-            node.warn(`Mask at index ${maskIndex} must include either 'polygons' or 'mask'`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `Mask at index ${maskIndex} must include either 'polygons' or 'mask'`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
 
           let entryValid = false;
@@ -136,31 +150,41 @@ module.exports = function (RED) {
             for (let polyIdx = 0; polyIdx < maskObj.polygons.length; polyIdx++) {
               const coordinates = maskObj.polygons[polyIdx];
               if (!Array.isArray(coordinates)) {
-                node.warn(`Invalid polygon at index ${maskIndex}.polygons[${polyIdx}]: expected an array of coordinate pairs`);
-                return;
+                return NodeUtils.handleValidationErrorWithPassthrough(
+                  node, `Invalid polygon at index ${maskIndex}.polygons[${polyIdx}]: expected an array of coordinate pairs`, msg, send, done,
+                  { originalPayload, outputPath, outputType: 'single' }
+                );
               }
 
               if (coordinates.length === 0) {
-                node.warn(`Empty polygon at index ${maskIndex}.polygons[${polyIdx}]: at least one coordinate is required`);
-                return;
+                return NodeUtils.handleValidationErrorWithPassthrough(
+                  node, `Empty polygon at index ${maskIndex}.polygons[${polyIdx}]: at least one coordinate is required`, msg, send, done,
+                  { originalPayload, outputPath, outputType: 'single' }
+                );
               }
 
               for (let i = 0; i < coordinates.length; i++) {
                 const point = coordinates[i];
                 if (!Array.isArray(point) || point.length !== 2) {
-                  node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: expected [x, y] pair`);
-                  return;
+                  return NodeUtils.handleValidationErrorWithPassthrough(
+                    node, `Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: expected [x, y] pair`, msg, send, done,
+                    { originalPayload, outputPath, outputType: 'single' }
+                  );
                 }
 
                 const [x, y] = point;
                 if (!isFiniteNumber(x) || !isFiniteNumber(y)) {
-                  node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be numbers`);
-                  return;
+                  return NodeUtils.handleValidationErrorWithPassthrough(
+                    node, `Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be numbers`, msg, send, done,
+                    { originalPayload, outputPath, outputType: 'single' }
+                  );
                 }
 
                 if (x < 0 || x > 1 || y < 0 || y > 1) {
-                  node.warn(`Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be in range [0, 1]`);
-                  return;
+                  return NodeUtils.handleValidationErrorWithPassthrough(
+                    node, `Invalid coordinate at index ${maskIndex}.polygons[${polyIdx}][${i}]: coordinates must be in range [0, 1]`, msg, send, done,
+                    { originalPayload, outputPath, outputType: 'single' }
+                  );
                 }
               }
 
@@ -172,16 +196,20 @@ module.exports = function (RED) {
           if (!entryValid && hasMaskField) {
             const maskCount = countMasksInValue(maskObj.mask);
             if (maskCount === 0) {
-              node.warn(`Invalid mask data at index ${maskIndex}: expected raw mask image or 2D matrix`);
-              return;
+              return NodeUtils.handleValidationErrorWithPassthrough(
+                node, `Invalid mask data at index ${maskIndex}: expected raw mask image or 2D matrix`, msg, send, done,
+                { originalPayload, outputPath, outputType: 'single' }
+              );
             }
             totalMaskCount += maskCount;
             entryValid = true;
           }
 
           if (!entryValid) {
-            node.warn(`No valid polygons or mask found at index ${maskIndex}`);
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, `No valid polygons or mask found at index ${maskIndex}`, msg, send, done,
+              { originalPayload, outputPath, outputType: 'single' }
+            );
           }
         }
 
@@ -281,7 +309,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'add-masks processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'add-masks processing',
+          { originalPayload, outputPath, outputType: 'single' }
+        );
       }
     });
   }

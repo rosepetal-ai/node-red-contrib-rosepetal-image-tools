@@ -13,31 +13,35 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      /* paths */
+      const inPath  = cfg.inputPath  || 'payload';
+      const outPath = cfg.outputPath || 'payload';
+
+      /* image / array - capture original for error passthrough */
+      const originalPayload = RED.util.getMessageProperty(msg, inPath);
+
       try {
         const t0 = performance.now();
         node.status({});
 
-        /* paths */
-        const inPath  = cfg.inputPath  || 'payload';
-        const outPath = cfg.outputPath || 'payload';
-
-        /* image / array */
-        const rawIn = RED.util.getMessageProperty(msg, inPath);
-        
-        // Validate input images
-        if (Array.isArray(rawIn)) {
-          if (!NodeUtils.validateListImage(rawIn, node)) {
-            // Warning already sent, don't send message
-            return;
+        // Validate input images with error passthrough
+        if (Array.isArray(originalPayload)) {
+          if (!NodeUtils.validateListImage(originalPayload, node)) {
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image list structure', msg, send, done,
+              { originalPayload, outputPath: outPath, outputType: 'preserve' }
+            );
           }
         } else {
-          if (!NodeUtils.validateSingleImage(rawIn, node)) {
-            // Warning already sent, don't send message
-            return;
+          if (!NodeUtils.validateSingleImage(originalPayload, node)) {
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image structure', msg, send, done,
+              { originalPayload, outputPath: outPath, outputType: 'preserve' }
+            );
           }
         }
         
-        const imgs  = Array.isArray(rawIn) ? rawIn : [rawIn];
+        const imgs  = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
 
         /* static options from editor */
         const outputFormat = cfg.outputFormat || 'raw';
@@ -66,7 +70,7 @@ module.exports = function (RED) {
           return r.image;
         });
 
-        RED.util.setMessageProperty(msg, outPath, Array.isArray(rawIn) ? outImgs : outImgs[0]);
+        RED.util.setMessageProperty(msg, outPath, Array.isArray(originalPayload) ? outImgs : outImgs[0]);
 
         // Debug image display
         const elapsedTime = performance.now() - t0;
@@ -83,7 +87,7 @@ module.exports = function (RED) {
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(rawIn) ? outImgs[0] : outImgs[0];
+            const debugImage = Array.isArray(originalPayload) ? outImgs[0] : outImgs[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
@@ -100,7 +104,7 @@ module.exports = function (RED) {
                 convertMs: cMs,
                 taskMs: tMs,
                 encodeMs: eMs
-              }, debugFormat + (Array.isArray(rawIn) ? ' (first)' : ''));
+              }, debugFormat + (Array.isArray(originalPayload) ? ' (first)' : ''));
             }
           } catch (debugError) {
             node.warn(`Debug display error: ${debugError.message}`);
@@ -126,10 +130,10 @@ module.exports = function (RED) {
 
         send(msg); done && done();
       } catch (err) {
-        node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.warn(`Error during padding processing: ${err.message}`);
-        // Don't send message on error
-        if (done) { done(); }
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'padding processing',
+          { originalPayload, outputPath: outPath, outputType: 'preserve' }
+        );
       }
     });
   }

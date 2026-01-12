@@ -17,26 +17,36 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      // Capture output path for error passthrough
+      const outputPath = config.outputPath || 'payload';
+
+      // Capture base image early for error passthrough (use first/base image)
+      const image1 = RED.util.getMessageProperty(msg, config.image1Path || 'payload.image1');
+      const baseImageForPassthrough = image1;
+
       try {
         const t0 = performance.now();
         node.status({});                                      // clear status
 
         /* ▸ Read images from message ------------------------------------ */
         // Get images directly from specified paths
-        const image1 = RED.util.getMessageProperty(msg, config.image1Path || 'payload.image1');
         const image2 = RED.util.getMessageProperty(msg, config.image2Path || 'payload.image2');
 
         // Validate input images
         const img1 = NodeUtils.validateImageStructure(image1, node);
         if (!img1) {
-          node.warn("First image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'First image is invalid or missing', msg, send, done,
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+          );
         }
 
         const img2 = NodeUtils.validateImageStructure(image2, node);
         if (!img2) {
-          node.warn("Second image is invalid or missing");
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Second image is invalid or missing', msg, send, done,
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+          );
         }
 
         /* ▸ Options from the editor -------------------------------------- */
@@ -102,7 +112,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'blend processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'blend processing',
+          { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+        );
       }
     });
   }

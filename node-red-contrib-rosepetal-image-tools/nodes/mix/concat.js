@@ -18,6 +18,9 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      const outputPath = config.outputPath || 'payload';
+      let firstImage = null;
+
       try {
         const t0 = performance.now();
         node.status({});                                      // clear status
@@ -26,10 +29,15 @@ module.exports = function (RED) {
         const list = RED.util.getMessageProperty(msg, config.inputPath || 'payload');
         const imgs = Array.isArray(list) ? list : [ list ];   // always an array
 
+        // Capture first image for error passthrough
+        firstImage = imgs[0] || null;
+
         // Validate input images - concat expects array input
         if (!NodeUtils.validateListImage(imgs, node)) {
-          // Warning already sent, don't send message
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, 'Invalid image list', msg, send, done,
+            { originalPayload: firstImage, outputPath, outputType: 'single' }
+          );
         }
 
         /* ▸ Options from the editor -------------------------------------- */
@@ -92,7 +100,10 @@ module.exports = function (RED) {
         send(msg);
         done && done();
       } catch (err) {
-        NodeUtils.handleNodeError(node, err, msg, done, 'concat processing');
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'concat processing',
+          { originalPayload: firstImage, outputPath, outputType: 'single' }
+        );
       }
     });
   }

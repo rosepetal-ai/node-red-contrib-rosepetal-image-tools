@@ -13,7 +13,10 @@ module.exports = function (RED) {
     RED.nodes.createNode(this, config);
     const node = this;
 
-    node.on('input', async (msg, _send, done) => {
+    node.on('input', async (msg, send, done) => {
+      /* Output path - captured early for error passthrough */
+      const outputPath = config.outputPath || 'payload';
+
       try {
         const t0 = performance.now();
         node.status({});
@@ -21,7 +24,6 @@ module.exports = function (RED) {
         /* Input/Output paths */
         const imageInputPath = config.imageInputPath || 'images';
         const bboxInputPath = config.bboxInputPath || 'default';
-        const outputPath = config.outputPath || 'payload';
 
         /* Configuration */
         const outputFormat = config.outputFormat || 'raw';
@@ -34,13 +36,17 @@ module.exports = function (RED) {
         const bboxData = RED.util.getMessageProperty(msg, bboxInputPath);
 
         if (!imageData) {
-          node.error(`No image data found at ${imageInputPath}`);
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, `No image data found at ${imageInputPath}`, msg, send, done,
+            { originalPayload: [], outputPath, outputType: 'empty-array' }
+          );
         }
 
         if (!bboxData) {
-          node.error(`No bounding box data found at ${bboxInputPath}`);
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, `No bounding box data found at ${bboxInputPath}`, msg, send, done,
+            { originalPayload: [], outputPath, outputType: 'empty-array' }
+          );
         }
 
         /* Handle single image vs array */
@@ -48,8 +54,10 @@ module.exports = function (RED) {
         
         // The bboxData should be an array of detection objects
         if (!bboxData || !Array.isArray(bboxData)) {
-          node.error(`Invalid bounding box data structure. Expected array at ${bboxInputPath}`);
-          return;
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node, `Invalid bounding box data structure. Expected array at ${bboxInputPath}`, msg, send, done,
+            { originalPayload: [], outputPath, outputType: 'empty-array' }
+          );
         }
         
         const detections = bboxData;
@@ -57,11 +65,17 @@ module.exports = function (RED) {
         // Validate input images
         if (Array.isArray(imageData)) {
           if (!NodeUtils.validateListImage(imageData, node)) {
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image list structure', msg, send, done,
+              { originalPayload: [], outputPath, outputType: 'empty-array' }
+            );
           }
         } else {
           if (!NodeUtils.validateSingleImage(imageData, node)) {
-            return;
+            return NodeUtils.handleValidationErrorWithPassthrough(
+              node, 'Invalid image structure', msg, send, done,
+              { originalPayload: [], outputPath, outputType: 'empty-array' }
+            );
           }
         }
 
@@ -91,6 +105,7 @@ module.exports = function (RED) {
             encodeMs: 0,
             taskMs: 0
           }, elapsed);
+          send(msg);
           if (done) done();
           return;
         }
@@ -169,11 +184,14 @@ module.exports = function (RED) {
           taskMs: totalTaskMs
         }, totalTime);
 
-        node.send(msg);
+        send(msg);
         if (done) done();
         
-      } catch (error) {
-        NodeUtils.handleNodeError(node, error, msg, done, 'cropBB processing');
+      } catch (err) {
+        NodeUtils.handleNodeErrorWithPassthrough(
+          node, err, msg, send, done, 'cropBB processing',
+          { originalPayload: [], outputPath, outputType: 'empty-array' }
+        );
       }
     });
   }

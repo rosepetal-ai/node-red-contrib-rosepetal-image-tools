@@ -14,9 +14,13 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
-      // Capture source image early for error passthrough
+      // Capture images early for error passthrough
       const outputPath = config.outputPath || 'payload';
+      const referenceImage = RED.util.getMessageProperty(msg, config.referenceImagePath || 'payload.reference');
       const targetImage = RED.util.getMessageProperty(msg, config.targetImagePath || 'payload.target');
+
+      // For error passthrough: prefer target, fallback to reference, else undefined
+      const passthroughImage = targetImage || referenceImage || undefined;
 
       try {
         const startTime = performance.now();
@@ -30,15 +34,12 @@ module.exports = function (RED) {
         const transformPolygon = config.transformPolygon || false;
 
         /* ▸ Read images from message ------------------------------------ */
-        // Get images directly from specified paths
-        const referenceImage = RED.util.getMessageProperty(msg, config.referenceImagePath || 'payload.reference');
-
         // Validate input images
         const ref = NodeUtils.validateImageStructure(referenceImage, node);
         if (!ref) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node, 'Reference image is invalid or missing', msg, send, done,
-            { originalPayload: targetImage, outputPath, outputType: 'single' }
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
           );
         }
 
@@ -46,7 +47,7 @@ module.exports = function (RED) {
         if (!target) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node, 'Target image is invalid or missing', msg, send, done,
-            { originalPayload: targetImage, outputPath, outputType: 'single' }
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
           );
         }
 
@@ -295,7 +296,7 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'image-align processing',
-          { originalPayload: targetImage, outputPath, outputType: 'single' }
+          { originalPayload: passthroughImage, outputPath, outputType: 'single' }
         );
       }
     });

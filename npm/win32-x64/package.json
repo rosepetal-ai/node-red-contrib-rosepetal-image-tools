@@ -10,12 +10,12 @@
   "author": "Rosepetal SL <dev@rosepetal.ai> (https://www.rosepetal.ai)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools.git"
+    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-image-tools.git"
   },
   "bugs": {
-    "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-image-tools/issues"
   },
-  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-image-tools#readme",
   "publishConfig": {
     "access": "public"
   },

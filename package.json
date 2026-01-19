@@ -1,5 +1,5 @@
 {
-  "name": "@rosepetal/node-red-contrib-rosepetal-image-tools",
+  "name": "@rosepetal/node-red-contrib-image-tools",
   "version": "1.1.3",
   "description": "Node-RED Image Processing Toolkit",
   "main": "install.sh",
@@ -11,7 +11,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools.git"
+    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-image-tools.git"
   },
   "keywords": [
     "node-red",
@@ -28,47 +28,47 @@
   ],
   "license": "Apache-2.0",
   "bugs": {
-    "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-image-tools/issues"
   },
-  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-image-tools#readme",
   "dependencies": {
     "sharp": "^0.34.2"
   },
   "optionalDependencies": {
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-x64": "1.1.3",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-linux-arm64": "1.1.3",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-linuxmusl-x64": "1.1.3",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-x64": "1.1.3",
-    "@rosepetal/node-red-contrib-rosepetal-image-tools-darwin-arm64": "1.1.3"
+    "@rosepetal/node-red-contrib-image-tools-linux-x64": "1.1.3",
+    "@rosepetal/node-red-contrib-image-tools-linux-arm64": "1.1.3",
+    "@rosepetal/node-red-contrib-image-tools-linuxmusl-x64": "1.1.3",
+    "@rosepetal/node-red-contrib-image-tools-darwin-x64": "1.1.3",
+    "@rosepetal/node-red-contrib-image-tools-darwin-arm64": "1.1.3"
   },
   "node-red": {
       "version": ">=1.0.0",
       "nodes": {
-            "image-in": "node-red-contrib-rosepetal-image-tools/nodes/io/image-in.js",
-            "folder-in": "node-red-contrib-rosepetal-image-tools/nodes/io/folder-in.js",
-            "image-out": "node-red-contrib-rosepetal-image-tools/nodes/io/image-out.js",
-            "array-in": "node-red-contrib-rosepetal-image-tools/nodes/io/array-in.js",
-            "array-out": "node-red-contrib-rosepetal-image-tools/nodes/io/array-out.js",
-            "array-select": "node-red-contrib-rosepetal-image-tools/nodes/io/array-select.js",
-            "cropBB": "node-red-contrib-rosepetal-image-tools/nodes/specialized/cropBB.js",
-            "image-align": "node-red-contrib-rosepetal-image-tools/nodes/specialized/image-align.js",
-            "resize": "node-red-contrib-rosepetal-image-tools/nodes/transform/resize.js",
-            "rotate": "node-red-contrib-rosepetal-image-tools/nodes/transform/rotate.js",
-            "crop": "node-red-contrib-rosepetal-image-tools/nodes/transform/crop.js",
-            "concat": "node-red-contrib-rosepetal-image-tools/nodes/mix/concat.js",
-            "padding": "node-red-contrib-rosepetal-image-tools/nodes/transform/padding.js",
-            "filter": "node-red-contrib-rosepetal-image-tools/nodes/transform/filter.js",
-            "draw": "node-red-contrib-rosepetal-image-tools/nodes/transform/draw.js",
-            "mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/mosaic.js",
-            "advanced-mosaic": "node-red-contrib-rosepetal-image-tools/nodes/mix/advanced-mosaic.js",
-            "blend": "node-red-contrib-rosepetal-image-tools/nodes/blend/blend.js",
-            "add-mask": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-mask.js",
-            "add-masks": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-masks.js",
-            "add-bbs": "node-red-contrib-rosepetal-image-tools/nodes/blend/add-bbs.js",
-            "queue": "node-red-contrib-rosepetal-image-tools/nodes/io/queue.js",
-            "save-file": "node-red-contrib-rosepetal-image-tools/nodes/io/save-file.js",
-            "clean-debug": "node-red-contrib-rosepetal-image-tools/nodes/util/clean-debug.js",
-            "block-detect": "node-red-contrib-rosepetal-image-tools/nodes/util/block-detect.js"
+            "image-in": "node-red-contrib-image-tools/nodes/io/image-in.js",
+            "folder-in": "node-red-contrib-image-tools/nodes/io/folder-in.js",
+            "image-out": "node-red-contrib-image-tools/nodes/io/image-out.js",
+            "array-in": "node-red-contrib-image-tools/nodes/io/array-in.js",
+            "array-out": "node-red-contrib-image-tools/nodes/io/array-out.js",
+            "array-select": "node-red-contrib-image-tools/nodes/io/array-select.js",
+            "cropBB": "node-red-contrib-image-tools/nodes/specialized/cropBB.js",
+            "image-align": "node-red-contrib-image-tools/nodes/specialized/image-align.js",
+            "resize": "node-red-contrib-image-tools/nodes/transform/resize.js",
+            "rotate": "node-red-contrib-image-tools/nodes/transform/rotate.js",
+            "crop": "node-red-contrib-image-tools/nodes/transform/crop.js",
+            "concat": "node-red-contrib-image-tools/nodes/mix/concat.js",
+            "padding": "node-red-contrib-image-tools/nodes/transform/padding.js",
+            "filter": "node-red-contrib-image-tools/nodes/transform/filter.js",
+            "draw": "node-red-contrib-image-tools/nodes/transform/draw.js",
+            "mosaic": "node-red-contrib-image-tools/nodes/mix/mosaic.js",
+            "advanced-mosaic": "node-red-contrib-image-tools/nodes/mix/advanced-mosaic.js",
+            "blend": "node-red-contrib-image-tools/nodes/blend/blend.js",
+            "add-mask": "node-red-contrib-image-tools/nodes/blend/add-mask.js",
+            "add-masks": "node-red-contrib-image-tools/nodes/blend/add-masks.js",
+            "add-bbs": "node-red-contrib-image-tools/nodes/blend/add-bbs.js",
+            "queue": "node-red-contrib-image-tools/nodes/io/queue.js",
+            "save-file": "node-red-contrib-image-tools/nodes/io/save-file.js",
+            "clean-debug": "node-red-contrib-image-tools/nodes/util/clean-debug.js",
+            "block-detect": "node-red-contrib-image-tools/nodes/util/block-detect.js"
         }
     }
 }

@@ -8,12 +8,12 @@ A comprehensive Node-RED package providing 17 specialized nodes for high-perform
 
 ### Installation (users)
 **From Node-RED (Palette Manager)**
-- Open Palette Manager → Install → search `@rosepetal/node-red-contrib-rosepetal-image-tools`.
+- Open Palette Manager → Install → search `@rosepetal/node-red-contrib-image-tools`.
 
 **From npm (CLI, default)**
 ```bash
 cd ~/.node-red
-npm install @rosepetal/node-red-contrib-rosepetal-image-tools
+npm install @rosepetal/node-red-contrib-image-tools
 ```
 
 ### Development installation (build from source)
@@ -22,8 +22,8 @@ For contributors or platforms without a prebuilt binary:
 ./install.sh
 # or manual steps:
 cd rosepetal-image-engine && npm install && npm run build
-cd ../node-red-contrib-rosepetal-image-tools && npm install
-cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
+cd ../node-red-contrib-image-tools && npm install
+cd ~/.node-red && npm install /path/to/node-red-contrib-image-tools
 ```
 > npm installs fetch prebuilt binaries for common platforms; build from source only if you are developing or a prebuilt is unavailable.
 
@@ -109,7 +109,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-rosepetal-image-tools
 
 ### Project Structure
 ```
-node-red-contrib-rosepetal-image-tools/
+node-red-contrib-image-tools/
 ├── docs/nodes/          # Individual node documentation
 ├── nodes/              # Node-RED node implementations
 │   ├── io/             # I/O nodes

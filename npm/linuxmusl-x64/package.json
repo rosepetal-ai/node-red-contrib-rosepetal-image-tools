@@ -1,5 +1,5 @@
 {
-  "name": "@rosepetal/node-red-contrib-rosepetal-image-tools-linuxmusl-x64",
+  "name": "@rosepetal/node-red-contrib-image-tools-linuxmusl-x64",
   "version": "1.1.3",
   "description": "Prebuilt native binary for Linux x64 (musl/Alpine)",
   "os": ["linux"],
@@ -11,12 +11,12 @@
   "author": "Rosepetal SL (https://www.rosepetal.ai)",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools.git"
+    "url": "git+https://github.com/rosepetal-ai/node-red-contrib-image-tools.git"
   },
   "bugs": {
-    "url": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools/issues"
+    "url": "https://github.com/rosepetal-ai/node-red-contrib-image-tools/issues"
   },
-  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-rosepetal-image-tools#readme",
+  "homepage": "https://github.com/rosepetal-ai/node-red-contrib-image-tools#readme",
   "publishConfig": {
     "access": "public"
   },

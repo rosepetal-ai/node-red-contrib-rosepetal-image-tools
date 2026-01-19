@@ -313,7 +313,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-arm64; do
-            echo "Publishing @rosepetal/node-red-contrib-rosepetal-image-tools-$platform..."
+            echo "Publishing @rosepetal/node-red-contrib-image-tools-$platform..."
             cd npm/$platform
             npm publish --access public || echo "Package may already exist"
             cd ../..

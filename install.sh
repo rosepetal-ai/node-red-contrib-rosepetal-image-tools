@@ -108,7 +108,7 @@ main() {
     fi
 
     print_step "Installing the Node-RED package..."
-    cd "$SCRIPT_DIR/node-red-contrib-rosepetal-image-tools"
+    cd "$SCRIPT_DIR/node-red-contrib-image-tools"
     if npm install; then
         print_success "Node-RED package installed successfully."
     else
@@ -128,13 +128,13 @@ main() {
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_info "Installing into Node-RED..."
-            (cd "$NODE_RED_DIR" && npm install "$SCRIPT_DIR/node-red-contrib-rosepetal-image-tools")
+            (cd "$NODE_RED_DIR" && npm install "$SCRIPT_DIR/node-red-contrib-image-tools")
             print_success "Successfully installed in Node-RED."
             print_info "Please restart your Node-RED instance to see the new nodes."
         else
             print_info "Skipping automatic installation."
             print_info "You can install it later by running this command:"
-            print_info "  cd ~/.node-red && npm install $SCRIPT_DIR/node-red-contrib-rosepetal-image-tools"
+            print_info "  cd ~/.node-red && npm install $SCRIPT_DIR/node-red-contrib-image-tools"
         fi
     fi
 }

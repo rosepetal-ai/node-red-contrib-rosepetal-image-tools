@@ -3,7 +3,7 @@
  * Follows Sharp's pattern for platform-specific binary loading.
  *
  * Loading order:
- * 1. Try platform-specific package (@rosepetal/node-red-contrib-rosepetal-image-tools-{platform})
+ * 1. Try platform-specific package (@rosepetal/node-red-contrib-image-tools-{platform})
  * 2. Fallback to local build (development mode)
  * 3. Fallback to node-gyp rebuild if build tools available
  * 4. Error with helpful message
@@ -70,7 +70,7 @@ function detectMusl() {
  * @returns {object|null} The loaded addon or null
  */
 function tryLoadFromPackage(platformId) {
-  const packageName = `@rosepetal/node-red-contrib-rosepetal-image-tools-${platformId}`;
+  const packageName = `@rosepetal/node-red-contrib-image-tools-${platformId}`;
 
   try {
     // Try to resolve and load the platform-specific package
@@ -88,7 +88,7 @@ function tryLoadFromPackage(platformId) {
  */
 function tryLoadFromLocalBuild() {
   const localPaths = [
-    // From node-red-contrib-rosepetal-image-tools/lib/ -> rosepetal-image-engine/build/
+    // From node-red-contrib-image-tools/lib/ -> rosepetal-image-engine/build/
     path.join(__dirname, '../../rosepetal-image-engine/build/Release/addon.node'),
     // Alternative path structure
     path.join(__dirname, '../../../rosepetal-image-engine/build/Release/addon.node'),
@@ -203,7 +203,7 @@ function loadAddon() {
     `Detected platform: ${platformId}\n` +
     `Supported platforms: ${supportedPlatforms.join(', ')}\n\n` +
     `Possible solutions:\n` +
-    `1. Reinstall the package: npm install @rosepetal/node-red-contrib-rosepetal-image-tools\n` +
+    `1. Reinstall the package: npm install @rosepetal/node-red-contrib-image-tools\n` +
     `2. If your platform is supported, ensure you're using a recent npm version (npm >= 9)\n` +
     `3. For unsupported platforms or development:\n` +
     `   - Install OpenCV 4.x and build tools\n` +

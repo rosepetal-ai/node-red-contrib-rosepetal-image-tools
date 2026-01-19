@@ -4,7 +4,7 @@
  * Quick test script to verify multi-format implementation
  */
 
-const CppProcessor = require('../node-red-contrib-rosepetal-image-tools/lib/cpp-bridge.js');
+const CppProcessor = require('../node-red-contrib-image-tools/lib/cpp-bridge.js');
 
 console.log('🔧 Testing Multi-Format Image Processing...\n');
 

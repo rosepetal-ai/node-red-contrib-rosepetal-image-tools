@@ -1,6 +1,6 @@
 # Node-RED Image Processing Toolkit
 
-A comprehensive Node-RED package providing 17 specialized nodes for high-performance image processing using C++ OpenCV backend. Perfect for computer vision workflows, batch processing, and automated image manipulation.
+A comprehensive Node-RED package providing 18 specialized nodes for high-performance image processing using C++ OpenCV backend. Perfect for computer vision workflows, batch processing, and automated image manipulation.
 
 ![Demo](assets/flow_time_example.gif)
 
@@ -39,11 +39,6 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-image-tools
 |------|---------|-------------|
 | **[image-in](docs/nodes/io/image-in.md)** | Load images from filesystem | JPEG/PNG/WebP/etc. support, Sharp backend |
 | **[image-out](docs/nodes/io/image-out.md)** | Save images with timestamp naming | Auto-naming, overwrite protection, format conversion |
-| **[save-file](docs/nodes/io/save-file.md)** | Write any payload to disk | Auto-detect images/JSON/text, overwrite guard, format control |
-| **[array-in](docs/nodes/io/array-in.md)** | Collect data into positioned arrays | Dynamic positioning, batch collection |
-| **[array-out](docs/nodes/io/array-out.md)** | Assemble arrays from multiple sources | Timeout protection, ordered assembly |
-| **[array-select](docs/nodes/io/array-select.md)** | Extract elements with flexible selection | Python-like slicing, range selection |
-| **[queue](docs/nodes/io/queue.md)** | Buffer and pace message delivery | FIFO gating, rate control, timed expiry |
 
 ### Transform Nodes - Image Processing
 | Node | Purpose | Key Features |
@@ -73,13 +68,6 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-image-tools
 |------|---------|-------------|
 | **[cropBB](docs/nodes/specialized/cropBB.md)** | Extract crops from AI bounding boxes | Object detection integration, confidence filtering |
 | **[image-align](docs/nodes/specialized/image-align.md)** | Ultra-fast image alignment using ECC algorithm | Translation correction, speed presets, real-time processing |
-
-### Utility Nodes - Diagnostics
-| Node | Purpose | Key Features |
-|------|---------|-------------|
-| **clean-debug** | Safe debug output for large payloads | Buffer cleaning, sidebar/console toggles, enable/disable button |
-| **[block-detect](docs/nodes/util/block-detect.md)** | Background watchdog for event-loop blocking | No wires, configurable thresholds, live status metrics |
-
 
 ## Architecture & Performance
 

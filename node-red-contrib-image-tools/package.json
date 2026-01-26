@@ -33,11 +33,6 @@
             "image-in": "nodes/io/image-in.js",
             "folder-in": "nodes/io/folder-in.js",
             "image-out": "nodes/io/image-out.js",
-            "array-in": "nodes/io/array-in.js",
-            "array-out": "nodes/io/array-out.js",
-            "array-select": "nodes/io/array-select.js",
-            "queue": "nodes/io/queue.js",
-            "save-file": "nodes/io/save-file.js",
             "cropBB": "nodes/specialized/cropBB.js",
             "image-align": "nodes/specialized/image-align.js",
             "resize": "nodes/transform/resize.js",
@@ -52,9 +47,7 @@
             "blend": "nodes/blend/blend.js",
             "add-mask": "nodes/blend/add-mask.js",
             "add-masks": "nodes/blend/add-masks.js",
-            "add-bbs": "nodes/blend/add-bbs.js",
-            "clean-debug": "nodes/util/clean-debug.js",
-            "block-detect": "nodes/util/block-detect.js"
+            "add-bbs": "nodes/blend/add-bbs.js"
         }
     },
     "dependencies": {

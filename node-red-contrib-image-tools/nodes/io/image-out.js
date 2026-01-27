@@ -4,7 +4,12 @@
  * @author Rosepetal
  */
 
-const sharp = require('sharp');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (err) {
+  sharp = null;
+}
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -110,7 +115,11 @@ module.exports = function(RED) {
 
         let image;
         if (inputPathType === 'msg') {
-          image = RED.util.getMessageProperty(msg, inputPath);
+          const { value, error } = NodeUtils.safeGetMessageProperty(msg, inputPath);
+          if (error) {
+            throw new Error(`Invalid inputPath "${inputPath}": ${error.message}`);
+          }
+          image = value;
         } else if (inputPathType === 'flow') {
           image = node.context().flow.get(inputPath);
         } else if (inputPathType === 'global') {
@@ -119,6 +128,10 @@ module.exports = function(RED) {
 
         if (!image) {
           throw new Error('No image data found at specified input path');
+        }
+
+        if (!sharp) {
+          throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');
         }
 
         node.status({ fill: 'blue', shape: 'dot', text: 'saving...' });
@@ -402,7 +415,16 @@ module.exports = function(RED) {
         
       } catch (err) {
         node.status({ fill: "red", shape: "ring", text: "Error" });
-        node.error(`Error saving image: ${err.message}`, msg);
+        const { message, hint } = NodeUtils.explainError(err, 'image-out', {
+          inputPath: config.inputPath || 'payload',
+          inputPathType: config.inputPathType || 'msg',
+          folderPath: config.folderPath,
+          outputFormat: config.outputFormat || 'jpg'
+        });
+        node.error(`Error saving image: ${message}`, msg);
+        if (hint) {
+          node.warn(`Hint: ${hint}`);
+        }
         if (done) done(err);
       }
     });

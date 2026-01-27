@@ -20,7 +20,23 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       // Capture original payload for error passthrough
       const outputPath = config.outputPath || 'payload';
-      const originalPayload = RED.util.getMessageProperty(msg, outputPath);
+      const { value: originalPayload, error: outErr } =
+        NodeUtils.safeGetMessageProperty(msg, outputPath);
+      if (outErr) {
+        // Don't crash on invalid outputPath; just report it and continue without passthrough output set.
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid outputPath "${outputPath}": ${outErr.message}`,
+            hint: `Set outputPath to a valid msg property path (e.g. "payload").`,
+            details: { outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
 
       try {
         const t0 = performance.now();
@@ -28,14 +44,56 @@ module.exports = function (RED) {
 
         /* ▸ Read image and polygon from message -------------------------- */
         // Get base image and polygon coordinates from specified paths
-        const image = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
-        const polygon = RED.util.getMessageProperty(msg, config.polygonPath || 'payload.default.masks[0].mask[0]');
+        const imagePath = config.imagePath || 'payload.image';
+        const polygonPath = config.polygonPath || 'payload.default.masks[0].mask[0]';
+
+        const { value: image, error: imageErr } =
+          NodeUtils.safeGetMessageProperty(msg, imagePath);
+        if (imageErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid imagePath "${imagePath}": ${imageErr.message}`,
+              hint: `Ensure "${imagePath}" exists on msg and contains an image.`,
+              details: { imagePath, polygonPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
+        }
+
+        const { value: polygon, error: polygonErr } =
+          NodeUtils.safeGetMessageProperty(msg, polygonPath);
+        if (polygonErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid polygonPath "${polygonPath}": ${polygonErr.message}`,
+              hint: `Ensure "${polygonPath}" exists on msg and contains polygon coordinates like [[x,y], ...] with values 0..1.`,
+              details: { imagePath, polygonPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
+        }
 
         // Validate base image
         const baseImg = NodeUtils.validateImageStructure(image, node);
         if (!baseImg) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Base image is invalid or missing', msg, send, done,
+            node,
+            {
+              message: 'Base image is invalid or missing',
+              hint: `Check that "${imagePath}" contains a valid image (Buffer or raw image object).`,
+              details: { imagePath, polygonPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload, outputPath, outputType: 'single' }
           );
         }
@@ -43,7 +101,15 @@ module.exports = function (RED) {
         // Validate polygon coordinates
         if (!Array.isArray(polygon)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Polygon coordinates must be an array', msg, send, done,
+            node,
+            {
+              message: 'Polygon coordinates must be an array',
+              hint: `Set "${polygonPath}" to an array like [[x,y], ...] where x/y are numbers in range 0..1.`,
+              details: { polygonPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload, outputPath, outputType: 'single' }
           );
         }
@@ -118,12 +184,13 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -134,7 +201,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             
@@ -160,7 +227,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'add-mask processing',
-          { originalPayload, outputPath, outputType: 'single' }
+          {
+            originalPayload,
+            outputPath,
+            outputType: 'single',
+            context: { outputPath }
+          }
         );
       }
     });

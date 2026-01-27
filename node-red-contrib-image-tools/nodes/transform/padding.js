@@ -18,7 +18,22 @@ module.exports = function (RED) {
       const outPath = cfg.outputPath || 'payload';
 
       /* image / array - capture original for error passthrough */
-      const originalPayload = RED.util.getMessageProperty(msg, inPath);
+      const { value: originalPayload, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inPath}" exists before this node.`,
+            details: { inputPath: inPath, outputPath: outPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
 
       try {
         const t0 = performance.now();

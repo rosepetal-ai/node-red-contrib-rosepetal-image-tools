@@ -20,7 +20,25 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       // Capture original payload for error passthrough
       const outputPath = config.outputPath || 'payload';
-      const originalPayload = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
+      const imagePath = config.imagePath || 'payload.image';
+      const boxesPath = config.boxesPath || 'payload';
+
+      const { value: originalPayload, error: imagePathErr } =
+        NodeUtils.safeGetMessageProperty(msg, imagePath);
+      if (imagePathErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid imagePath "${imagePath}": ${imagePathErr.message}`,
+            hint: `Ensure "${imagePath}" exists on msg and contains an image.`,
+            details: { imagePath, boxesPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
 
       try {
         const t0 = performance.now();
@@ -28,14 +46,37 @@ module.exports = function (RED) {
 
         /* ▸ Read image and boxes from message -------------------------- */
         // Get base image and boxes array from specified paths
-        const image = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
-        const boxesArray = RED.util.getMessageProperty(msg, config.boxesPath || 'payload');
+        const image = originalPayload;
+        const { value: boxesArray, error: boxesErr } =
+          NodeUtils.safeGetMessageProperty(msg, boxesPath);
+        if (boxesErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid boxesPath "${boxesPath}": ${boxesErr.message}`,
+              hint: `Ensure "${boxesPath}" exists on msg and contains an array of boxes.`,
+              details: { imagePath, boxesPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
+        }
 
         // Validate base image
         const baseImg = NodeUtils.validateImageStructure(image, node);
         if (!baseImg) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Base image is invalid or missing', msg, send, done,
+            node,
+            {
+              message: 'Base image is invalid or missing',
+              hint: `Check that "${imagePath}" contains a valid image (Buffer or raw image object).`,
+              details: { imagePath, boxesPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload, outputPath, outputType: 'single' }
           );
         }
@@ -43,7 +84,15 @@ module.exports = function (RED) {
         // Validate boxes input - expect direct array format
         if (!Array.isArray(boxesArray)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Boxes input must be an array', msg, send, done,
+            node,
+            {
+              message: 'Boxes input must be an array',
+              hint: `Set "${boxesPath}" to an array of box objects (expected objects with "raw_boxes" and "tag").`,
+              details: { boxesPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload, outputPath, outputType: 'single' }
           );
         }
@@ -189,12 +238,13 @@ module.exports = function (RED) {
 
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -205,7 +255,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
 
@@ -231,7 +281,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'add-bbs processing',
-          { originalPayload, outputPath, outputType: 'single' }
+          {
+            originalPayload,
+            outputPath,
+            outputType: 'single',
+            context: { imagePath, boxesPath, outputPath }
+          }
         );
       }
     });

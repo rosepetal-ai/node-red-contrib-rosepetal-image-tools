@@ -17,7 +17,22 @@ module.exports = function (RED) {
       // I/O paths
       const inputPath = config.inputPath || 'payload';
       const outputPath = config.outputPath || 'payload';
-      const originalPayload = RED.util.getMessageProperty(msg, inputPath);
+      const { value: originalPayload, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inputPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
+            details: { inputPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
 
       try {
         const startTime = performance.now();

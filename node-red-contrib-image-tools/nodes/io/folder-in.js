@@ -6,7 +6,12 @@
  */
 
 const { performance } = require('perf_hooks');
-const sharp = require('sharp');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (err) {
+  sharp = null;
+}
 const fs = require('fs').promises;
 const path = require('path');
 
@@ -80,6 +85,12 @@ module.exports = function(RED) {
       }
 
       try {
+        if (!sharp) {
+          node.error('Folder-In requires "sharp" but it is not available. Install "sharp" and restart Node-RED.');
+          stopEmission();
+          return;
+        }
+
         const startTime = performance.now();
         const filePath = imageFiles[currentIndex];
         const fileName = path.basename(filePath);

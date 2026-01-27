@@ -4,7 +4,12 @@
  * @author Rosepetal
  */
 
-const sharp = require('sharp');
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (err) {
+  sharp = null;
+}
 const fs = require('fs').promises;
 
 module.exports = function(RED) {
@@ -16,6 +21,9 @@ module.exports = function(RED) {
 
     node.on('input', async function(msg, send, done) {
       try {
+        if (!sharp) {
+          throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');
+        }
         let filePath;
         if (config.filePathType === 'msg' || config.filePathType === 'flow' || config.filePathType === 'global') {
           filePath = RED.util.evaluateNodeProperty(config.filePath, config.filePathType, node, msg);

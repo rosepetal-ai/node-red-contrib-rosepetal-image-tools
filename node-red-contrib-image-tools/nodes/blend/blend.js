@@ -19,9 +19,27 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       // Capture output path for error passthrough
       const outputPath = config.outputPath || 'payload';
+      const image1Path = config.image1Path || 'payload.image1';
+      const image2Path = config.image2Path || 'payload.image2';
 
-      // Capture base image early for error passthrough (use first/base image)
-      const image1 = RED.util.getMessageProperty(msg, config.image1Path || 'payload.image1');
+      const { value: image1, error: image1Err } =
+        NodeUtils.safeGetMessageProperty(msg, image1Path);
+      if (image1Err) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid image1Path "${image1Path}": ${image1Err.message}`,
+            hint: `Ensure "${image1Path}" exists on msg before this node.`,
+            details: { image1Path, image2Path, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
+
+      // Base image passthrough (use first/base image)
       const baseImageForPassthrough = image1;
 
       try {
@@ -29,14 +47,36 @@ module.exports = function (RED) {
         node.status({});                                      // clear status
 
         /* ▸ Read images from message ------------------------------------ */
-        // Get images directly from specified paths
-        const image2 = RED.util.getMessageProperty(msg, config.image2Path || 'payload.image2');
+        const { value: image2, error: image2Err } =
+          NodeUtils.safeGetMessageProperty(msg, image2Path);
+        if (image2Err) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid image2Path "${image2Path}": ${image2Err.message}`,
+              hint: `Ensure "${image2Path}" exists on msg before this node.`,
+              details: { image1Path, image2Path, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+          );
+        }
 
         // Validate input images
         const img1 = NodeUtils.validateImageStructure(image1, node);
         if (!img1) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'First image is invalid or missing', msg, send, done,
+            node,
+            {
+              message: 'First image is invalid or missing',
+              hint: `Check that "${image1Path}" contains a valid image (Buffer or raw image object).`,
+              details: { image1Path, image2Path, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
           );
         }
@@ -44,7 +84,15 @@ module.exports = function (RED) {
         const img2 = NodeUtils.validateImageStructure(image2, node);
         if (!img2) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Second image is invalid or missing', msg, send, done,
+            node,
+            {
+              message: 'Second image is invalid or missing',
+              hint: `Check that "${image2Path}" contains a valid image (Buffer or raw image object).`,
+              details: { image1Path, image2Path, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
           );
         }
@@ -72,12 +120,13 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -88,7 +137,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             
@@ -114,7 +163,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'blend processing',
-          { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+          {
+            originalPayload: baseImageForPassthrough,
+            outputPath,
+            outputType: 'single',
+            context: { image1Path, image2Path, outputPath }
+          }
         );
       }
     });

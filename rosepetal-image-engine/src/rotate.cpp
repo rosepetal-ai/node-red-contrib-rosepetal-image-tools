@@ -88,11 +88,8 @@ protected:
 
       // Multi-format encoding
       if (outputFormat != "raw") {
-        // Convert to BGR if needed for encoding
-        const cv::Mat& srcForEncoding =
-              (channelOrder == "BGR") ? resultMat
-                                      : ToBgrForJpg(resultMat, channelOrder);
-    
+        const cv::Mat srcForEncoding =
+              PrepareForEncoding(resultMat, channelOrder, outputFormat);
         encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality, pngOptimize);
       }
     } catch (const std::exception& e) { SetError(e.what()); }

@@ -202,7 +202,7 @@ protected:
     }
 
     if (outputFormat != "raw") {
-      cv::Mat encodeSrc = ToBgrForJpg(resultImage, imageChannelOrder);
+      cv::Mat encodeSrc = PrepareForEncoding(resultImage, imageChannelOrder, outputFormat);
       encodeMs = EncodeToFormat(encodeSrc, encodedBuffer, outputFormat, quality, pngOptimize);
     }
 

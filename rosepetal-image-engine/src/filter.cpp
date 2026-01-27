@@ -76,8 +76,8 @@ protected:
       
       // Multi-format encoding
       if (outputFormat_ != "raw") {
-        const cv::Mat& srcForEncoding = (channel_ == "BGR") ? result_ 
-                                       : ToBgrForJpg(result_, channel_);
+        const cv::Mat srcForEncoding =
+              PrepareForEncoding(result_, channel_, outputFormat_);
         encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
       }
     } catch (const std::exception& e) {

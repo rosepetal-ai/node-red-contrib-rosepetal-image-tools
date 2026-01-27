@@ -55,9 +55,10 @@ protected:
     cv::copyMakeBorder(src_,dst_,t_,b_,l_,r_,cv::BORDER_CONSTANT,padClrImg);
     taskMs_=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
 
-    if(outputFormat != "raw"){
-      const cv::Mat& srcForEncoding=(channel_=="BGR")?dst_:ToBgrForJpg(dst_,channel_);
-      encodeMs_=EncodeToFormat(srcForEncoding,encodedBuf_,outputFormat,quality,pngOptimize);
+    if (outputFormat != "raw") {
+      const cv::Mat srcForEncoding =
+            PrepareForEncoding(dst_, channel_, outputFormat);
+      encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat, quality, pngOptimize);
     }
   }
 

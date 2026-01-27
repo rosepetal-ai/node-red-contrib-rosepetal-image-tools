@@ -75,25 +75,26 @@ module.exports = function (RED) {
         // Debug image display
         const elapsedTime = performance.now() - t0;
         let debugFormat = null;
-        if (cfg.debugEnabled) {
+        const debugEnabled = cfg.debugEnabled === true || cfg.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              cfg.debugWidthType,
+              cfg.debugWidthType || 'num',
               cfg.debugWidth,
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(originalPayload) ? outImgs[0] : outImgs[0];
+            const debugImage = outImgs[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             

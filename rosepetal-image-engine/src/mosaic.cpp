@@ -145,9 +145,8 @@ protected:
     
     /* ─ SUPER FAST multi-format encoding (optional) ─ */
     if (outputFormat_ != "raw") {
-      // Convert to BGR format for encoding if needed (like other nodes do)
-      const cv::Mat& srcForEncoding = (canvasChannel_ == "BGR") ? canvas_ 
-                                     : ToBgrForJpg(canvas_, canvasChannel_);
+      const cv::Mat srcForEncoding =
+            PrepareForEncoding(canvas_, canvasChannel_, outputFormat_);
       encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
     }
   }
@@ -158,7 +157,7 @@ protected:
     // Zero-copy output creation with correct channel format
     Napi::Value jsImg = (outputFormat_ != "raw")
         ? VectorToBuffer(env, std::move(encodedBuf_))       // Zero-copy encoded
-        : MatToRawJS(env, canvas_.clone(), canvasChannel_); // Contiguous raw with correct channel format
+        : MatToRawJS(env, canvas_, canvasChannel_);
     
     Napi::Object result = Napi::Object::New(env);
     result.Set("image", jsImg);

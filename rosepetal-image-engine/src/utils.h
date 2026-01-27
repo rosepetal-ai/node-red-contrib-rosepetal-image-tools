@@ -144,6 +144,34 @@ inline ImageFormat ParseImageFormat(const std::string& format) {
   return ImageFormat::RAW;
 }
 
+// Convert to the correct channel order for OpenCV's encoders.
+// - JPG: requires BGR (alpha is dropped)
+// - PNG/WebP: support BGR/BGRA (alpha preserved for *A variants)
+inline cv::Mat PrepareForEncoding(const cv::Mat& src,
+  const std::string& order,
+  const std::string& outputFormat)
+{
+  const ImageFormat fmt = ParseImageFormat(outputFormat);
+  if (fmt == ImageFormat::JPG) {
+    return ToBgrForJpg(src, order);
+  }
+
+  // PNG/WebP: keep alpha when present
+  if (src.channels() == 1 || order == "BGR" || order == "BGRA" || order == "GRAY") {
+    return src;
+  }
+
+  cv::Mat dst;
+  if (order == "RGB") {
+    cv::cvtColor(src, dst, cv::COLOR_RGB2BGR);
+  } else if (order == "RGBA") {
+    cv::cvtColor(src, dst, cv::COLOR_RGBA2BGRA);
+  } else {
+    dst = src; // fallback (assume already in OpenCV-native order)
+  }
+  return dst;
+}
+
 // Fast JPEG compression function
 inline double EncodeToJpgFast(const cv::Mat& src,
   std::vector<uchar>& out,
@@ -266,15 +294,25 @@ inline Napi::Object MatToRawJS(Napi::Env env,
   }
   o.Set("dtype", Napi::String::New(env, dtype));
 
-  // Copy data
-  size_t bytes = m.total() * m.elemSize();
-  auto* raw = new uint8_t[bytes];
-  std::memcpy(raw, m.data, bytes);
+  // Zero-copy where possible:
+  // - If Mat isn't continuous (ROI/step) or doesn't own its data (external ptr),
+  //   clone to a contiguous owned buffer once.
+  cv::Mat owned = m;
+  if (!owned.isContinuous() || owned.u == nullptr) {
+    owned = m.clone();
+  }
+
+  auto* heapMat = new cv::Mat(std::move(owned));
+  const size_t bytes = heapMat->total() * heapMat->elemSize();
 
   o.Set("data", Napi::Buffer<uint8_t>::New(
-    env, raw, bytes,
-    [](Napi::Env, uint8_t* p) { delete[] p; }));
-  
+    env,
+    heapMat->data,
+    bytes,
+    [](Napi::Env, uint8_t*, cv::Mat* mat) { delete mat; },
+    heapMat
+  ));
+
   return o;
 }
 

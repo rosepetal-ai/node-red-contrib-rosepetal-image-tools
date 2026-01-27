@@ -12,18 +12,17 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      const inputPath   = config.inputPath  || 'payload';
+      const outputPath  = config.outputPath || 'payload';
+      const originalPayload = RED.util.getMessageProperty(msg, inputPath);
+
       try {
         const t0 = performance.now();
         node.status({});                                   // clear
-
-        const inputPath   = config.inputPath  || 'payload';
-        const outputPath  = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
         const padColorHex = config.padColor    || '#000000';
-
-        const originalPayload = RED.util.getMessageProperty(msg, inputPath);
 
         // Validate input images with error passthrough
         if (Array.isArray(originalPayload)) {
@@ -44,14 +43,14 @@ module.exports = function (RED) {
         
         const imgs     = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
 
-        /* ——— lanzar rotaciones en paralelo ——— */
-        const promises = imgs.map(img => {
-          let angle = NodeUtils.resolveDimension(
-            node, config.angleType, config.angleValue, msg);
-          angle = angle === null || angle === '' ? 0 : Number(angle);
+        let angle = NodeUtils.resolveDimension(
+          node, config.angleType, config.angleValue, msg);
+        angle = angle === null || angle === '' ? 0 : Number(angle);
 
-          return CppProcessor.rotate(img, angle, padColorHex, outputFormat, outputQuality, pngOptimize);
-        });
+        /* ——— lanzar rotaciones en paralelo ——— */
+        const promises = imgs.map(img =>
+          CppProcessor.rotate(img, angle, padColorHex, outputFormat, outputQuality, pngOptimize)
+        );
 
         const results = await Promise.all(promises);
 
@@ -72,25 +71,26 @@ module.exports = function (RED) {
 
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
+            const debugImage = images[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             

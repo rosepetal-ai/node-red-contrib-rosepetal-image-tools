@@ -64,8 +64,8 @@ protected:
 
     /* ─ Multi-format encoding (encodeMs) ─ */
     if(outputFormat_ != "raw"){
-      const cv::Mat& srcForEncoding = (channel_=="BGR")? result_
-                         : ToBgrForJpg(result_,channel_);
+      const cv::Mat srcForEncoding =
+            PrepareForEncoding(result_, channel_, outputFormat_);
       encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
     }
   }
@@ -74,7 +74,7 @@ protected:
     Napi::Env env = Env();
     Napi::Value jsImg = (outputFormat_ != "raw")
         ? VectorToBuffer(env,std::move(encodedBuf_))        // 0-copy
-        : MatToRawJS(env,result_.clone(),channel_);         // contiguo
+        : MatToRawJS(env,result_,channel_);
 
     Napi::Object out = Napi::Object::New(env);
     out.Set("image",  jsImg);

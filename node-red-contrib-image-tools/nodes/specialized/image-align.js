@@ -16,8 +16,42 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       // Capture images early for error passthrough
       const outputPath = config.outputPath || 'payload';
-      const referenceImage = RED.util.getMessageProperty(msg, config.referenceImagePath || 'payload.reference');
-      const targetImage = RED.util.getMessageProperty(msg, config.targetImagePath || 'payload.target');
+      const referenceImagePath = config.referenceImagePath || 'payload.reference';
+      const targetImagePath = config.targetImagePath || 'payload.target';
+
+      const { value: referenceImage, error: refErr } =
+        NodeUtils.safeGetMessageProperty(msg, referenceImagePath);
+      if (refErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid referenceImagePath "${referenceImagePath}": ${refErr.message}`,
+            hint: `Ensure "${referenceImagePath}" exists on msg and contains an image.`,
+            details: { referenceImagePath, targetImagePath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
+
+      const { value: targetImage, error: targetErr } =
+        NodeUtils.safeGetMessageProperty(msg, targetImagePath);
+      if (targetErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid targetImagePath "${targetImagePath}": ${targetErr.message}`,
+            hint: `Ensure "${targetImagePath}" exists on msg and contains an image.`,
+            details: { referenceImagePath, targetImagePath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: referenceImage, outputPath, outputType: 'single' }
+        );
+      }
 
       // For error passthrough: prefer target, fallback to reference, else undefined
       const passthroughImage = targetImage || referenceImage || undefined;
@@ -55,7 +89,14 @@ module.exports = function (RED) {
         let polygon = null;
         let isPolygonArray = false;
         if (transformPolygon) {
-          polygon = RED.util.getMessageProperty(msg, config.polygonPath || 'payload.polygon');
+          const polygonPath = config.polygonPath || 'payload.polygon';
+          const { value, error } = NodeUtils.safeGetMessageProperty(msg, polygonPath);
+          if (error) {
+            node.warn(`Invalid polygonPath "${polygonPath}": ${error.message} (polygon transform skipped)`);
+            polygon = null;
+          } else {
+            polygon = value;
+          }
           
           // Validate polygon coordinates
           if (polygon) {
@@ -221,12 +262,13 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -237,7 +279,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             
@@ -296,7 +338,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'image-align processing',
-          { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          {
+            originalPayload: passthroughImage,
+            outputPath,
+            outputType: 'single',
+            context: { referenceImagePath, targetImagePath, outputPath }
+          }
         );
       }
     });

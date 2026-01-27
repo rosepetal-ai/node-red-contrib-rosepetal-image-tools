@@ -472,7 +472,7 @@ protected:
       taskMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 
       if (outputFormat != "raw") {
-        cv::Mat tmp = ToBgrForJpg(result, outputChannel);
+        cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
         encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
       }
       return;
@@ -560,7 +560,7 @@ protected:
 
     // Multi-format encoding if needed
     if (outputFormat != "raw") {
-      cv::Mat tmp = ToBgrForJpg(result, outputChannel);
+      cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
     }
   }

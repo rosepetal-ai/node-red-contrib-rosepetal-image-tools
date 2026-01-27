@@ -18,7 +18,22 @@ module.exports = function (RED) {
       const outPath = cfg.outputPath || 'payload';
 
       /* image / array - capture original for error passthrough */
-      const originalPayload = RED.util.getMessageProperty(msg, inPath);
+      const { value: originalPayload, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inPath}" exists before this node.`,
+            details: { inputPath: inPath, outputPath: outPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
 
       try {
         const t0 = performance.now();
@@ -75,25 +90,26 @@ module.exports = function (RED) {
         // Debug image display
         const elapsedTime = performance.now() - t0;
         let debugFormat = null;
-        if (cfg.debugEnabled) {
+        const debugEnabled = cfg.debugEnabled === true || cfg.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              cfg.debugWidthType,
+              cfg.debugWidthType || 'num',
               cfg.debugWidth,
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(originalPayload) ? outImgs[0] : outImgs[0];
+            const debugImage = outImgs[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             

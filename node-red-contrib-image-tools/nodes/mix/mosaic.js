@@ -14,13 +14,34 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      /* I/O paths */
+      const inputPath = config.inputPath || 'payload';
+      const outputPath = config.outputPath || 'payload';
+
+      const { value: inputImages, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inputPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
+            details: { inputPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
+
+      const imageArrayForPassthrough = Array.isArray(inputImages) ? inputImages : [inputImages];
+      const passthroughImage = imageArrayForPassthrough[0];
+
       try {
         const t0 = performance.now();
         node.status({});
 
-        /* I/O paths */
-        const inputPath = config.inputPath || 'payload';
-        const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
@@ -35,17 +56,21 @@ module.exports = function (RED) {
         const positions = config.positions || [];
         
         /* Input images array */
-        const inputImages = RED.util.getMessageProperty(msg, inputPath);
-        const imageArray = Array.isArray(inputImages) ? inputImages : [inputImages];
-
-        // Capture first image for error passthrough
-        const firstImage = imageArray[0];
+        const imageArray = imageArrayForPassthrough;
 
         // Validate input images - mosaic expects array input
         if (!NodeUtils.validateListImage(imageArray, node)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Invalid image list', msg, send, done,
-            { originalPayload: firstImage, outputPath, outputType: 'single' }
+            node,
+            {
+              message: 'Invalid image list',
+              hint: `Ensure "${inputPath}" is an array of valid images. Use the "image-in" node or pass Buffers/Raw image objects.`,
+              details: { inputPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
           );
         }
 
@@ -84,12 +109,13 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
                         // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -100,7 +126,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             
@@ -141,7 +167,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'mosaic processing',
-          { originalPayload: firstImage, outputPath, outputType: 'single' }
+          {
+            originalPayload: passthroughImage,
+            outputPath,
+            outputType: 'single',
+            context: { inputPath, outputPath }
+          }
         );
       }
     });

@@ -14,16 +14,31 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      const inputPath  = config.inputPath  || 'payload';
+      const outputPath = config.outputPath || 'payload';
+      const { value: originalPayload, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inputPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
+            details: { inputPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
+
       try {
         const startTime = performance.now();
         node.status({});
-        const inputPath  = config.inputPath  || 'payload';
-        const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
-
-        const originalPayload = RED.util.getMessageProperty(msg, inputPath);
         const inputList = Array.isArray(originalPayload)
           ? originalPayload
           : [originalPayload];
@@ -45,35 +60,39 @@ module.exports = function (RED) {
           }
         }
 
-        const promises = inputList.map((inputImage) => {
-          // Resolve dimension values (can come from msg/flow/global)
-          let wVal = NodeUtils.resolveDimension(
-            node,
-            config.widthType,
-            config.widthValue,
-            msg
-          );
-          let hVal = NodeUtils.resolveDimension(
-            node,
-            config.heightType,
-            config.heightValue,
-            msg
-          );
+        // Resolve dimension values once per message (can come from msg/flow/global)
+        let wVal = NodeUtils.resolveDimension(
+          node,
+          config.widthType,
+          config.widthValue,
+          msg
+        );
+        let hVal = NodeUtils.resolveDimension(
+          node,
+          config.heightType,
+          config.heightValue,
+          msg
+        );
 
-          // Convert to Number or NaN (C++ interprets NaN as "Auto")
-          wVal = wVal === null || wVal === '' ? NaN : Number(wVal);
-          hVal = hVal === null || hVal === '' ? NaN : Number(hVal);
+        // Convert to Number; use 0 as "Auto" sentinel for the native addon.
+        // (NaN is unsafe with -ffast-math builds and can lead to huge allocations.)
+        wVal = wVal === null || wVal === '' ? 0 : Number(wVal);
+        hVal = hVal === null || hVal === '' ? 0 : Number(hVal);
 
-          // Direct call to addon: (image, wMode, wVal, hMode, hVal, outputFormat, quality, pngOptimize)
-          return CppProcessor.resize(
+        if (!Number.isFinite(wVal) || !Number.isFinite(hVal)) {
+          throw new Error('Resize width/height must be finite numbers');
+        }
+
+        const promises = inputList.map((inputImage) =>
+          CppProcessor.resize(
             inputImage,
             config.widthMode,  wVal,
             config.heightMode, hVal,
             outputFormat,
             outputQuality,
             pngOptimize
-          );
-        });
+          )
+        );
         const results = await Promise.all(promises);
 
         // Aggregate timings and prepare output
@@ -94,25 +113,26 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
+            const debugImage = images[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             

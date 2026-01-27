@@ -14,13 +14,29 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      // I/O paths
+      const inputPath = config.inputPath || 'payload';
+      const outputPath = config.outputPath || 'payload';
+      const { value: originalPayload, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inputPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
+            details: { inputPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
+
       try {
         const startTime = performance.now();
         node.status({});
-
-        // I/O paths
-        const inputPath = config.inputPath || 'payload';
-        const outputPath = config.outputPath || 'payload';
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
@@ -47,9 +63,6 @@ module.exports = function (RED) {
         kernelSize = Math.max(3, Math.min(kernelSize, 15));
         if (kernelSize % 2 === 0) kernelSize++; // Ensure odd size
         intensity = Math.max(0.0, Math.min(intensity, 2.0));
-
-        // Get input image(s)
-        const originalPayload = RED.util.getMessageProperty(msg, inputPath);
 
         // Validate input images
         if (Array.isArray(originalPayload)) {
@@ -108,25 +121,26 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
+            const debugImage = images[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             

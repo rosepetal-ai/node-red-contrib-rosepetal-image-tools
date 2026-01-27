@@ -101,39 +101,23 @@
           ]
         }, {
           "include_dirs": [
-            "/usr/include/opencv4",
+            "<!@(pkg-config --cflags-only-I opencv4 | sed s/-I//g)",
             "<!@(node -p \"require('node-addon-api').include\")"
           ],
           "libraries": [
-            "<!@(pkg-config --libs --cflags opencv4)"
+            "<!@(pkg-config --libs opencv4)"
           ],
           "cflags_cc": [
             "-std=c++17",
             "-O3",
-            "-ffast-math",
-            "-march=native",
             "-fexceptions",
             "-frtti",
             "-fno-omit-frame-pointer",
-            "-funroll-loops",
-            "-fstrict-aliasing",
-            "-fopenmp",
-            "-mavx2",
-            "-ftree-vectorize",
-            "-fprefetch-loop-arrays",
-            "-finline-functions",
-            "-flto",
-            "-fipa-pta",
-            "-fvect-cost-model=cheap",
-            "-minline-all-stringops"
+            "-fopenmp"
           ],
           "ldflags": [
             "-O3",
-            "-march=native",
-            "-fopenmp",
-            "-lgomp",
-            "-flto",
-            "-fuse-linker-plugin"
+            "-fopenmp"
           ],
           "xcode_settings": {
             "GCC_ENABLE_CPP_EXCEPTIONS": "YES",
@@ -141,9 +125,7 @@
             "OTHER_CPLUSPLUSFLAGS": [
               "-std=c++17",
               "-O3",
-              "-ffast-math",
-              "-march=native",
-              "-funroll-loops"
+              "-march=native"
             ]
           }
         }]

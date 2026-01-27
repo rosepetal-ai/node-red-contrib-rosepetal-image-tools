@@ -18,6 +18,7 @@ module.exports = function (RED) {
     const node = this;
 
     node.on('input', async (msg, send, done) => {
+      const inputPath = config.inputPath || 'payload';
       const outputPath = config.outputPath || 'payload';
       let firstImage = null;
 
@@ -26,8 +27,24 @@ module.exports = function (RED) {
         node.status({});                                      // clear status
 
         /* ▸ Read images --------------------------------------------------- */
-        const list = RED.util.getMessageProperty(msg, config.inputPath || 'payload');
-        const imgs = Array.isArray(list) ? list : [ list ];   // always an array
+        const { value: list, error: inputErr } =
+          NodeUtils.safeGetMessageProperty(msg, inputPath);
+        if (inputErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
+              hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
+              details: { inputPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+          );
+        }
+
+        const imgs = Array.isArray(list) ? list : [list];   // always an array
 
         // Capture first image for error passthrough
         firstImage = imgs[0] || null;
@@ -35,7 +52,15 @@ module.exports = function (RED) {
         // Validate input images - concat expects array input
         if (!NodeUtils.validateListImage(imgs, node)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Invalid image list', msg, send, done,
+            node,
+            {
+              message: 'Invalid image list',
+              hint: `Ensure "${inputPath}" is an array of valid images. Use the "image-in" node or pass Buffers/Raw image objects.`,
+              details: { inputPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload: firstImage, outputPath, outputType: 'single' }
           );
         }
@@ -60,12 +85,13 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
                         // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -76,7 +102,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             
@@ -102,7 +128,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'concat processing',
-          { originalPayload: firstImage, outputPath, outputType: 'single' }
+          {
+            originalPayload: firstImage,
+            outputPath,
+            outputType: 'single',
+            context: { inputPath, outputPath }
+          }
         );
       }
     });

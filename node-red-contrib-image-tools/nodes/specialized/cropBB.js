@@ -32,8 +32,39 @@ module.exports = function (RED) {
         const minConfidence = NodeUtils.resolveDimension(node, config.minConfidenceType, config.minConfidence, msg) || 0.5;
 
         /* Get input data */
-        const imageData = RED.util.getMessageProperty(msg, imageInputPath);
-        const bboxData = RED.util.getMessageProperty(msg, bboxInputPath);
+        const { value: imageData, error: imageErr } =
+          NodeUtils.safeGetMessageProperty(msg, imageInputPath);
+        if (imageErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid imageInputPath "${imageInputPath}": ${imageErr.message}`,
+              hint: `Ensure "${imageInputPath}" exists on msg and contains an image (or array of images).`,
+              details: { imageInputPath, bboxInputPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload: [], outputPath, outputType: 'empty-array' }
+          );
+        }
+
+        const { value: bboxData, error: bboxErr } =
+          NodeUtils.safeGetMessageProperty(msg, bboxInputPath);
+        if (bboxErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid bboxInputPath "${bboxInputPath}": ${bboxErr.message}`,
+              hint: `Ensure "${bboxInputPath}" exists on msg and contains a detection array (raw_boxes/confidence/tag).`,
+              details: { imageInputPath, bboxInputPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload: [], outputPath, outputType: 'empty-array' }
+          );
+        }
 
         if (!imageData) {
           return NodeUtils.handleValidationErrorWithPassthrough(
@@ -86,6 +117,22 @@ module.exports = function (RED) {
         // For now, assume single image with all detections
         // In the future, could handle multiple images with detection arrays
         const image = images[0]; // Use first image
+
+        // cropBB needs image dimensions to convert normalized boxes -> pixels.
+        if (!image || typeof image.width !== 'number' || typeof image.height !== 'number') {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: 'cropBB requires raw images with width/height metadata',
+              hint: `Use the "image-in" node (raw output) before cropBB, or pass raw image objects instead of encoded Buffers.`,
+              details: { imageInputPath, bboxInputPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload: [], outputPath, outputType: 'empty-array' }
+          );
+        }
         
         /* Filter detections by confidence and extract bounding boxes */
         const validBboxes = [];
@@ -148,9 +195,10 @@ module.exports = function (RED) {
         
         // Debug image display for first crop if enabled
         let debugFormat = null;
-        if (config.debugEnabled && allCrops.length > 0) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled && allCrops.length > 0) {
           try {
-            let debugWidth = NodeUtils.resolveDimension(node, config.debugWidthType, config.debugWidth, msg) || 200;
+            let debugWidth = NodeUtils.resolveDimension(node, config.debugWidthType || 'num', config.debugWidth, msg) || 200;
             debugWidth = Math.max(1, parseInt(debugWidth));
 
             const debugResult = await NodeUtils.debugImageDisplay(
@@ -158,7 +206,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
 

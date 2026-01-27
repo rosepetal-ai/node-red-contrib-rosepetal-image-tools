@@ -9,6 +9,7 @@
 #include <cmath>
 #include <utility>  
 #include <limits> 
+#include <cstdlib>
 #include "utils.h"
 
 class ResizeWorker : public Napi::AsyncWorker {
@@ -59,41 +60,124 @@ protected:
   void Execute() override {
     try {
         // --- 4.1 Calcular ancho/alto objetivo --------------------------
-        auto calcDim = [](int orig, const std::string& mode, double val) -> int {
+        auto safeRoundToInt = [](double value) -> int {
+          if (!std::isfinite(value)) {
+            throw std::runtime_error("Dimension must be finite (got " + std::to_string(value) + ")");
+          }
+          constexpr double kMinInt = static_cast<double>(std::numeric_limits<int>::min());
+          constexpr double kMaxInt = static_cast<double>(std::numeric_limits<int>::max());
+          if (value < kMinInt || value > kMaxInt) {
+            throw std::runtime_error("Dimension out of int range (got " + std::to_string(value) + ")");
+          }
+          const long long rounded = std::llround(value);
+          if (rounded < std::numeric_limits<int>::min() || rounded > std::numeric_limits<int>::max()) {
+            throw std::runtime_error("Dimension out of int range (got " + std::to_string(value) + ")");
+          }
+          return static_cast<int>(rounded);
+        };
+
+        auto calcDim = [&](int orig, const std::string& mode, double val) -> int {
           if (std::isnan(val)) return 0;  // Auto
-          return mode == "multiply"
-                 ? static_cast<int>(std::lround(orig * val))
-                 : static_cast<int>(std::lround(val));
+          if (!std::isfinite(val)) {
+            throw std::runtime_error("Dimension value must be finite (got " + std::to_string(val) + ")");
+          }
+          const double computed = (mode == "multiply")
+            ? static_cast<double>(orig) * val
+            : val;
+          try {
+            return safeRoundToInt(computed);
+          } catch (const std::exception& e) {
+            throw std::runtime_error(
+              "Dimension calc failed (mode=" + mode +
+              ", orig=" + std::to_string(orig) +
+              ", val=" + std::to_string(val) +
+              "): " + e.what()
+            );
+          }
         };
       
-        targetWidth  = calcDim(inputMat.cols, widthMode,  widthValue);
-        targetHeight = calcDim(inputMat.rows, heightMode, heightValue);
+        try {
+          targetWidth = calcDim(inputMat.cols, widthMode, widthValue);
+        } catch (const std::exception& e) {
+          throw std::runtime_error("Invalid target width: " + std::string(e.what()));
+        }
+        try {
+          targetHeight = calcDim(inputMat.rows, heightMode, heightValue);
+        } catch (const std::exception& e) {
+          throw std::runtime_error("Invalid target height: " + std::string(e.what()));
+        }
 
         if (!targetWidth && !targetHeight)
             throw std::runtime_error("Both dimensions are Auto");
 
         if (!targetWidth)
-            targetWidth  = std::lround(targetHeight *
+            targetWidth  = safeRoundToInt(targetHeight *
                         (double)inputMat.cols / inputMat.rows);
         if (!targetHeight)
-            targetHeight = std::lround(targetWidth  *
+            targetHeight = safeRoundToInt(targetWidth  *
                         (double)inputMat.rows / inputMat.cols);
+
+        if (targetWidth <= 0 || targetHeight <= 0) {
+            throw std::runtime_error(
+              "Target dimensions must be positive (got " +
+              std::to_string(targetWidth) + "x" +
+              std::to_string(targetHeight) + ")"
+            );
+        }
+
+        // Guardrail against pathological allocations (misconfig values can overflow to huge sizes).
+        // Default: 4 GiB max output buffer; override via ROSEPETAL_MAX_RESIZE_BYTES.
+        static const uint64_t maxResizeBytes = []() -> uint64_t {
+          const char* env = std::getenv("ROSEPETAL_MAX_RESIZE_BYTES");
+          if (!env || !*env) {
+            return 4ULL * 1024ULL * 1024ULL * 1024ULL;
+          }
+          try {
+            const unsigned long long parsed = std::stoull(env);
+            return parsed > 0 ? static_cast<uint64_t>(parsed)
+                              : 4ULL * 1024ULL * 1024ULL * 1024ULL;
+          } catch (...) {
+            return 4ULL * 1024ULL * 1024ULL * 1024ULL;
+          }
+        }();
+
+        const uint64_t outPixels = static_cast<uint64_t>(targetWidth) * static_cast<uint64_t>(targetHeight);
+        const uint64_t outBytes = outPixels * static_cast<uint64_t>(inputMat.elemSize());
+        if (outBytes > maxResizeBytes) {
+          throw std::runtime_error(
+            "Resize to " + std::to_string(targetWidth) + "x" + std::to_string(targetHeight) +
+            " would allocate too much memory (" + std::to_string(outBytes) + " bytes). " +
+            "Check width/height values or increase ROSEPETAL_MAX_RESIZE_BYTES."
+          );
+        }
 
         // --- 4.2 Redimensionar ----------------------------------------
         auto t0 = std::chrono::steady_clock::now();
-        cv::resize(inputMat, resultMat,
-                  cv::Size(targetWidth, targetHeight),
-                  0, 0, cv::INTER_LINEAR);
+        try {
+          cv::resize(inputMat, resultMat,
+                    cv::Size(targetWidth, targetHeight),
+                    0, 0, cv::INTER_LINEAR);
+        } catch (const cv::Exception& e) {
+          const auto inStep = static_cast<unsigned long long>(inputMat.step);
+          const auto inElemSize = static_cast<unsigned long long>(inputMat.elemSize());
+          throw std::runtime_error(
+            std::string("cv::resize failed for ") +
+            std::to_string(inputMat.cols) + "x" + std::to_string(inputMat.rows) +
+            " type=" + std::to_string(inputMat.type()) +
+            " channels=" + std::to_string(inputMat.channels()) +
+            " elemSize=" + std::to_string(inElemSize) +
+            " step=" + std::to_string(inStep) +
+            " -> " + std::to_string(targetWidth) + "x" + std::to_string(targetHeight) +
+            ": " + e.what()
+          );
+        }
         auto t1 = std::chrono::steady_clock::now();
         taskMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
 
         // --- 4.3 Multi-format encoding -----------------------------
         if (outputFormat != "raw") {
-          // Convert to BGR if needed for encoding
-          const cv::Mat& srcForEncoding =
-                (channelOrder == "BGR") ? resultMat
-                                        : ToBgrForJpg(resultMat, channelOrder);
-      
+          const cv::Mat srcForEncoding =
+                PrepareForEncoding(resultMat, channelOrder, outputFormat);
           encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality, pngOptimize);
         }
     } catch (const std::exception& e) {
@@ -110,13 +194,7 @@ protected:
 
     // --- Lógica de la Imagen ---
     if (outputFormat != "raw") {
-        // Return encoded buffer (JPG/PNG/WebP)
-        uint8_t* encodedData = new uint8_t[encodedBuf.size()];
-        std::memcpy(encodedData, encodedBuf.data(), encodedBuf.size());
-        imageResult = Napi::Buffer<uint8_t>::New(
-            env, encodedData, encodedBuf.size(),
-            [](Napi::Env, uint8_t* p){ delete[] p; }
-        );
+        imageResult = VectorToBuffer(env, std::move(encodedBuf));
     } else {
         // Return raw image object using new format
         imageResult = MatToRawJS(env, resultMat, channelOrder);

@@ -18,7 +18,22 @@ module.exports = function (RED) {
       const outputPath = config.outputPath || 'payload';
 
       /* Capture original payload for error passthrough */
-      const originalPayload = RED.util.getMessageProperty(msg, inputPath);
+      const { value: originalPayload, error: inputErr } =
+        NodeUtils.safeGetMessageProperty(msg, inputPath);
+      if (inputErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
+            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
+            details: { inputPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
 
       try {
         const t0 = performance.now();
@@ -50,15 +65,15 @@ module.exports = function (RED) {
           }
         }
 
-        /* lanzar recortes en paralelo */
-        const jobs = imgs.map(img => {
-          const x = Number(NodeUtils.resolveDimension(node, config.cropXType, config.cropX, msg));
-          const y = Number(NodeUtils.resolveDimension(node, config.cropYType, config.cropY, msg));
-          const width = Number(NodeUtils.resolveDimension(node, config.widthType, config.width, msg));
-          const height = Number(NodeUtils.resolveDimension(node, config.heightType, config.height, msg));
+        const x = Number(NodeUtils.resolveDimension(node, config.cropXType, config.cropX, msg));
+        const y = Number(NodeUtils.resolveDimension(node, config.cropYType, config.cropY, msg));
+        const width = Number(NodeUtils.resolveDimension(node, config.widthType, config.width, msg));
+        const height = Number(NodeUtils.resolveDimension(node, config.heightType, config.height, msg));
 
-          return CppProcessor.crop(img, x, y, width, height, normalized, outputFormat, outputQuality, pngOptimize);
-        });
+        /* lanzar recortes en paralelo */
+        const jobs = imgs.map(img =>
+          CppProcessor.crop(img, x, y, width, height, normalized, outputFormat, outputQuality, pngOptimize)
+        );
 
         const results = await Promise.all(jobs);
 
@@ -81,25 +96,26 @@ module.exports = function (RED) {
         
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
             
             // For arrays, show the first image as representative
-            const debugImage = Array.isArray(originalPayload) ? images[0] : images[0];
+            const debugImage = images[0];
             const debugResult = await NodeUtils.debugImageDisplay(
               debugImage, 
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
             

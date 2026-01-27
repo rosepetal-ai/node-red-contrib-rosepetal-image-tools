@@ -4,7 +4,12 @@
  * @author Rosepetal
  */
 
-const sharp = require('sharp'); // Ensure sharp is installed in your project
+let sharp;
+try {
+  sharp = require('sharp');
+} catch (err) {
+  sharp = null;
+}
 
 
 module.exports = function(RED) {
@@ -125,6 +130,83 @@ module.exports = function(RED) {
     return true;
   }
 
+  /**
+   * Safe wrapper around RED.util.getMessageProperty.
+   * Node-RED can throw on paths like "images[0]" when the intermediate object is undefined.
+   */
+  utils.safeGetMessageProperty = function(msg, path) {
+    try {
+      return { value: RED.util.getMessageProperty(msg, path), error: null };
+    } catch (error) {
+      return { value: undefined, error };
+    }
+  }
+
+  utils._inferErrorHint = function(errorMessage, operation, context = {}) {
+    const inputPath = context.inputPath || context.inPath || context.imagePath || context.masksPath;
+
+    if (/Invalid inputPath\b/.test(errorMessage) || /Invalid .*Path\b/.test(errorMessage) ||
+        /Cannot read properties of undefined \(reading '0'\)/.test(errorMessage)) {
+      if (inputPath) {
+        return `Check that msg has "${inputPath}" before this node. If you use "[0]" indexing, ensure the array exists and is not empty.`;
+      }
+      return 'Check your input path(s): an intermediate object is undefined (common with "foo[0]" when foo is missing).';
+    }
+
+    if (errorMessage.includes('not a valid number')) {
+      return 'Check the TypedInput type (num/msg/flow/global) and ensure the resolved value exists and is numeric.';
+    }
+
+    if (/Invalid image/.test(errorMessage) || /image structure/.test(errorMessage) || /image list/.test(errorMessage)) {
+      return 'Provide a valid image (Buffer, or {data,width,height,channels,colorSpace,dtype}). Using the "image-in" node output is the easiest way.';
+    }
+
+    if (/Failed to decode image buffer/.test(errorMessage)) {
+      return 'The input Buffer is not a valid encoded image (jpg/png/webp). Ensure upstream provides a real image buffer.';
+    }
+
+    if (/Could not load the rosepetal-image-engine native addon/.test(errorMessage)) {
+      return 'Install the correct prebuilt package for your platform, or build from source (OpenCV 4.x + build tools) and restart Node-RED.';
+    }
+
+    if (/OpenCV\(/.test(errorMessage) || /cv::/.test(errorMessage)) {
+      return 'Native OpenCV error: check your parameters (sizes > 0, multiply factors > 0). If it tries to allocate huge memory, your computed dimensions are wrong.';
+    }
+
+    if (operation === 'validation') {
+      return 'Fix the node configuration or the incoming msg fields based on the validation error details.';
+    }
+
+    return null;
+  }
+
+  utils._safeTopLevelKeys = function(msg) {
+    try {
+      const keys = Object.keys(msg || {});
+      return keys.slice(0, 30);
+    } catch {
+      return [];
+    }
+  }
+
+  utils.explainError = function(error, operation, context = {}) {
+    const message = error instanceof Error ? (error.message || String(error)) : String(error);
+    const hint = context.hint || utils._inferErrorHint(message, operation, context) || undefined;
+
+    const details = {
+      operation,
+      ...context
+    };
+
+    if (details.msg && typeof details.msg === 'object') {
+      // Avoid putting the whole msg on msg.error; keep only lightweight info.
+      details.msgKeys = utils._safeTopLevelKeys(details.msg);
+      delete details.msg;
+    }
+
+    return { message, hint, details };
+  }
+
   utils.resolveDimension = function(node, type, value, msg) {
     if (!value || String(value).trim() === '') return null;
     let resolvedValue;
@@ -170,6 +252,9 @@ module.exports = function(RED) {
   }
 
   utils.rawToJpeg = async function (image, quality = CONSTANTS.DEFAULT_JPEG_QUALITY) {
+    if (!sharp) {
+      throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');
+    }
     const normalized = utils.validateImageStructure(image, { warn: () => {} });
     if (!normalized)
       throw new Error('Invalid raw image object supplied to rawToJpeg');
@@ -232,19 +317,27 @@ module.exports = function(RED) {
     const {
       originalPayload,
       outputPath = 'payload',
-      outputType = 'preserve'
+      outputType = 'preserve',
+      context = {}
     } = passthroughOptions;
 
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const { message: errorMessage, hint, details } = utils.explainError(
+      error,
+      operation,
+      { ...context, msg }
+    );
     const errorStack = error instanceof Error ? error.stack : undefined;
 
     // Build error object
     msg.error = {
       message: errorMessage,
       operation: operation,
+      hint: hint,
+      details: details,
       timestamp: new Date().toISOString(),
       nodeId: node.id,
-      nodeName: node.name || node.type
+      nodeName: node.name || node.type,
+      nodeType: node.type
     };
 
     if (errorStack) {
@@ -270,11 +363,14 @@ module.exports = function(RED) {
         output = originalPayload;
     }
 
-    // Set output
-    RED.util.setMessageProperty(msg, outputPath, output);
+    // Set output (optional)
+    if (outputPath) {
+      RED.util.setMessageProperty(msg, outputPath, output);
+    }
 
     // Log error and set status
-    node.warn(errorMessage);
+    const logLine = hint ? `${errorMessage} | Hint: ${hint}` : errorMessage;
+    node.warn(logLine);
     node.status({ fill: "red", shape: "ring", text: `Error: ${errorMessage.substring(0, 30)}` });
 
     // Send message with error info
@@ -296,11 +392,18 @@ module.exports = function(RED) {
    * @param {object} passthroughOptions - Same options as handleNodeErrorWithPassthrough
    */
   utils.handleValidationErrorWithPassthrough = function(node, errorMessage, msg, send, done, passthroughOptions = {}) {
-    const error = new Error(errorMessage);
+    const validation = (typeof errorMessage === 'string')
+      ? { message: errorMessage }
+      : (errorMessage || {});
+
+    const error = new Error(validation.message || 'Validation error');
     error.validationError = true;
 
     // Add validationError flag to the options
-    const options = { ...passthroughOptions };
+    const options = {
+      ...passthroughOptions,
+      context: { ...(passthroughOptions.context || {}), ...(validation.details || {}), hint: validation.hint }
+    };
 
     utils.handleNodeErrorWithPassthrough(
       node, error, msg, send, done,
@@ -345,6 +448,10 @@ module.exports = function(RED) {
    */
   utils.debugImageDisplay = async function(image, outputFormat, quality, node, debugEnabled, debugWidth) {
     if (!debugEnabled) return null;
+    if (!sharp) {
+      node.warn('Debug display requires "sharp" but it is not available.');
+      return null;
+    }
     
     // Validate and set default debug width
     debugWidth = Math.max(1, parseInt(debugWidth) || 200);

@@ -20,7 +20,26 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       // Capture original payload for error passthrough
       const outputPath = config.outputPath || 'payload';
-      const image = RED.util.getMessageProperty(msg, config.imagePath || 'payload.image');
+      const imagePath = config.imagePath || 'payload.image';
+      const masksPath = config.masksPath || 'payload';
+
+      const { value: image, error: imageErr } =
+        NodeUtils.safeGetMessageProperty(msg, imagePath);
+      if (imageErr) {
+        return NodeUtils.handleValidationErrorWithPassthrough(
+          node,
+          {
+            message: `Invalid imagePath "${imagePath}": ${imageErr.message}`,
+            hint: `Ensure "${imagePath}" exists on msg and contains an image.`,
+            details: { imagePath, masksPath, outputPath }
+          },
+          msg,
+          send,
+          done,
+          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+        );
+      }
+
       const originalPayload = image;
 
       try {
@@ -29,13 +48,36 @@ module.exports = function (RED) {
 
         /* ▸ Read image and masks array from message ------------------------ */
         // Get base image and masks array from specified paths
-        const masksArray = RED.util.getMessageProperty(msg, config.masksPath || 'payload');
+        const { value: masksArray, error: masksErr } =
+          NodeUtils.safeGetMessageProperty(msg, masksPath);
+        if (masksErr) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid masksPath "${masksPath}": ${masksErr.message}`,
+              hint: `Ensure "${masksPath}" exists on msg and contains an array of masks.`,
+              details: { imagePath, masksPath, outputPath }
+            },
+            msg,
+            send,
+            done,
+            { originalPayload, outputPath, outputType: 'single' }
+          );
+        }
 
         // Validate base image
         const baseImg = NodeUtils.validateImageStructure(image, node);
         if (!baseImg) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Base image is invalid or missing', msg, send, done,
+            node,
+            {
+              message: 'Base image is invalid or missing',
+              hint: `Check that "${imagePath}" contains a valid image (Buffer or raw image object).`,
+              details: { imagePath, masksPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload, outputPath, outputType: 'single' }
           );
         }
@@ -43,7 +85,15 @@ module.exports = function (RED) {
         // Validate masks array - expect direct array format
         if (!Array.isArray(masksArray)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
-            node, 'Masks input must be an array', msg, send, done,
+            node,
+            {
+              message: 'Masks input must be an array',
+              hint: `Set "${masksPath}" to an array of masks. Each entry should include either "polygons" or "mask" plus a class/tag.`,
+              details: { masksPath, outputPath }
+            },
+            msg,
+            send,
+            done,
             { originalPayload, outputPath, outputType: 'single' }
           );
         }
@@ -269,12 +319,13 @@ module.exports = function (RED) {
 
         // Debug image display
         let debugFormat = null;
-        if (config.debugEnabled) {
+        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        if (debugEnabled) {
           try {
             // Resolve and validate debug width
             let debugWidth = NodeUtils.resolveDimension(
               node,
-              config.debugWidthType,
+              config.debugWidthType || 'num',
               config.debugWidth,
               msg
             );
@@ -285,7 +336,7 @@ module.exports = function (RED) {
               outputFormat,
               outputQuality,
               node,
-              true,
+              debugEnabled,
               debugWidth
             );
 
@@ -311,7 +362,12 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'add-masks processing',
-          { originalPayload, outputPath, outputType: 'single' }
+          {
+            originalPayload,
+            outputPath,
+            outputType: 'single',
+            context: { imagePath, masksPath, outputPath }
+          }
         );
       }
     });

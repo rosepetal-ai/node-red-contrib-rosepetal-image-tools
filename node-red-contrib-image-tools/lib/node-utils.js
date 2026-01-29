@@ -40,6 +40,55 @@ module.exports = function(RED) {
             image.hasOwnProperty('height') &&
             image.hasOwnProperty('data')):
 
+        const normalizeNumber = (value) => {
+          if (typeof value === 'number') return value;
+          if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (trimmed === '') return value;
+            const parsed = Number(trimmed);
+            return Number.isFinite(parsed) ? parsed : value;
+          }
+          return value;
+        };
+
+        const normalizeData = (data) => {
+          if (!data) return data;
+          if (Buffer.isBuffer(data)) return data;
+          if (ArrayBuffer.isView(data)) {
+            return Buffer.from(data.buffer, data.byteOffset, data.byteLength);
+          }
+          if (data instanceof ArrayBuffer) {
+            return Buffer.from(data);
+          }
+          if (Array.isArray(data)) {
+            return Buffer.from(data);
+          }
+          if (typeof data === 'object') {
+            if (data.type === 'Buffer' && Array.isArray(data.data)) {
+              return Buffer.from(data.data);
+            }
+            if (Array.isArray(data.data)) {
+              return Buffer.from(data.data);
+            }
+          }
+          return data;
+        };
+
+        // Normalize width/height to numbers when possible
+        const width = normalizeNumber(image.width);
+        const height = normalizeNumber(image.height);
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+          node.warn(`Invalid image dimensions: width=${image.width}, height=${image.height}`);
+          return null;
+        }
+
+        // Normalize data for serialized Buffer/typed arrays
+        const normalizedData = normalizeData(image.data);
+        if (!normalizedData || typeof normalizedData.length !== 'number') {
+          node.warn('Image data is missing or not a valid buffer/array');
+          return null;
+        }
+
         // Validate dtype (only uint8 supported for now)
         if (image.dtype && !CONSTANTS.SUPPORTED_DTYPES.includes(image.dtype)) {
           node.warn(`Unsupported dtype: ${image.dtype}. Supported values: ${CONSTANTS.SUPPORTED_DTYPES.join(', ')}`);
@@ -49,23 +98,28 @@ module.exports = function(RED) {
         // Infer channels if not provided
         let channels = image.channels;
         if (!channels) {
-          const calculatedChannels = image.data.length / (image.width * image.height);
+          const calculatedChannels = normalizedData.length / (width * height);
           if (!Number.isInteger(calculatedChannels)) {
-            node.warn(`Cannot infer channels: data.length (${image.data.length}) is not divisible by width*height (${image.width * image.height})`);
+            node.warn(`Cannot infer channels: data.length (${normalizedData.length}) is not divisible by width*height (${width * height})`);
             return null;
           }
           channels = calculatedChannels;
         }
 
+        if (typeof channels === 'string' && channels.trim() !== '') {
+          const parsedChannels = Number(channels);
+          channels = Number.isFinite(parsedChannels) ? parsedChannels : channels;
+        }
+
         // Validate channels is a number
-        if (typeof channels !== 'number') {
+        if (typeof channels !== 'number' || !Number.isFinite(channels) || !Number.isInteger(channels)) {
           node.warn(`Channels must be a number, got: ${typeof channels}`);
           return null;
         }
 
         // Validate data length matches dimensions
-        if (image.width * image.height * channels !== image.data.length) {
-          node.warn(`Data length mismatch: expected ${image.width * image.height * channels} bytes (${image.width}x${image.height}x${channels}), got ${image.data.length} bytes`);
+        if (width * height * channels !== normalizedData.length) {
+          node.warn(`Data length mismatch: expected ${width * height * channels} bytes (${width}x${height}x${channels}), got ${normalizedData.length} bytes`);
           return null;
         }
 
@@ -83,6 +137,10 @@ module.exports = function(RED) {
           }
         }
 
+        if (typeof colorSpace === 'string') {
+          colorSpace = colorSpace.trim().toUpperCase();
+        }
+
         // Validate colorSpace matches channel count
         if (!CONSTANTS.CHANNEL_MAP.hasOwnProperty(colorSpace)) {
           node.warn(`Unsupported colorSpace: ${colorSpace}. Supported values: ${CONSTANTS.SUPPORTED_COLOR_SPACES.join(', ')}`);
@@ -96,9 +154,9 @@ module.exports = function(RED) {
 
         // Return normalized structure
         return {
-          data: image.data,
-          width: image.width,
-          height: image.height,
+          data: normalizedData,
+          width: width,
+          height: height,
           channels: channels,
           colorSpace: colorSpace,
           dtype: image.dtype || 'uint8'
@@ -140,6 +198,41 @@ module.exports = function(RED) {
     } catch (error) {
       return { value: undefined, error };
     }
+  }
+
+  utils.getInputValue = function(node, msg, path, pathType = 'msg') {
+    const type = pathType || 'msg';
+    if (type === 'msg') {
+      return utils.safeGetMessageProperty(msg, path);
+    }
+    if (type === 'flow') {
+      return { value: node.context().flow.get(path), error: null };
+    }
+    if (type === 'global') {
+      return { value: node.context().global.get(path), error: null };
+    }
+    try {
+      return { value: RED.util.evaluateNodeProperty(path, type, node, msg), error: null };
+    } catch (error) {
+      return { value: undefined, error };
+    }
+  }
+
+  utils.setOutputValue = function(node, msg, path, pathType = 'msg', value) {
+    const type = pathType || 'msg';
+    if (type === 'msg') {
+      RED.util.setMessageProperty(msg, path, value);
+      return;
+    }
+    if (type === 'flow') {
+      node.context().flow.set(path, value);
+      return;
+    }
+    if (type === 'global') {
+      node.context().global.set(path, value);
+      return;
+    }
+    RED.util.setMessageProperty(msg, path, value);
   }
 
   utils._inferErrorHint = function(errorMessage, operation, context = {}) {
@@ -317,6 +410,7 @@ module.exports = function(RED) {
     const {
       originalPayload,
       outputPath = 'payload',
+      outputPathType = 'msg',
       outputType = 'preserve',
       context = {}
     } = passthroughOptions;
@@ -365,7 +459,7 @@ module.exports = function(RED) {
 
     // Set output (optional)
     if (outputPath) {
-      RED.util.setMessageProperty(msg, outputPath, output);
+      utils.setOutputValue(node, msg, outputPath, outputPathType, output);
     }
 
     // Log error and set status

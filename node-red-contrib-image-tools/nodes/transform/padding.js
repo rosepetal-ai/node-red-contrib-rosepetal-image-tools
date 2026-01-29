@@ -15,23 +15,28 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       /* paths */
       const inPath  = cfg.inputPath  || 'payload';
+      const inputPathType = cfg.inputPathType || 'msg';
       const outPath = cfg.outputPath || 'payload';
+      const outputPathType = cfg.outputPathType || 'msg';
 
       /* image / array - capture original for error passthrough */
       const { value: originalPayload, error: inputErr } =
-        NodeUtils.safeGetMessageProperty(msg, inPath);
+        NodeUtils.getInputValue(node, msg, inPath, inputPathType);
       if (inputErr) {
+        const hint = inputPathType === 'msg'
+          ? `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inPath}" exists before this node.`
+          : `Set inputPath to an existing ${inputPathType} context key, or ensure "${inPath}" exists before this node.`;
         return NodeUtils.handleValidationErrorWithPassthrough(
           node,
           {
-            message: `Invalid inputPath "${inPath}": ${inputErr.message}`,
-            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inPath}" exists before this node.`,
-            details: { inputPath: inPath, outputPath: outPath }
+            message: `Invalid inputPath "${inPath}" (${inputPathType}): ${inputErr.message}`,
+            hint,
+            details: { inputPath: inPath, inputPathType, outputPath: outPath, outputPathType }
           },
           msg,
           send,
           done,
-          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+          { originalPayload: undefined, outputPath: null, outputPathType, outputType: 'preserve' }
         );
       }
 
@@ -44,14 +49,14 @@ module.exports = function (RED) {
           if (!NodeUtils.validateListImage(originalPayload, node)) {
             return NodeUtils.handleValidationErrorWithPassthrough(
               node, 'Invalid image list structure', msg, send, done,
-              { originalPayload, outputPath: outPath, outputType: 'preserve' }
+              { originalPayload, outputPath: outPath, outputPathType, outputType: 'preserve' }
             );
           }
         } else {
           if (!NodeUtils.validateSingleImage(originalPayload, node)) {
             return NodeUtils.handleValidationErrorWithPassthrough(
               node, 'Invalid image structure', msg, send, done,
-              { originalPayload, outputPath: outPath, outputType: 'preserve' }
+              { originalPayload, outputPath: outPath, outputPathType, outputType: 'preserve' }
             );
           }
         }
@@ -85,7 +90,7 @@ module.exports = function (RED) {
           return r.image;
         });
 
-        RED.util.setMessageProperty(msg, outPath, Array.isArray(originalPayload) ? outImgs : outImgs[0]);
+        NodeUtils.setOutputValue(node, msg, outPath, outputPathType, Array.isArray(originalPayload) ? outImgs : outImgs[0]);
 
         // Debug image display
         const elapsedTime = performance.now() - t0;
@@ -148,7 +153,7 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'padding processing',
-          { originalPayload, outputPath: outPath, outputType: 'preserve' }
+          { originalPayload, outputPath: outPath, outputPathType, outputType: 'preserve' }
         );
       }
     });

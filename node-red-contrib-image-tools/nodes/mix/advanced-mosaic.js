@@ -16,22 +16,27 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       /* I/O paths - needed early for error passthrough */
       const inputPath = config.inputPath || 'payload';
+      const inputPathType = config.inputPathType || 'msg';
       const outputPath = config.outputPath || 'payload';
+      const outputPathType = config.outputPathType || 'msg';
 
       const { value: inputImages, error: inputErr } =
-        NodeUtils.safeGetMessageProperty(msg, inputPath);
+        NodeUtils.getInputValue(node, msg, inputPath, inputPathType);
       if (inputErr) {
+        const hint = inputPathType === 'msg'
+          ? `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`
+          : `Set inputPath to an existing ${inputPathType} context key, or ensure "${inputPath}" exists before this node.`;
         return NodeUtils.handleValidationErrorWithPassthrough(
           node,
           {
-            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
-            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
-            details: { inputPath, outputPath }
+            message: `Invalid inputPath "${inputPath}" (${inputPathType}): ${inputErr.message}`,
+            hint,
+            details: { inputPath, inputPathType, outputPath, outputPathType }
           },
           msg,
           send,
           done,
-          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+          { originalPayload: undefined, outputPath: null, outputPathType, outputType: 'preserve' }
         );
       }
 
@@ -66,12 +71,12 @@ module.exports = function (RED) {
             {
               message: 'Invalid image list',
               hint: `Ensure "${inputPath}" is an array of valid images. Use the "image-in" node or pass Buffers/Raw image objects.`,
-              details: { inputPath, outputPath }
+              details: { inputPath, inputPathType, outputPath, outputPathType }
             },
             msg,
             send,
             done,
-            { originalPayload: firstImage, outputPath, outputType: 'single' }
+            { originalPayload: firstImage, outputPath, outputPathType, outputType: 'single' }
           );
         }
 
@@ -92,17 +97,11 @@ module.exports = function (RED) {
         let masksArray = null;
         if (propagateMasks) {
           try {
-            if (masksPathType === 'msg') {
-              const { value, error } = NodeUtils.safeGetMessageProperty(msg, masksPath);
-              if (error) {
-                node.warn(`Failed to read masks from msg.${masksPath}: ${error.message}`);
-              } else {
-                masksArray = value;
-              }
-            } else if (masksPathType === 'flow') {
-              masksArray = node.context().flow.get(masksPath);
-            } else if (masksPathType === 'global') {
-              masksArray = node.context().global.get(masksPath);
+            const { value, error } = NodeUtils.getInputValue(node, msg, masksPath, masksPathType);
+            if (error) {
+              node.warn(`Failed to read masks from ${masksPathType}.${masksPath}: ${error.message}`);
+            } else {
+              masksArray = value;
             }
           } catch (e) {
             node.warn(`Failed to read masks from ${masksPathType}.${masksPath}: ${e.message}`);
@@ -137,15 +136,9 @@ module.exports = function (RED) {
         const maskCount = Array.isArray(transformedMasks) ? transformedMasks.length : (propagateMasks && masksArray ? masksArray.length : 0);
 
         /* Set output */
-        RED.util.setMessageProperty(msg, outputPath, image);
+        NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, image);
         if (propagateMasks && transformedMasks) {
-          if (masksOutputPathType === 'msg') {
-            RED.util.setMessageProperty(msg, masksOutputPath, transformedMasks);
-          } else if (masksOutputPathType === 'flow') {
-            node.context().flow.set(masksOutputPath, transformedMasks);
-          } else if (masksOutputPathType === 'global') {
-            node.context().global.set(masksOutputPath, transformedMasks);
-          }
+          NodeUtils.setOutputValue(node, msg, masksOutputPath, masksOutputPathType, transformedMasks);
         }
 
         /* Performance status - same format as other nodes */
@@ -215,8 +208,9 @@ module.exports = function (RED) {
           {
             originalPayload: firstImage,
             outputPath,
+            outputPathType,
             outputType: 'single',
-            context: { inputPath, outputPath, masksPath, masksPathType }
+            context: { inputPath, inputPathType, outputPath, outputPathType, masksPath, masksPathType }
           }
         );
       }

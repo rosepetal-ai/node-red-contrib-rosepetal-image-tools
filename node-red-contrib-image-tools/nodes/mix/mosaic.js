@@ -16,22 +16,27 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       /* I/O paths */
       const inputPath = config.inputPath || 'payload';
+      const inputPathType = config.inputPathType || 'msg';
       const outputPath = config.outputPath || 'payload';
+      const outputPathType = config.outputPathType || 'msg';
 
       const { value: inputImages, error: inputErr } =
-        NodeUtils.safeGetMessageProperty(msg, inputPath);
+        NodeUtils.getInputValue(node, msg, inputPath, inputPathType);
       if (inputErr) {
+        const hint = inputPathType === 'msg'
+          ? `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`
+          : `Set inputPath to an existing ${inputPathType} context key, or ensure "${inputPath}" exists before this node.`;
         return NodeUtils.handleValidationErrorWithPassthrough(
           node,
           {
-            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
-            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
-            details: { inputPath, outputPath }
+            message: `Invalid inputPath "${inputPath}" (${inputPathType}): ${inputErr.message}`,
+            hint,
+            details: { inputPath, inputPathType, outputPath, outputPathType }
           },
           msg,
           send,
           done,
-          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+          { originalPayload: undefined, outputPath: null, outputPathType, outputType: 'preserve' }
         );
       }
 
@@ -65,12 +70,12 @@ module.exports = function (RED) {
             {
               message: 'Invalid image list',
               hint: `Ensure "${inputPath}" is an array of valid images. Use the "image-in" node or pass Buffers/Raw image objects.`,
-              details: { inputPath, outputPath }
+              details: { inputPath, inputPathType, outputPath, outputPathType }
             },
             msg,
             send,
             done,
-            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+            { originalPayload: passthroughImage, outputPath, outputPathType, outputType: 'single' }
           );
         }
 
@@ -101,7 +106,7 @@ module.exports = function (RED) {
         );
 
         /* Set output */
-        RED.util.setMessageProperty(msg, outputPath, image);
+        NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, image);
 
         /* Performance status - same format as other nodes */
         const { convertMs = 0, taskMs = 0, encodeMs = 0 } = timing;
@@ -170,8 +175,9 @@ module.exports = function (RED) {
           {
             originalPayload: passthroughImage,
             outputPath,
+            outputPathType,
             outputType: 'single',
-            context: { inputPath, outputPath }
+            context: { inputPath, inputPathType, outputPath, outputPathType }
           }
         );
       }

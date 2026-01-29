@@ -16,21 +16,26 @@ module.exports = function (RED) {
     node.on('input', async (msg, send, done) => {
       // I/O paths
       const inputPath = config.inputPath || 'payload';
+      const inputPathType = config.inputPathType || 'msg';
       const outputPath = config.outputPath || 'payload';
+      const outputPathType = config.outputPathType || 'msg';
       const { value: originalPayload, error: inputErr } =
-        NodeUtils.safeGetMessageProperty(msg, inputPath);
+        NodeUtils.getInputValue(node, msg, inputPath, inputPathType);
       if (inputErr) {
+        const hint = inputPathType === 'msg'
+          ? `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`
+          : `Set inputPath to an existing ${inputPathType} context key, or ensure "${inputPath}" exists before this node.`;
         return NodeUtils.handleValidationErrorWithPassthrough(
           node,
           {
-            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
-            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
-            details: { inputPath, outputPath }
+            message: `Invalid inputPath "${inputPath}" (${inputPathType}): ${inputErr.message}`,
+            hint,
+            details: { inputPath, inputPathType, outputPath, outputPathType }
           },
           msg,
           send,
           done,
-          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+          { originalPayload: undefined, outputPath: null, outputPathType, outputType: 'preserve' }
         );
       }
 
@@ -69,14 +74,14 @@ module.exports = function (RED) {
           if (!NodeUtils.validateListImage(originalPayload, node)) {
             return NodeUtils.handleValidationErrorWithPassthrough(
               node, 'Invalid image list structure', msg, send, done,
-              { originalPayload, outputPath, outputType: 'preserve' }
+              { originalPayload, outputPath, outputPathType, outputType: 'preserve' }
             );
           }
         } else {
           if (!NodeUtils.validateSingleImage(originalPayload, node)) {
             return NodeUtils.handleValidationErrorWithPassthrough(
               node, 'Invalid image structure', msg, send, done,
-              { originalPayload, outputPath, outputType: 'preserve' }
+              { originalPayload, outputPath, outputPathType, outputType: 'preserve' }
             );
           }
         }
@@ -174,14 +179,14 @@ module.exports = function (RED) {
         }, elapsedTime);
 
         // Set output and send message
-        RED.util.setMessageProperty(msg, outputPath, output);
+        NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, output);
         send(msg);
         done && done();
 
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'filter processing',
-          { originalPayload, outputPath, outputType: 'preserve' }
+          { originalPayload, outputPath, outputPathType, outputType: 'preserve' }
         );
       }
     });

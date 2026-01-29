@@ -19,7 +19,9 @@ module.exports = function (RED) {
 
     node.on('input', async (msg, send, done) => {
       const inputPath = config.inputPath || 'payload';
+      const inputPathType = config.inputPathType || 'msg';
       const outputPath = config.outputPath || 'payload';
+      const outputPathType = config.outputPathType || 'msg';
       let firstImage = null;
 
       try {
@@ -28,19 +30,22 @@ module.exports = function (RED) {
 
         /* ▸ Read images --------------------------------------------------- */
         const { value: list, error: inputErr } =
-          NodeUtils.safeGetMessageProperty(msg, inputPath);
+          NodeUtils.getInputValue(node, msg, inputPath, inputPathType);
         if (inputErr) {
+          const hint = inputPathType === 'msg'
+            ? `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`
+            : `Set inputPath to an existing ${inputPathType} context key, or ensure "${inputPath}" exists before this node.`;
           return NodeUtils.handleValidationErrorWithPassthrough(
             node,
             {
-              message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
-              hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
-              details: { inputPath, outputPath }
+              message: `Invalid inputPath "${inputPath}" (${inputPathType}): ${inputErr.message}`,
+              hint,
+              details: { inputPath, inputPathType, outputPath, outputPathType }
             },
             msg,
             send,
             done,
-            { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+            { originalPayload: undefined, outputPath: null, outputPathType, outputType: 'preserve' }
           );
         }
 
@@ -56,12 +61,12 @@ module.exports = function (RED) {
             {
               message: 'Invalid image list',
               hint: `Ensure "${inputPath}" is an array of valid images. Use the "image-in" node or pass Buffers/Raw image objects.`,
-              details: { inputPath, outputPath }
+              details: { inputPath, inputPathType, outputPath, outputPathType }
             },
             msg,
             send,
             done,
-            { originalPayload: firstImage, outputPath, outputType: 'single' }
+            { originalPayload: firstImage, outputPath, outputPathType, outputType: 'single' }
           );
         }
 
@@ -78,7 +83,7 @@ module.exports = function (RED) {
               await Cpp.concat(imgs, direction, strategy, padColorHex, outputFormat, outputQuality, pngOptimize);
 
         /* ▸ Write the single result back to msg -------------------------- */
-        RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);
+        NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, image);
 
         /* ▸ Status: standardized success formatting ----------------------- */
         const total = performance.now() - t0;
@@ -131,8 +136,9 @@ module.exports = function (RED) {
           {
             originalPayload: firstImage,
             outputPath,
+            outputPathType,
             outputType: 'single',
-            context: { inputPath, outputPath }
+            context: { inputPath, inputPathType, outputPath, outputPathType }
           }
         );
       }

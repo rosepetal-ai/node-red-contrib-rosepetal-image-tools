@@ -14,21 +14,26 @@ module.exports = function (RED) {
 
     node.on('input', async (msg, send, done) => {
       const inputPath = config.inputPath || 'payload';
+      const inputPathType = config.inputPathType || 'msg';
       const outputPath = config.outputPath || 'payload';
+      const outputPathType = config.outputPathType || 'msg';
       const { value: originalPayload, error: inputErr } =
-        NodeUtils.safeGetMessageProperty(msg, inputPath);
+        NodeUtils.getInputValue(node, msg, inputPath, inputPathType);
       if (inputErr) {
+        const hint = inputPathType === 'msg'
+          ? `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`
+          : `Set inputPath to an existing ${inputPathType} context key, or ensure "${inputPath}" exists before this node.`;
         return NodeUtils.handleValidationErrorWithPassthrough(
           node,
           {
-            message: `Invalid inputPath "${inputPath}": ${inputErr.message}`,
-            hint: `Set inputPath to an existing msg property (e.g. "payload"), or ensure "${inputPath}" exists before this node.`,
-            details: { inputPath, outputPath }
+            message: `Invalid inputPath "${inputPath}" (${inputPathType}): ${inputErr.message}`,
+            hint,
+            details: { inputPath, inputPathType, outputPath, outputPathType }
           },
           msg,
           send,
           done,
-          { originalPayload: undefined, outputPath: null, outputType: 'preserve' }
+          { originalPayload: undefined, outputPath: null, outputPathType, outputType: 'preserve' }
         );
       }
 
@@ -44,7 +49,7 @@ module.exports = function (RED) {
         if (!baseImage) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node, 'Invalid image structure', msg, send, done,
-            { originalPayload, outputPath, outputType: 'preserve' }
+            { originalPayload, outputPath, outputPathType, outputType: 'preserve' }
           );
         }
 
@@ -64,7 +69,7 @@ module.exports = function (RED) {
           pngOptimize
         );
 
-        RED.util.setMessageProperty(msg, outputPath, resultImage);
+        NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, resultImage);
 
         const elapsed = performance.now() - startTime;
         let debugFormat = null;
@@ -115,7 +120,7 @@ module.exports = function (RED) {
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(
           node, err, msg, send, done, 'draw processing',
-          { originalPayload, outputPath, outputType: 'preserve' }
+          { originalPayload, outputPath, outputPathType, outputType: 'preserve' }
         );
       }
     });

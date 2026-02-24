@@ -63,9 +63,9 @@ protected:
 
       if (near(0) || near(90) || near(180) || near(270)) {
         if      (near(0))   resultMat = inputMat; // alias
-        else if (near(90))  cv::rotate(inputMat,resultMat,cv::ROTATE_90_CLOCKWISE);
+        else if (near(90))  cv::rotate(inputMat,resultMat,cv::ROTATE_90_COUNTERCLOCKWISE);
         else if (near(180)) cv::rotate(inputMat,resultMat,cv::ROTATE_180);
-        else                cv::rotate(inputMat,resultMat,cv::ROTATE_90_COUNTERCLOCKWISE);
+        else                cv::rotate(inputMat,resultMat,cv::ROTATE_90_CLOCKWISE);
       } else {
         // Ángulos arbitrarios (sempre PAD)
         int w=inputMat.cols, h=inputMat.rows;

@@ -226,7 +226,7 @@
       <p>Rotates images by a specified angle with customizable padding color using high-performance C++ processing.</p>
 
       <h3>Details</h3>
-      <p>This node rotates images clockwise by a specified angle in degrees. When rotation creates areas outside the original image bounds, these areas are filled with the specified padding color. The rotation operation supports both single images and arrays, with dynamic angle values from various sources.</p>
+      <p>This node rotates images counter-clockwise by a specified angle in degrees. When rotation creates areas outside the original image bounds, these areas are filled with the specified padding color. The rotation operation supports both single images and arrays, with dynamic angle values from various sources.</p>
 
       <h3>Properties</h3>
       <dl class="message-properties">
@@ -239,7 +239,7 @@
         <dt>Quality <span class="property-type">number</span></dt>
         <dd>Compression quality for JPEG and WebP formats (1-100). Only visible when jpg or webp format is selected. Default: 90.</dd>
         <dt>Angle <span class="property-type">number|string</span></dt>
-        <dd>Rotation angle in degrees (clockwise). Can be a fixed number or dynamic value from msg property, flow, or global context. Supports decimal values.</dd>
+        <dd>Rotation angle in degrees (counter-clockwise). Can be a fixed number or dynamic value from msg property, flow, or global context. Supports decimal values.</dd>
         <dt>Pad Color <span class="property-type">string</span></dt>
         <dd>Color to fill areas created by rotation, specified as hexadecimal color (#RRGGBB). Default: #000000 (black).</dd>
       </dl>
@@ -258,7 +258,7 @@
 
       <h3>Rotation Behavior</h3>
       <ul>
-        <li><strong>Direction:</strong> Clockwise rotation (positive angles)</li>
+        <li><strong>Direction:</strong> Counter-clockwise rotation (positive angles)</li>
         <li><strong>Angle Range:</strong> Any angle supported (0-360° and beyond)</li>
         <li><strong>Padding:</strong> Areas outside original bounds filled with specified color</li>
         <li><strong>Precision:</strong> Decimal angles supported (e.g., 45.5°, 30.25°)</li>
@@ -267,8 +267,8 @@
 
       <h3>Examples</h3>
       <ul>
-        <li><strong>90° Rotation:</strong> Angle: 90 → Image rotated 90° clockwise</li>
-        <li><strong>Custom Angle:</strong> Angle: 45.5 → Image rotated 45.5° clockwise</li>
+        <li><strong>90° Rotation:</strong> Angle: 90 → Image rotated 90° counter-clockwise</li>
+        <li><strong>Custom Angle:</strong> Angle: 45.5 → Image rotated 45.5° counter-clockwise</li>
         <li><strong>Dynamic Angle:</strong> Angle: msg.rotationAngle → Use angle from message property</li>
         <li><strong>White Padding:</strong> Pad Color: #FFFFFF → White background for rotated areas</li>
         <li><strong>Transparent Padding:</strong> For RGBA images, use appropriate color with alpha channel</li>

@@ -59,6 +59,7 @@
             "padding": "node-red-contrib-image-tools/nodes/transform/padding.js",
             "filter": "node-red-contrib-image-tools/nodes/transform/filter.js",
             "draw": "node-red-contrib-image-tools/nodes/transform/draw.js",
+            "color-convert": "node-red-contrib-image-tools/nodes/transform/color-convert.js",
             "mosaic": "node-red-contrib-image-tools/nodes/mix/mosaic.js",
             "advanced-mosaic": "node-red-contrib-image-tools/nodes/mix/advanced-mosaic.js",
             "blend": "node-red-contrib-image-tools/nodes/blend/blend.js",

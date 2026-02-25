@@ -34,14 +34,14 @@ public:
         }
         // Default based on channel count
         else {
-          channelOrder = (inputMat.channels() == 4) ? "BGRA"
-                       : (inputMat.channels() == 3) ? "BGR" 
+          channelOrder = (inputMat.channels() == 4) ? "RGBA"
+                       : (inputMat.channels() == 3) ? "RGB"
                        : "GRAY";
         }
       } else {
         // Buffer input - determine from OpenCV Mat
-        channelOrder = (inputMat.channels() == 4) ? "BGRA"
-                     : (inputMat.channels() == 3) ? "BGR"
+        channelOrder = (inputMat.channels() == 4) ? "RGBA"
+                     : (inputMat.channels() == 3) ? "RGB"
                      : "GRAY";
       }
     } catch (const Napi::Error& e) { SetError(e.Message()); }

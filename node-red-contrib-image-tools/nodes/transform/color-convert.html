@@ -1,0 +1,189 @@
+<script type="text/javascript">
+    RED.nodes.registerType('color-convert', {
+      category : 'RP Image',
+      color    : '#DDA0DD',
+      defaults : {
+        name            : { value:"" },
+        inputPath       : { value:"payload" },
+        inputPathType   : { value:"msg" },
+        outputPath      : { value:"payload" },
+        outputPathType  : { value:"msg" },
+        outputFormat    : { value:"raw" },
+        outputQuality   : { value:90 },
+        pngOptimize     : { value:false },
+        // Debug configuration
+        debugEnabled    : { value:false },
+        debugWidth      : { value:200 },
+        debugWidthType  : { value:"num" },
+        targetColorSpace: { value:"RGB" }
+      },
+      inputs :1, outputs:1,
+      icon:"font-awesome/fa-paint-brush",
+      label:function(){ return this.name || "color-convert"; },
+
+      oneditprepare:function(){
+        $("#node-input-inputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-inputPathType"});
+        $("#node-input-outputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-outputPathType"});
+
+        function updateQualityVisibility(){
+          const format = $("#node-input-outputFormat").val();
+          $("#quality-row").toggle(format === "jpg" || format === "webp");
+          $("#png-optimize-row").toggle(format === "png");
+        }
+        $("#node-input-outputFormat").on("change", updateQualityVisibility);
+        updateQualityVisibility(); // initial state
+
+        // === Debug Display Logic ===
+        const debugCheckbox = $('#node-input-debugEnabled');
+        const debugWidthRow = $('#debug-width-row');
+
+        // Initialize debug width TypedInput
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+
+        // Function to toggle debug width visibility
+        function updateDebugWidthVisibility() {
+            if (debugCheckbox.is(':checked')) {
+                debugWidthRow.show();
+            } else {
+                debugWidthRow.hide();
+            }
+        }
+
+        // Initialize debug state on node open
+        updateDebugWidthVisibility();
+
+        // Handle debug checkbox changes
+        debugCheckbox.on('change', function() {
+            const enabled = this.checked;
+            updateDebugWidthVisibility();
+            $('#node-input-debugEnabled').data('debug-enabled', enabled);
+        });
+      }
+    });
+    </script>
+
+    <script type="text/x-red" data-template-name="color-convert">
+      <div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
+      <hr>
+      <div class="form-row"><label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label><input type="text" id="node-input-inputPath" style="width:70%;"><input type="hidden" id="node-input-inputPathType"></div>
+      <div class="form-row"><label for="node-input-outputPath"><i class="fa fa-sign-out"></i> Output</label><input type="text" id="node-input-outputPath" style="width:70%;"><input type="hidden" id="node-input-outputPathType"></div>
+      <div class="form-row">
+        <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+        <select id="node-input-outputFormat" style="width: 200px;">
+          <option value="raw">Raw (fastest)</option>
+          <option value="jpg">JPEG</option>
+          <option value="png">PNG</option>
+          <option value="webp">WebP</option>
+        </select>
+      </div>
+      <div class="form-row" id="quality-row">
+        <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+        <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+        <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+      </div>
+      <div class="form-row" id="png-optimize-row" style="display: none;">
+        <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+        <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+      </div>
+
+      <!-- Debug Configuration -->
+      <div class="form-row">
+        <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+        <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+        <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+      </div>
+      <div class="form-row" id="debug-width-row" style="display: none;">
+        <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+        <input type="text" id="node-input-debugWidth" style="width: 120px;">
+        <input type="hidden" id="node-input-debugWidthType">
+        <span style="margin-left: 10px; color: #666;">pixels</span>
+      </div>
+
+      <hr>
+      <div class="form-row">
+        <label for="node-input-targetColorSpace"><i class="fa fa-paint-brush"></i> Target Color Space</label>
+        <select id="node-input-targetColorSpace" style="width: 200px;">
+          <option value="GRAY">Grayscale (GRAY)</option>
+          <option value="RGB">RGB</option>
+          <option value="RGBA">RGBA</option>
+          <option value="BGR">BGR</option>
+          <option value="BGRA">BGRA</option>
+        </select>
+      </div>
+    </script>
+
+    <script type="text/x-red" data-help-name="color-convert">
+      <p>Converts images between color spaces (GRAY, RGB, RGBA, BGR, BGRA) using high-performance C++ processing.</p>
+
+      <h3>Details</h3>
+      <p>This node converts images from one color space to another. The source color space is automatically detected from the input image metadata (or inferred from channel count). The target color space is selected in the node configuration. Supports both single images and arrays, processed in parallel.</p>
+
+      <h3>Properties</h3>
+      <dl class="message-properties">
+        <dt>Input from <span class="property-type">string</span></dt>
+        <dd>The location to read image data from. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+        <dt>Output to <span class="property-type">string</span></dt>
+        <dd>The location where the converted image will be stored. You can select between <code>msg</code>, <code>flow</code>, or <code>global</code> context. Defaults to <code>msg.payload</code>.</dd>
+        <dt>Output Format <span class="property-type">string</span></dt>
+        <dd>Choose output format: <code>raw</code> (fastest, standard image object), <code>jpg</code>, <code>png</code>, or <code>webp</code> (encoded file buffers).</dd>
+        <dt>Quality <span class="property-type">number</span></dt>
+        <dd>Compression quality for JPEG and WebP formats (1-100). Only visible when jpg or webp format is selected. Default: 90.</dd>
+        <dt>Target Color Space <span class="property-type">string</span></dt>
+        <dd>The target color space to convert images to. Options: <code>GRAY</code>, <code>RGB</code>, <code>RGBA</code>, <code>BGR</code>, <code>BGRA</code>. Default: RGB.</dd>
+      </dl>
+
+      <h3>Inputs</h3>
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object | array</span></dt>
+        <dd>Single image object or array of image objects in standard format: <code>{ data: Buffer, width: number, height: number, channels: number, colorSpace: string, dtype: string }</code></dd>
+      </dl>
+
+      <h3>Outputs</h3>
+      <dl class="message-properties">
+        <dt>payload <span class="property-type">object | array | Buffer</span></dt>
+        <dd>Converted image(s). Format depends on Output Format setting: raw image object(s) or encoded file buffer(s).</dd>
+      </dl>
+
+      <h3>Supported Conversions</h3>
+      <p>All 20 conversion paths between the 5 color spaces are supported:</p>
+      <ul>
+        <li><strong>GRAY &rarr;</strong> BGR, RGB, BGRA, RGBA</li>
+        <li><strong>BGR &rarr;</strong> GRAY, RGB, BGRA, RGBA</li>
+        <li><strong>RGB &rarr;</strong> GRAY, BGR, BGRA, RGBA</li>
+        <li><strong>BGRA &rarr;</strong> GRAY, BGR, RGB, RGBA</li>
+        <li><strong>RGBA &rarr;</strong> GRAY, BGR, RGB, BGRA</li>
+      </ul>
+      <p>If the source and target color space are the same, a fast passthrough is used (no conversion overhead).</p>
+
+      <h3>Examples</h3>
+      <ul>
+        <li><strong>RGB &rarr; GRAY:</strong> Convert a color image to grayscale (3 channels &rarr; 1 channel)</li>
+        <li><strong>GRAY &rarr; RGBA:</strong> Expand grayscale to RGBA with full alpha (1 channel &rarr; 4 channels)</li>
+        <li><strong>BGR &rarr; RGB:</strong> Swap blue and red channels for display compatibility</li>
+        <li><strong>RGB &rarr; BGRA:</strong> Add alpha channel and convert to OpenCV-native order</li>
+      </ul>
+
+      <h3>Node Interactions</h3>
+      <p><strong>Input Sources:</strong> Image-in, Array-out, other transform nodes</p>
+      <p><strong>Output Destinations:</strong> Other transform nodes, Mix nodes (concat, mosaic), Array-in for collections</p>
+      <p><strong>Common Workflows:</strong> Preparing images for specific processing pipelines, ensuring consistent color spaces before blending or concatenation</p>
+
+      <h3>Output Formats</h3>
+      <ul>
+        <li><strong>Raw:</strong> Standard image object (fastest, for further processing)</li>
+        <li><strong>JPEG:</strong> Compressed file buffer with quality setting</li>
+        <li><strong>PNG:</strong> Lossless compressed file buffer</li>
+        <li><strong>WebP:</strong> Modern compressed format with quality setting</li>
+      </ul>
+
+      <h3>Error Handling</h3>
+      <p>The node validates input data and displays warnings for invalid inputs. Unsupported conversion paths produce descriptive error messages. Processing errors are logged and the original message is passed through with error details.</p>
+
+      <h3>Performance</h3>
+      <p>Uses optimized C++ backend with OpenCV for high-performance color space conversion. Identity conversions (same source/target) use a zero-cost passthrough. Node status displays processing time. Array inputs are processed in parallel for optimal performance.</p>
+    </script>

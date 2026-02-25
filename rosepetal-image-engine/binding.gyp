@@ -21,7 +21,8 @@
         "src/add-masks.cpp",
         "src/add-bbs.cpp",
         "src/image-align.cpp",
-        "src/draw.cpp"
+        "src/draw.cpp",
+        "src/color-convert.cpp"
       ],
       "defines": [
         "NAPI_CPP_EXCEPTIONS"

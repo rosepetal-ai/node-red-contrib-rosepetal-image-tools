@@ -34,14 +34,14 @@ public:
       }
       // Default based on channel count
       else {
-        channel_ = (src_.channels() == 4) ? "BGRA"
-                 : (src_.channels() == 3) ? "BGR" 
+        channel_ = (src_.channels() == 4) ? "RGBA"
+                 : (src_.channels() == 3) ? "RGB"
                  : "GRAY";
       }
     } else {
       // Buffer input - determine from OpenCV Mat
-      channel_ = (src_.channels() == 4) ? "BGRA"
-               : (src_.channels() == 3) ? "BGR"
+      channel_ = (src_.channels() == 4) ? "RGBA"
+               : (src_.channels() == 3) ? "RGB"
                : "GRAY";
     }
 

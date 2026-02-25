@@ -14,6 +14,7 @@ Napi::Value AddMasks(const Napi::CallbackInfo& info);
 Napi::Value AddBBs(const Napi::CallbackInfo& info);
 Napi::Value ImageAlign(const Napi::CallbackInfo& info);
 Napi::Value Draw(const Napi::CallbackInfo& info);
+Napi::Value ColorConvert(const Napi::CallbackInfo& info);
 
 Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "resize"), Napi::Function::New(env, Resize));
@@ -30,6 +31,7 @@ Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set(Napi::String::New(env, "addBBs"), Napi::Function::New(env, AddBBs));
   exports.Set(Napi::String::New(env, "imageAlign"), Napi::Function::New(env, ImageAlign));
   exports.Set(Napi::String::New(env, "draw"), Napi::Function::New(env, Draw));
+  exports.Set(Napi::String::New(env, "colorConvert"), Napi::Function::New(env, ColorConvert));
   return exports;
 }
 

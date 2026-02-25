@@ -322,7 +322,7 @@ private:
         }
         // Default based on channel count
         const int channels = mat.channels();
-        return (channels == 4) ? "BGRA" : (channels == 3) ? "BGR" : "GRAY";
+        return (channels == 4) ? "RGBA" : (channels == 3) ? "RGB" : "GRAY";
     }
     
     // Convert image to grayscale

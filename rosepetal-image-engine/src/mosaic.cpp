@@ -69,14 +69,14 @@ public:
         }
         // Default based on channel count
         else {
-          channel = (images_[i].channels() == 4) ? "BGRA"
-                  : (images_[i].channels() == 3) ? "BGR" 
+          channel = (images_[i].channels() == 4) ? "RGBA"
+                  : (images_[i].channels() == 3) ? "RGB"
                   : "GRAY";
         }
       } else {
         // Buffer input - determine from OpenCV Mat
-        channel = (images_[i].channels() == 4) ? "BGRA"
-                : (images_[i].channels() == 3) ? "BGR"
+        channel = (images_[i].channels() == 4) ? "RGBA"
+                : (images_[i].channels() == 3) ? "RGB"
                 : "GRAY";
       }
       

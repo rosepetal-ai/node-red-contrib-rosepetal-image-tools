@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-image-tools",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Node-RED Image Processing Toolkit",
   "main": "install.sh",
   "directories": {

@@ -92,6 +92,9 @@
       outputFormat: { value: "raw" },
       outputQuality: { value: 90 },
       pngOptimize: { value: false },
+      webpLossless: { value: false },
+      webpSmartSubsample: { value: false },
+      webpEffort: { value: "" },
       debugEnabled: { value: false },
       debugWidth: { value: 200 },
       debugWidthType: { value: "num" },
@@ -130,6 +133,12 @@
         const format = $('#node-input-outputFormat').val();
         $('#quality-row').toggle(format === 'jpg' || format === 'webp');
         $('#png-optimize-row').toggle(format === 'png');
+
+        // Show WebP advanced options only when WebP is selected
+        const isWebp = format === 'webp';
+        $('#webp-lossless-row').toggle(isWebp);
+        $('#webp-smartsubsample-row').toggle(isWebp);
+        $('#webp-effort-row').toggle(isWebp);
       }
       $('#node-input-outputFormat').on('change', function () {
         updateQualityVisibility();
@@ -648,6 +657,21 @@
   <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG optimize</label>
   <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
   <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG output</label>
+</div>
+<div class="form-row" id="webp-lossless-row" style="display: none;">
+    <label for="node-input-webpLossless"><i class="fa fa-lock"></i> Lossless</label>
+    <input type="checkbox" id="node-input-webpLossless" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-webpLossless" style="width:auto; margin-left:5px;">Encode WebP without loss</label>
+</div>
+<div class="form-row" id="webp-smartsubsample-row" style="display: none;">
+    <label for="node-input-webpSmartSubsample"><i class="fa fa-magic"></i> Smart Subsample</label>
+    <input type="checkbox" id="node-input-webpSmartSubsample" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-webpSmartSubsample" style="width:auto; margin-left:5px;">Better chroma downsampling (lossy only)</label>
+</div>
+<div class="form-row" id="webp-effort-row" style="display: none;">
+    <label for="node-input-webpEffort"><i class="fa fa-tachometer"></i> Effort</label>
+    <input type="number" id="node-input-webpEffort" min="0" max="6" placeholder="4" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">0-6 (higher = smaller file, slower)</span>
 </div>
 
 <!-- Debug configuration -->

@@ -49,6 +49,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const propagateMasks = !!config.propagateMasks;
         const masksPath = config.masksPath || 'masks';
         const masksPathType = config.masksPathType || 'msg';
@@ -115,7 +117,7 @@ module.exports = function (RED) {
 
         /* Single ultra-fast C++ call */
         const options = {
-          outputFormat,
+          outputFormat: cppFormat,
           quality: outputQuality,
           pngOptimize
         };
@@ -123,7 +125,7 @@ module.exports = function (RED) {
           options.masks = masksArray;
         }
 
-        const { image, masks: transformedMasks, timing = {} } = await CppProcessor.advancedMosaic(
+        let { image, masks: transformedMasks, timing = {} } = await CppProcessor.advancedMosaic(
           imageArray,
           canvasWidth,
           canvasHeight,
@@ -132,6 +134,10 @@ module.exports = function (RED) {
           normalized,
           options
         );
+
+        if (useSharpWebp) {
+          image = await NodeUtils.encodeWebpAdvanced(image, config);
+        }
 
         const maskCount = Array.isArray(transformedMasks) ? transformedMasks.length : (propagateMasks && masksArray ? masksArray.length : 0);
 
@@ -210,7 +216,7 @@ module.exports = function (RED) {
             outputPath,
             outputPathType,
             outputType: 'single',
-            context: { inputPath, inputPathType, outputPath, outputPathType, masksPath, masksPathType }
+            context: { inputPath, inputPathType, outputPath, outputPathType }
           }
         );
       }

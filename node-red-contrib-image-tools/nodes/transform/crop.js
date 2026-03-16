@@ -49,6 +49,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
         /* imagen o lista de imágenes */
         const imgs = Array.isArray(originalPayload) ? originalPayload : [originalPayload];
@@ -77,7 +79,7 @@ module.exports = function (RED) {
 
         /* lanzar recortes en paralelo */
         const jobs = imgs.map(img =>
-          CppProcessor.crop(img, x, y, width, height, normalized, outputFormat, outputQuality, pngOptimize)
+          CppProcessor.crop(img, x, y, width, height, normalized, cppFormat, outputQuality, pngOptimize)
         );
 
         const results = await Promise.all(jobs);
@@ -91,6 +93,12 @@ module.exports = function (RED) {
             acc.images.push(image);
             return acc;
           }, { totalConvertMs: 0, totalTaskMs: 0, totalEncodeMs: 0, images: [] });
+
+        if (useSharpWebp) {
+          for (let i = 0; i < images.length; i++) {
+            images[i] = await NodeUtils.encodeWebpAdvanced(images[i], config);
+          }
+        }
 
         /* salida */
         const out = Array.isArray(originalPayload) ? images : images[0];

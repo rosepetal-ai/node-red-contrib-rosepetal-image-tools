@@ -102,15 +102,21 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const alphaCompositing = config.alphaCompositing || false;
         const removeBackground = config.removeBackground || false;
         const backgroundColor = config.backgroundColor || '#ffffff';
         const colorTolerance = Math.max(0, Math.min(100, parseInt(config.colorTolerance) || 10)) / 100.0;
 
         /* ▸ Single call to the C++ addon --------------------------------- */
-        const { image, timing = {} } =
-              await Cpp.blend(img1, img2, opacity, outputFormat, outputQuality, pngOptimize,
+        let { image, timing = {} } =
+              await Cpp.blend(img1, img2, opacity, cppFormat, outputQuality, pngOptimize,
                              alphaCompositing, removeBackground, backgroundColor, colorTolerance);
+
+        if (useSharpWebp) {
+          image = await NodeUtils.encodeWebpAdvanced(image, config);
+        }
 
         /* ▸ Write the result back to msg ---------------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', image);

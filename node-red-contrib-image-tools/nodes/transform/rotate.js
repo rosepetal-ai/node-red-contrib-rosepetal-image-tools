@@ -42,6 +42,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const padColorHex = config.padColor    || '#000000';
 
         // Validate input images with error passthrough
@@ -69,7 +71,7 @@ module.exports = function (RED) {
 
         /* ——— lanzar rotaciones en paralelo ——— */
         const promises = imgs.map(img =>
-          CppProcessor.rotate(img, angle, padColorHex, outputFormat, outputQuality, pngOptimize)
+          CppProcessor.rotate(img, angle, padColorHex, cppFormat, outputQuality, pngOptimize)
         );
 
         const results = await Promise.all(promises);
@@ -83,6 +85,12 @@ module.exports = function (RED) {
             acc.images.push(image);
             return acc;
           }, { totalConvertMs: 0, totalTaskMs: 0, encodeMs: 0, images: [] });
+
+        if (useSharpWebp) {
+          for (let i = 0; i < images.length; i++) {
+            images[i] = await NodeUtils.encodeWebpAdvanced(images[i], config);
+          }
+        }
 
         const out   = Array.isArray(originalPayload) ? images : images[0];
         const durMs = performance.now() - t0;

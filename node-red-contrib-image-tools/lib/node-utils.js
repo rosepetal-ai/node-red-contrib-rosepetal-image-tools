@@ -344,6 +344,70 @@ module.exports = function(RED) {
     return numericValue;
   }
 
+  /**
+   * Returns true when any advanced WebP option is explicitly set in the node config.
+   * When false the fast C++ encoding path is used unchanged.
+   */
+  utils.hasAdvancedWebpOptions = function(config) {
+    if (!config) return false;
+    if (config.webpLossless === true || config.webpLossless === 'true') return true;
+    if (config.webpSmartSubsample === true || config.webpSmartSubsample === 'true') return true;
+    if (config.webpEffort !== undefined && config.webpEffort !== '' && config.webpEffort !== null) return true;
+    return false;
+  }
+
+  /**
+   * Builds a Sharp `.webp()` options object from node config.
+   */
+  utils.buildWebpOptions = function(config) {
+    const opts = {};
+    const quality = parseInt(config.outputQuality);
+    if (Number.isFinite(quality) && quality >= 1 && quality <= 100) opts.quality = quality;
+    else opts.quality = CONSTANTS.DEFAULT_JPEG_QUALITY;
+
+    if (config.webpLossless === true || config.webpLossless === 'true') opts.lossless = true;
+    if (config.webpSmartSubsample === true || config.webpSmartSubsample === 'true') opts.smartSubsample = true;
+    const effort = parseInt(config.webpEffort);
+    if (Number.isFinite(effort) && effort >= 0 && effort <= 6) opts.effort = effort;
+    return opts;
+  }
+
+  /**
+   * Encodes a raw image object to WebP via Sharp with advanced options.
+   * Modeled on rawToJpeg() — performs BGR→RGB swap and feeds Sharp.
+   */
+  utils.encodeWebpAdvanced = async function(image, config) {
+    if (!sharp) {
+      throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');
+    }
+    const normalized = utils.validateImageStructure(image, { warn: () => {} });
+    if (!normalized)
+      throw new Error('Invalid raw image object supplied to encodeWebpAdvanced');
+
+    const colorSpace = normalized.colorSpace;
+    const channels = normalized.channels;
+    let data = normalized.data;
+
+    // BGR/BGRA → RGB/RGBA for Sharp
+    if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
+      data = Buffer.from(data);
+      for (let i = 0; i < data.length; i += channels) {
+        const t = data[i];
+        data[i] = data[i + 2];
+        data[i + 2] = t;
+      }
+    }
+
+    const sh = sharp(data, {
+      raw: { width: normalized.width, height: normalized.height, channels }
+    });
+
+    if (colorSpace === 'GRAY') sh.toColourspace('b-w');
+
+    const webpOpts = utils.buildWebpOptions(config);
+    return sh.webp(webpOpts).toBuffer();
+  }
+
   utils.rawToJpeg = async function (image, quality = CONSTANTS.DEFAULT_JPEG_QUALITY) {
     if (!sharp) {
       throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');

@@ -201,6 +201,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
         // Build class color map from configuration
         const classColorMap = {};
@@ -213,7 +215,7 @@ module.exports = function (RED) {
         }
 
         /* ▸ Single call to the C++ addon --------------------------------- */
-        const { image: result, timing = {}, boxCount } =
+        let { image: result, timing = {}, boxCount } =
               await Cpp.addBBs(
                 baseImg,
                 boxesArray,  // Pass direct array to C++
@@ -225,10 +227,14 @@ module.exports = function (RED) {
                 fontSize,
                 'above',  // Always position labels above the box
                 labelBackground,
-                outputFormat,
+                cppFormat,
                 outputQuality,
                 pngOptimize
               );
+
+        if (useSharpWebp) {
+          result = await NodeUtils.encodeWebpAdvanced(result, config);
+        }
 
         /* ▸ Write the result back to msg ---------------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', result);

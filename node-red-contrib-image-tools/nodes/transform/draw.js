@@ -44,6 +44,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality, 10) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
         const baseImage = NodeUtils.validateImageStructure(originalPayload, node);
         if (!baseImage) {
@@ -60,14 +62,18 @@ module.exports = function (RED) {
           node.warn('No valid points or lines configured. Outputting original image.');
         }
 
-        const { image: resultImage, timing = {} } = await CppProcessor.draw(
+        let { image: resultImage, timing = {} } = await CppProcessor.draw(
           baseImage,
           resolvedPoints,
           resolvedLines,
-          outputFormat,
+          cppFormat,
           outputQuality,
           pngOptimize
         );
+
+        if (useSharpWebp) {
+          resultImage = await NodeUtils.encodeWebpAdvanced(resultImage, config);
+        }
 
         NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, resultImage);
 

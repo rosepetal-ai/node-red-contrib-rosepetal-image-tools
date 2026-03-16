@@ -76,11 +76,17 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const padColorHex = config.padColor    || '#000000';
 
         /* ▸ Single call to the C++ addon --------------------------------- */
-        const { image, timing = {} } =
-              await Cpp.concat(imgs, direction, strategy, padColorHex, outputFormat, outputQuality, pngOptimize);
+        let { image, timing = {} } =
+              await Cpp.concat(imgs, direction, strategy, padColorHex, cppFormat, outputQuality, pngOptimize);
+
+        if (useSharpWebp) {
+          image = await NodeUtils.encodeWebpAdvanced(image, config);
+        }
 
         /* ▸ Write the single result back to msg -------------------------- */
         NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, image);

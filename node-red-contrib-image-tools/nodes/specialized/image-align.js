@@ -63,6 +63,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const preset = config.preset || 'ultra-fast';
         const returnMatrix = config.returnMatrix || false;
         const transformPolygon = config.transformPolygon || false;
@@ -250,12 +252,16 @@ module.exports = function (RED) {
           scale,
           maxIterations,
           terminationEps,
-          outputFormat,
+          cppFormat,
           outputQuality,
           pngOptimize,
           returnMatrix,
           polygon
         );
+
+        if (useSharpWebp) {
+          result.image = await NodeUtils.encodeWebpAdvanced(result.image, config);
+        }
 
         /* ▸ Status: standardized success formatting ----------------------- */
         const total = performance.now() - startTime;

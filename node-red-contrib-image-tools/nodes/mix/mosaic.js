@@ -50,6 +50,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
         /* Canvas configuration */
         const canvasWidth = Number(NodeUtils.resolveDimension(node, config.canvasWidthType, config.canvasWidth, msg));
@@ -93,17 +95,21 @@ module.exports = function (RED) {
         }
 
         /* Single ultra-fast C++ call */
-        const { image, timing = {} } = await CppProcessor.mosaic(
+        let { image, timing = {} } = await CppProcessor.mosaic(
           imageArray,
           canvasWidth,
           canvasHeight,
           backgroundColor,
           validPositions,
           normalized,
-          outputFormat,
+          cppFormat,
           outputQuality,
           pngOptimize
         );
+
+        if (useSharpWebp) {
+          image = await NodeUtils.encodeWebpAdvanced(image, config);
+        }
 
         /* Set output */
         NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, image);

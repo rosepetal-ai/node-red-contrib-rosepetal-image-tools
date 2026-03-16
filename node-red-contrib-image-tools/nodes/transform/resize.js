@@ -44,6 +44,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const inputList = Array.isArray(originalPayload)
           ? originalPayload
           : [originalPayload];
@@ -93,7 +95,7 @@ module.exports = function (RED) {
             inputImage,
             config.widthMode,  wVal,
             config.heightMode, hVal,
-            outputFormat,
+            cppFormat,
             outputQuality,
             pngOptimize
           )
@@ -112,6 +114,12 @@ module.exports = function (RED) {
             },
             { totalConvertMs: 0, totalTaskMs: 0, encodeMs: 0, images: [] }
           );
+
+        if (useSharpWebp) {
+          for (let i = 0; i < images.length; i++) {
+            images[i] = await NodeUtils.encodeWebpAdvanced(images[i], config);
+          }
+        }
 
         const out = Array.isArray(originalPayload) ? images : images[0];
         const elapsedTime = performance.now() - startTime;

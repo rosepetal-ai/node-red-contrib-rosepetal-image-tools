@@ -67,6 +67,8 @@ module.exports = function (RED) {
         const outputFormat = cfg.outputFormat || 'raw';
         const outputQuality = parseInt(cfg.outputQuality) || 90;
         const pngOptimize = cfg.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(cfg);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const padHex   = cfg.padColor || '#000000';
 
         /* numeric margins can come from msg / flow / global */
@@ -77,7 +79,7 @@ module.exports = function (RED) {
 
         /* one C++ call per image (fast, runs in parallel) */
         const tasks = imgs.map(img =>
-          CppProcessor.padding(img, tVal, bVal, lVal, rVal, padHex, outputFormat, outputQuality, pngOptimize)
+          CppProcessor.padding(img, tVal, bVal, lVal, rVal, padHex, cppFormat, outputQuality, pngOptimize)
         );
         const results = await Promise.all(tasks);
 
@@ -89,6 +91,12 @@ module.exports = function (RED) {
           eMs += r.timing.encodeMs;
           return r.image;
         });
+
+        if (useSharpWebp) {
+          for (let i = 0; i < outImgs.length; i++) {
+            outImgs[i] = await NodeUtils.encodeWebpAdvanced(outImgs[i], cfg);
+          }
+        }
 
         NodeUtils.setOutputValue(node, msg, outPath, outputPathType, Array.isArray(originalPayload) ? outImgs : outImgs[0]);
 

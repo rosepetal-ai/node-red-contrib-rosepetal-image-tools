@@ -29,6 +29,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
         const minConfidence = NodeUtils.resolveDimension(node, config.minConfidenceType, config.minConfidence, msg) || 0.5;
 
         /* Get input data */
@@ -162,7 +164,7 @@ module.exports = function (RED) {
           // Convert bbox coordinates to crop parameters
           const { x, y, width, height, label, confidence, originalBbox } = bbox;
 
-          return CppProcessor.crop(image, x, y, width, height, false, outputFormat, outputQuality, pngOptimize)
+          return CppProcessor.crop(image, x, y, width, height, false, cppFormat, outputQuality, pngOptimize)
             .then(result => ({
               ...result.image,           // Spread image properties (data, width, height, channels, colorSpace, dtype)
               tag: label,                // Add tag metadata directly
@@ -186,6 +188,12 @@ module.exports = function (RED) {
           const { timing, ...cropWithMetadata } = result;
           allCrops.push(cropWithMetadata);
         });
+
+        if (useSharpWebp) {
+          for (let i = 0; i < allCrops.length; i++) {
+            allCrops[i] = await NodeUtils.encodeWebpAdvanced(allCrops[i], config);
+          }
+        }
 
         /* Set output */
         RED.util.setMessageProperty(msg, outputPath, allCrops);

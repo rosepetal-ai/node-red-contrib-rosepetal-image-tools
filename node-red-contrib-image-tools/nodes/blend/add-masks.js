@@ -283,6 +283,8 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
         // Build class color map and priority order from configuration
         const classColorMap = {};
@@ -298,7 +300,7 @@ module.exports = function (RED) {
         }
 
         /* ▸ Single call to the C++ addon --------------------------------- */
-        const { image: result, timing = {} } =
+        let { image: result, timing = {} } =
               await Cpp.addMasks(
                 baseImg,
                 masksArray,
@@ -306,10 +308,14 @@ module.exports = function (RED) {
                 classPriorityOrder,  // Priority order for overlap resolution
                 maskStrength,
                 true, // Always auto-generate colors for undefined classes
-                outputFormat,
+                cppFormat,
                 outputQuality,
                 pngOptimize
               );
+
+        if (useSharpWebp) {
+          result = await NodeUtils.encodeWebpAdvanced(result, config);
+        }
 
         /* ▸ Write the result back to msg ---------------------------------- */
         RED.util.setMessageProperty(msg, config.outputPath || 'payload', result);

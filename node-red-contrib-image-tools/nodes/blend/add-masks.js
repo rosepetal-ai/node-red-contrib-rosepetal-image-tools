@@ -379,5 +379,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('add-masks', AddMasksNode);
+  RED.nodes.registerType('rp-add-masks', AddMasksNode);
 };

@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('filter', {
+    RED.nodes.registerType('rp-filter', {
         category: 'RP Image',
         color: '#DDA0DD',
         defaults: {
@@ -31,7 +31,7 @@
         icon: "font-awesome/fa-magic",
         label: function() {
             if (this.name) { return this.name; }
-            return `filter`;
+            return 'rp-filter';
         },
         oneditprepare: function() {
             // === Standard I/O TypedInput initialization ===
@@ -262,7 +262,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="filter">
+<script type="text/x-red" data-template-name="rp-filter">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -365,7 +365,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="filter">
+<script type="text/x-red" data-help-name="rp-filter">
     <p>The <strong>filter</strong> node applies professional image processing kernels including blur, sharpening, edge detection, emboss, and Gaussian blur effects. It provides configurable parameters and supports both single images and arrays with high-performance C++ backend processing using OpenCV.</p>
 
     <h3>Details</h3>

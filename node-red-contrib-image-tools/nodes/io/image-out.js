@@ -563,5 +563,5 @@ module.exports = function(RED) {
     }
   });
   
-  RED.nodes.registerType("image-out", ImageOutNode);
+  RED.nodes.registerType("rp-image-out", ImageOutNode);
 };

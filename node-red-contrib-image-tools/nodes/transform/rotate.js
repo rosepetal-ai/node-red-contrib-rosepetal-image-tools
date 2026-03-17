@@ -165,5 +165,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('rotate', RotateNode);
+  RED.nodes.registerType('rp-rotate', RotateNode);
 };

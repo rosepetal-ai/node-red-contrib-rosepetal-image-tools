@@ -355,5 +355,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('image-align', ImageAlignNode);
+  RED.nodes.registerType('rp-image-align', ImageAlignNode);
 };

@@ -2,7 +2,7 @@
 
 <!-- 1 ▸ Runtime registration -->
 <script type="text/javascript">
-  RED.nodes.registerType('mosaic',{
+  RED.nodes.registerType('rp-mosaic',{
   
     category:'RP Image',
     color   :'#DDA0DD',
@@ -32,7 +32,7 @@
     },
   
     inputs:1, outputs:1,
-    label:function(){ return this.name || "mosaic"; },
+    label:function(){ return this.name || "rp-mosaic"; },
   
     /* ---------------- oneditprepare ---------------- */
     oneditprepare:function(){
@@ -292,7 +292,7 @@
 </script>
 
 <!-- 2 ▸ Edit‑dialog template -->
-<script type="text/x-red" data-template-name="mosaic">
+<script type="text/x-red" data-template-name="rp-mosaic">
 
 <!-- Name -->
 <div class="form-row">
@@ -412,7 +412,7 @@
 </script>
 
 <!-- 3 ▸ Help panel -->
-<script type="text/x-red" data-help-name="mosaic">
+<script type="text/x-red" data-help-name="rp-mosaic">
 <p><b>rosepetal-mosaic</b> creates a composite image by placing multiple images from an input array onto a canvas at specified positions. This node enables precise control over image positioning, supports normalized coordinates, and offers flexible canvas configuration for creating complex image layouts.</p>
 
 <h3>Details</h3>

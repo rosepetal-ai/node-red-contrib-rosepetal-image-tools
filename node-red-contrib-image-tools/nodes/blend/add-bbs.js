@@ -298,5 +298,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('add-bbs', AddBBsNode);
+  RED.nodes.registerType('rp-add-bbs', AddBBsNode);
 };

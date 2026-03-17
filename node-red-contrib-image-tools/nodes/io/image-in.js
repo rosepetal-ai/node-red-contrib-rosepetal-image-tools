@@ -147,5 +147,5 @@ module.exports = function(RED) {
       }
     });
   }
-  RED.nodes.registerType("image-in", ImageInNode);
+  RED.nodes.registerType("rp-image-in", ImageInNode);
 };

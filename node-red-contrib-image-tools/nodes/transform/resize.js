@@ -191,5 +191,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('resize', ResizeNode);
+  RED.nodes.registerType('rp-resize', ResizeNode);
 };

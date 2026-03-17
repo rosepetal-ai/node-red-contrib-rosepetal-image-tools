@@ -2,7 +2,7 @@
 
 <!-- 1 ▸ Runtime registration -->
 <script type="text/javascript">
-  RED.nodes.registerType('advanced-mosaic',{
+  RED.nodes.registerType('rp-advanced-mosaic',{
   
     category:'RP Image',
     color   :'#DA70D6',
@@ -35,7 +35,7 @@
     },
   
     inputs:1, outputs:1,
-    label:function(){ return this.name || "advanced-mosaic"; },
+    label:function(){ return this.name || "rp-advanced-mosaic"; },
   
     /* ---------------- oneditprepare ---------------- */
     oneditprepare:function(){
@@ -1800,7 +1800,7 @@
 </script>
 
 <!-- 2 ▸ Edit‑dialog template -->
-<script type="text/x-red" data-template-name="advanced-mosaic">
+<script type="text/x-red" data-template-name="rp-advanced-mosaic">
 
 <!-- Name -->
 <div class="form-row">
@@ -2069,7 +2069,7 @@
 </script>
 
 <!-- 3 ▸ Help panel -->
-<script type="text/x-red" data-help-name="advanced-mosaic">
+<script type="text/x-red" data-help-name="rp-advanced-mosaic">
 <p><b>rosepetal-advanced-mosaic</b> creates composite images with per-image transformations including resize, rotate, and positioning. This advanced node extends the basic mosaic functionality by allowing individual transformation of each image before placement on the canvas.</p>
 
 <h3>Details</h3>

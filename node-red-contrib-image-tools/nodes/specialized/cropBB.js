@@ -329,5 +329,5 @@ module.exports = function (RED) {
     }
   }
 
-  RED.nodes.registerType("cropBB", CropBBNode);
+  RED.nodes.registerType("rp-cropBB", CropBBNode);
 };

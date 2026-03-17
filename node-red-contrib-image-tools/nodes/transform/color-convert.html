@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('color-convert', {
+    RED.nodes.registerType('rp-color-convert', {
       category : 'RP Image',
       color    : '#DDA0DD',
       defaults : {
@@ -22,7 +22,7 @@
       },
       inputs :1, outputs:1,
       icon:"font-awesome/fa-eyedropper",
-      label:function(){ return this.name || "color-convert"; },
+      label:function(){ return this.name || "rp-color-convert"; },
 
       oneditprepare:function(){
         $("#node-input-inputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-inputPathType"});
@@ -75,7 +75,7 @@
     });
     </script>
 
-    <script type="text/x-red" data-template-name="color-convert">
+    <script type="text/x-red" data-template-name="rp-color-convert">
       <div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
       <hr>
       <div class="form-row"><label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label><input type="text" id="node-input-inputPath" style="width:70%;"><input type="hidden" id="node-input-inputPathType"></div>
@@ -141,7 +141,7 @@
       </div>
     </script>
 
-    <script type="text/x-red" data-help-name="color-convert">
+    <script type="text/x-red" data-help-name="rp-color-convert">
       <p>Converts images between color spaces (GRAY, RGB, RGBA, BGR, BGRA) using high-performance C++ processing.</p>
 
       <h3>Details</h3>

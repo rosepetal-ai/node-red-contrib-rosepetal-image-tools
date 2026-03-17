@@ -180,5 +180,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('blend', BlendNode);
+  RED.nodes.registerType('rp-blend', BlendNode);
 };

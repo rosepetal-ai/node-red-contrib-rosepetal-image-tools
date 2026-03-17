@@ -2,7 +2,7 @@
 
 <!-- 1 ▸ Runtime registration -->
 <script type="text/javascript">
-  RED.nodes.registerType('cropBB',{
+  RED.nodes.registerType('rp-cropBB',{
   
     category:'RP Image',
     color   :'#FF6B35',  // Distinct orange color to differentiate from standard pink
@@ -31,7 +31,7 @@
     },
   
     inputs:1, outputs:1,
-    label:function(){ return this.name || "cropBB"; },
+    label:function(){ return this.name || "rp-cropBB"; },
   
     /* ---------------- oneditprepare ---------------- */
     oneditprepare:function(){
@@ -101,7 +101,7 @@
 </script>
 
 <!-- 2 ▸ Edit template -->
-<script type="text/html" data-template-name="cropBB">
+<script type="text/html" data-template-name="rp-cropBB">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name" placeholder="Name">
@@ -186,7 +186,7 @@
 </script>
 
 <!-- 3 ▸ Help documentation -->
-<script type="text/html" data-help-name="cropBB">
+<script type="text/html" data-help-name="rp-cropBB">
   <p>Extracts image crops from bounding boxes detected by inference models.</p>
   
   <h3>Details</h3>

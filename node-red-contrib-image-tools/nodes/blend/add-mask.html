@@ -1,7 +1,7 @@
 <!-- nodes/blend/add-mask.html -->
 
 <script type="text/javascript">
-    RED.nodes.registerType('add-mask',{
+    RED.nodes.registerType('rp-add-mask',{
       category:'RP Image',
       color:'#DDA0DD',
       icon:'font-awesome/fa-mask',
@@ -24,7 +24,7 @@
         fillColor:{value:"#ffffff"}          // Default white for polygon fill
       },
       inputs:1,outputs:1,
-      label:function(){return this.name||"add-mask";},
+      label:function(){return this.name||"rp-add-mask";},
       oneditprepare:function(){
         /* path typedInputs */
         $("#node-input-imagePath").typedInput({
@@ -218,7 +218,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="add-mask">
+<script type="text/x-red" data-template-name="rp-add-mask">
   <div class="form-row">
     <label><i class="fa fa-picture-o"></i> Image</label>
     <input type="text" id="node-input-imagePath" style="width:70%;">
@@ -308,7 +308,7 @@
   </div>
 </script>
 
-<script type="text/x-red" data-help-name="add-mask">
+<script type="text/x-red" data-help-name="rp-add-mask">
   <p><b>rosepetal-add-mask</b> applies a polygon-based mask to a base image using weighted blending with configurable mask strength and fill color. This node generates masks from polygon coordinates (from object detection results) and blends them with the original image.</p>
 
   <h3>Details</h3>

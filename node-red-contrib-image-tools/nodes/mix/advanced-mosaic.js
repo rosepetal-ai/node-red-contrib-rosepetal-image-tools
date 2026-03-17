@@ -223,5 +223,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('advanced-mosaic', AdvancedMosaicNode);
+  RED.nodes.registerType('rp-advanced-mosaic', AdvancedMosaicNode);
 };

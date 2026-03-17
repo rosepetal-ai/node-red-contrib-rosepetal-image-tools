@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('folder-in', {
+    RED.nodes.registerType('rp-folder-in', {
         category: 'RP Image',
         color: '#A6C8A6',
         defaults: {
@@ -25,7 +25,7 @@
             },
             onclick: function() {
                 const node = this;
-                const label = this.name || "folder-in";
+                const label = this.name || "rp-folder-in";
 
                 $.ajax({
                     url: "folder-in/" + this.id,
@@ -105,7 +105,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="folder-in">
+<script type="text/x-red" data-template-name="rp-folder-in">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -154,7 +154,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="folder-in">
+<script type="text/x-red" data-help-name="rp-folder-in">
     <p>Scans a folder for image files and emits them one by one at configurable intervals. Features a toggle button to start/stop emission.</p>
 
     <h3>Details</h3>

@@ -342,5 +342,5 @@ module.exports = function(RED) {
     node.status({ fill: "grey", shape: "ring", text: "Stopped" });
   }
 
-  RED.nodes.registerType("folder-in", FolderInNode);
+  RED.nodes.registerType("rp-folder-in", FolderInNode);
 };

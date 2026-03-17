@@ -1,7 +1,7 @@
 <!-- nodes/blend/add-masks.html -->
 
 <script type="text/javascript">
-    RED.nodes.registerType('add-masks',{
+    RED.nodes.registerType('rp-add-masks',{
       category:'RP Image',
       color:'#DDA0DD',
       icon:'font-awesome/fa-masks',
@@ -24,7 +24,7 @@
         classColorMappings:{value:[]}               // Array of {className, color} objects
       },
       inputs:1,outputs:1,
-      label:function(){return this.name||"add-masks";},
+      label:function(){return this.name||"rp-add-masks";},
       oneditprepare:function(){
         const node = this;
         let classMappingIndex = 0;
@@ -547,7 +547,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="add-masks">
+<script type="text/x-red" data-template-name="rp-add-masks">
   <div class="form-row">
     <label><i class="fa fa-picture-o"></i> Image</label>
     <input type="text" id="node-input-imagePath" style="width:70%;">
@@ -648,7 +648,7 @@
   </div>
 </script>
 
-<script type="text/x-red" data-help-name="add-masks">
+<script type="text/x-red" data-help-name="rp-add-masks">
   <p><b>rosepetal-add-masks</b> applies multiple polygon-based masks to a base image using weighted blending with configurable mask strength and class-based color mapping. This node processes arrays of mask objects with automatic color assignment for different classes.</p>
 
   <h3>Details</h3>

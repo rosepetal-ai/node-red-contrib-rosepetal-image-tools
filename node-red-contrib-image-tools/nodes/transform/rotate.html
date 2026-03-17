@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('rotate', {
+    RED.nodes.registerType('rp-rotate', {
       category : 'RP Image',
       color    : '#DDA0DD',
       defaults : {
@@ -24,7 +24,7 @@
       },
       inputs :1, outputs:1,
       icon:"font-awesome/fa-rotate-right",
-      label:function(){ return this.name || "rotate"; },
+      label:function(){ return this.name || "rp-rotate"; },
     
       oneditprepare:function(){
         $("#node-input-inputPath").typedInput({default:'msg',types:['msg','flow','global'],typeField:"#node-input-inputPathType"});
@@ -188,7 +188,7 @@
     }
     </script>
     
-    <script type="text/x-red" data-template-name="rotate">
+    <script type="text/x-red" data-template-name="rp-rotate">
       <div class="form-row"><label for="node-input-name"><i class="fa fa-tag"></i> Name</label><input type="text" id="node-input-name"></div>
       <hr>
       <div class="form-row"><label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input</label><input type="text" id="node-input-inputPath" style="width:70%;"><input type="hidden" id="node-input-inputPathType"></div>
@@ -246,7 +246,7 @@
       <div class="form-row"><label for="node-input-padColor"><i class="fa fa-tint"></i> Pad colour</label><input type="color" id="node-input-padColor" style="width:80px;"></div>
     </script>
     
-    <script type="text/x-red" data-help-name="rotate">
+    <script type="text/x-red" data-help-name="rp-rotate">
       <p>Rotates images by a specified angle with customizable padding color using high-performance C++ processing.</p>
 
       <h3>Details</h3>

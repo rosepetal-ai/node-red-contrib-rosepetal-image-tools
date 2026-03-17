@@ -167,5 +167,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('padding', PaddingNode);
+  RED.nodes.registerType('rp-padding', PaddingNode);
 };

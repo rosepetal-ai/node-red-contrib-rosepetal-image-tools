@@ -157,5 +157,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('color-convert', ColorConvertNode);
+  RED.nodes.registerType('rp-color-convert', ColorConvertNode);
 };

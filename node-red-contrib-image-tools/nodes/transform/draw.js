@@ -532,5 +532,5 @@ module.exports = function (RED) {
     }
   }
 
-  RED.nodes.registerType('draw', DrawNode);
+  RED.nodes.registerType('rp-draw', DrawNode);
 };

@@ -2,7 +2,7 @@
 
 <!-- 1 ▸ Runtime registration -->
 <script type="text/javascript">
-  RED.nodes.registerType('crop',{
+  RED.nodes.registerType('rp-crop',{
   
     category:'RP Image',
     color   :'#DDA0DD',
@@ -33,7 +33,7 @@
     },
   
     inputs:1, outputs:1,
-    label:function(){ return this.name || "crop"; },
+    label:function(){ return this.name || "rp-crop"; },
   
     /* ---------------- oneditprepare ---------------- */
     oneditprepare:function(){
@@ -225,7 +225,7 @@
   </script>
   
   <!-- 2 ▸ Edit‑dialog template -->
-  <script type="text/x-red" data-template-name="crop">
+  <script type="text/x-red" data-template-name="rp-crop">
   
   <!-- Name -->
   <div class="form-row">
@@ -342,7 +342,7 @@
   </script>
   
   <!-- 3 ▸ Help panel -->
-  <script type="text/x-red" data-help-name="crop">
+  <script type="text/x-red" data-help-name="rp-crop">
   <p>Extracts a rectangular region from images using flexible coordinate systems and dynamic value sources.</p>
   
   <h3>Details</h3>

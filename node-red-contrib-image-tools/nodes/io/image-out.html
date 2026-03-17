@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('image-out', {
+    RED.nodes.registerType('rp-image-out', {
         category: 'RP Image',
         color: '#A6C8A6',
         defaults: {
@@ -39,7 +39,7 @@
             visible: function() { return true; },
             onclick: function() {
                 var node = this;
-                var label = RED.utils.sanitize(this.name || "image-out");
+                var label = RED.utils.sanitize(this.name || "rp-image-out");
                 var desiredState = node.active;
 
                 sendToggleRequest(node, desiredState, function() {
@@ -313,7 +313,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="image-out">
+<script type="text/x-red" data-template-name="rp-image-out">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -427,7 +427,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="image-out">
+<script type="text/x-red" data-help-name="rp-image-out">
     <p>Saves images to the filesystem with automatic timestamp-based naming and optional overwrite protection.</p>
     
     <h3>Details</h3>

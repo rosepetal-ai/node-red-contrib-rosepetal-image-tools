@@ -200,5 +200,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('filter', FilterNode);
+  RED.nodes.registerType('rp-filter', FilterNode);
 };

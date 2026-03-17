@@ -151,5 +151,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('concat', ConcatNode);
+  RED.nodes.registerType('rp-concat', ConcatNode);
 };

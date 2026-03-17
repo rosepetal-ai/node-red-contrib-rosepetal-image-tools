@@ -190,5 +190,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('mosaic', MosaicNode);
+  RED.nodes.registerType('rp-mosaic', MosaicNode);
 };

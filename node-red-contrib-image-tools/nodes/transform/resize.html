@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('resize', {
+    RED.nodes.registerType('rp-resize', {
         category: 'RP Image',
         color: '#DDA0DD',
         defaults: {
@@ -33,7 +33,7 @@
         icon: "font-awesome/fa-arrows-alt",
         label: function() {
             if (this.name) { return this.name; }
-            return `resize`;
+            return 'rp-resize';
         },
         oneditprepare: function() {
             // === Inicialización de los Widgets "TypedInput" ===
@@ -280,7 +280,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="resize">
+<script type="text/x-red" data-template-name="rp-resize">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -377,7 +377,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="resize">
+<script type="text/x-red" data-help-name="rp-resize">
   <p>Resizes images to specified dimensions using high-performance C++ processing with OpenCV backend.</p>
 
   <h3>Details</h3>

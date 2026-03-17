@@ -1,7 +1,7 @@
 <!-- nodes/blend/add-bbs.html -->
 
 <script type="text/javascript">
-    RED.nodes.registerType('add-bbs',{
+    RED.nodes.registerType('rp-add-bbs',{
       category:'RP Image',
       color:'#DDA0DD',
       icon:'font-awesome/fa-object-group',
@@ -31,7 +31,7 @@
         classColorMappings:{value:[]}
       },
       inputs:1,outputs:1,
-      label:function(){return this.name||"add-bbs";},
+      label:function(){return this.name||"rp-add-bbs";},
       oneditprepare:function(){
         const node = this;
         let classMappingIndex = 0;
@@ -398,7 +398,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="add-bbs">
+<script type="text/x-red" data-template-name="rp-add-bbs">
   <div class="form-row">
     <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
     <input type="text" id="node-input-name" placeholder="Name">
@@ -526,7 +526,7 @@
 
 </script>
 
-<script type="text/x-red" data-help-name="add-bbs">
+<script type="text/x-red" data-help-name="rp-add-bbs">
   <p><b>rosepetal-add-bbs</b> draws bounding boxes with optional labels on images for object detection visualization. This node processes arrays of bounding box objects with automatic color assignment for different classes.</p>
 
   <h3>Details</h3>

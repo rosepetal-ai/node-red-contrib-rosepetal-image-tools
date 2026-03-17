@@ -174,5 +174,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('crop', CropNode);
+  RED.nodes.registerType('rp-crop', CropNode);
 };

@@ -244,5 +244,5 @@ module.exports = function (RED) {
     });
   }
 
-  RED.nodes.registerType('add-mask', AddMaskNode);
+  RED.nodes.registerType('rp-add-mask', AddMaskNode);
 };

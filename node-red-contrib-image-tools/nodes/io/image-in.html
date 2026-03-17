@@ -1,5 +1,5 @@
 <script type="text/javascript">
-    RED.nodes.registerType('image-in', {
+    RED.nodes.registerType('rp-image-in', {
         category: 'RP Image',
         color: '#A6C8A6',
         defaults: {
@@ -68,7 +68,7 @@
     });
 </script>
 
-<script type="text/x-red" data-template-name="image-in">
+<script type="text/x-red" data-template-name="rp-image-in">
     <div class="form-row">
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
@@ -98,7 +98,7 @@
     </div>
 </script>
 
-<script type="text/x-red" data-help-name="image-in">
+<script type="text/x-red" data-help-name="rp-image-in">
     <p>Loads an image file from the filesystem and outputs it as a raw image object for processing in the Node-RED flow.</p>
     
     <h3>Details</h3>

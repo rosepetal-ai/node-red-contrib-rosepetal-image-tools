@@ -319,6 +319,9 @@ jobs:
             cd ../..
           done
 
+      - name: Add legacy node type compatibility
+        run: node scripts/dual-register.js
+
       - name: Publish main package
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

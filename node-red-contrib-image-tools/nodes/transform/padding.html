@@ -1,6 +1,6 @@
 <!-- 1 ▸ Runtime registration ------------------------------------------------>
 <script type="text/javascript">
-    RED.nodes.registerType('padding', {
+    RED.nodes.registerType('rp-padding', {
       category : 'RP Image',
       color    : '#DDA0DD',
       icon     : 'font-awesome/fa-square-o',
@@ -31,7 +31,7 @@
         padColor:{value:"#000000"}
       },
       inputs:1, outputs:1,
-      label:function(){ return this.name || "padding"; },
+      label:function(){ return this.name || "rp-padding"; },
     
       oneditprepare:function(){
         /* I/O path typed‑inputs */
@@ -211,7 +211,7 @@
     </script>
     
     <!-- 2 ▸ Edit‑dialog template ------------------------------------------------>
-    <script type="text/x-red" data-template-name="padding">
+    <script type="text/x-red" data-template-name="rp-padding">
     <div class="form-row">
       <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
       <input type="text" id="node-input-name">
@@ -308,7 +308,7 @@
     </script>
     
     <!-- 3 ▸ Help panel --------------------------------------------------------->
-    <script type="text/x-red" data-help-name="padding">
+    <script type="text/x-red" data-help-name="rp-padding">
     <p>The <strong>padding</strong> node adds solid color borders around images with pixel-perfect precision. It supports independent margin control for each side and works with both single images and arrays, using high-performance C++ backend processing with OpenCV.</p>
 
     <h3>Details</h3>

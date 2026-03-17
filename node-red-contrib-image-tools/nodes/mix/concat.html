@@ -1,7 +1,7 @@
 <!-- nodes/rosepetal-concat/concat.html -->
 
 <script type="text/javascript">
-    RED.nodes.registerType('concat',{
+    RED.nodes.registerType('rp-concat',{
       category:'RP Image',
       color:'#DDA0DD',
       icon:'font-awesome/fa-th-large',
@@ -24,7 +24,7 @@
         padColor :{value:"#000000"}
       },
       inputs:1,outputs:1,
-      label:function(){return this.name||"concat";},
+      label:function(){return this.name||"rp-concat";},
       oneditprepare:function(){
         /* path typedInputs */
         $("#node-input-inputPath").typedInput({
@@ -197,7 +197,7 @@
     }
   </script>
 
-  <script type="text/x-red" data-template-name="concat">
+  <script type="text/x-red" data-template-name="rp-concat">
     <div class="form-row">
       <label><i class="fa fa-sign-in"></i> Input</label>
       <input type="text" id="node-input-inputPath" style="width:70%;">
@@ -282,7 +282,7 @@
     </div>
   </script>
 
-  <script type="text/x-red" data-help-name="concat">
+  <script type="text/x-red" data-help-name="rp-concat">
     <p><b>rosepetal-concat</b> combines multiple images into a single composite image through concatenation. Images can be joined horizontally or vertically with intelligent handling of size differences using padding or scaling strategies.</p>
 
     <h3>Details</h3>

@@ -1,7 +1,7 @@
 <!-- nodes/blend/blend.html -->
 
 <script type="text/javascript">
-    RED.nodes.registerType('blend',{
+    RED.nodes.registerType('rp-blend',{
       category:'RP Image',
       color:'#DDA0DD',
       icon:'font-awesome/fa-adjust',
@@ -28,7 +28,7 @@
         colorTolerance:{value:10}        // Color tolerance 0-100%
       },
       inputs:1,outputs:1,
-      label:function(){return this.name||"blend";},
+      label:function(){return this.name||"rp-blend";},
       oneditprepare:function(){
         /* path typedInputs */
         $("#node-input-image1Path").typedInput({
@@ -271,7 +271,7 @@
     }
 </script>
 
-<script type="text/x-red" data-template-name="blend">
+<script type="text/x-red" data-template-name="rp-blend">
   <div class="form-row">
     <label><i class="fa fa-picture-o"></i> Image 1</label>
     <input type="text" id="node-input-image1Path" style="width:70%;">
@@ -388,7 +388,7 @@
   </div>
 </script>
 
-<script type="text/x-red" data-help-name="blend">
+<script type="text/x-red" data-help-name="rp-blend">
   <p><b>rosepetal-blend</b> combines two images using traditional blending or advanced alpha compositing with adjustable opacity. This node supports both mathematical blending and true layered compositing with transparency support and optional background removal.</p>
 
   <h3>Details</h3>

@@ -16,7 +16,7 @@ The `image-out` node is the primary output point for saving processed images to 
 ### Inputs
 The node accepts either:
 - **Raw Image Object**: Standard format with `data`, `width`, `height`, `channels`, `colorSpace`
-- **Encoded Buffer**: JPEG, PNG, or WebP buffer (automatically detected and handled)
+- **Encoded Buffer**: JPEG, PNG, or WebP buffer (automatically detected and handled). Note: BMP output is not supported from encoded buffers — use raw image objects instead.
 
 ### Outputs
 This is a terminal node with no outputs. It saves images to the filesystem and displays status information.
@@ -51,9 +51,10 @@ This is a terminal node with no outputs. It saves images to the filesystem and d
 - **Accepts**: Both raw image objects and encoded buffers
 
 ### Output Format
-- **Options**: JPEG, PNG, WebP
+- **Options**: JPEG, PNG, WebP, BMP
 - **Description**: Target format for saved images
 - **Conversion**: Automatic conversion if input format differs
+- **BMP**: Uncompressed format with no quality/compression settings. Requires raw image data input.
 
 ### Quality
 - **Type**: Number (1-100)
@@ -146,10 +147,11 @@ Common errors and solutions:
 
 1. **Use Prefixes**: Identify image sources with meaningful prefixes
 2. **Enable Protection**: Keep overwrite protection on to prevent data loss
-3. **Choose Format Wisely**: 
+3. **Choose Format Wisely**:
    - JPEG for photos (smaller files)
    - PNG for graphics with transparency
    - WebP for web optimization
+   - BMP for uncompressed archival or when lossless pixel-exact output is needed
 4. **Button Control**: Disable during development to prevent unwanted saves
 5. **Monitor Status**: Check node status for save confirmations
 

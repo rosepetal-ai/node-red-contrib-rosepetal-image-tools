@@ -15,7 +15,22 @@ const path = require('path');
 
 module.exports = function(RED) {
   const NodeUtils = require('../../lib/node-utils.js')(RED);
-  
+
+  const dirCache = new Map();
+
+  async function getCachedDir(folderPath) {
+    if (dirCache.has(folderPath)) return dirCache.get(folderPath);
+    let names;
+    try {
+      names = await fs.readdir(folderPath);
+    } catch {
+      names = [];
+    }
+    const set = new Set(names);
+    dirCache.set(folderPath, set);
+    return set;
+  }
+
   function ImageOutNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
@@ -175,10 +190,11 @@ module.exports = function(RED) {
 
         // Determine format & extension
         let format = (config.outputFormat || 'jpg').toLowerCase();
-        if (!['jpg', 'png', 'webp'].includes(format)) {
+        if (!['jpg', 'png', 'webp', 'bmp'].includes(format)) {
           format = 'jpg';
         }
         let fileExtension = format === 'jpg' ? 'jpg' : format;
+        const pngCompression = Math.max(0, Math.min(9, parseInt(config.pngCompression, 10) || 0));
         const webpLossless = config.webpLossless === true || config.webpLossless === 'true';
         const webpSmartSubsample = config.webpSmartSubsample === true || config.webpSmartSubsample === 'true';
         const parsedEffort = parseInt(config.webpEffort, 10);
@@ -187,13 +203,11 @@ module.exports = function(RED) {
         const webpEffort = hasWebpEffort ? Math.min(6, Math.max(0, parsedEffort)) : null;
 
         // Build filename (timestamp-based fallback)
-        const now = new Date();
-        const timestamp = now.getFullYear().toString() +
-                          (now.getMonth() + 1).toString().padStart(2, '0') +
-                          now.getDate().toString().padStart(2, '0') + '_' +
-                          now.getHours().toString().padStart(2, '0') +
-                          now.getMinutes().toString().padStart(2, '0') +
-                          now.getSeconds().toString().padStart(2, '0');
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/[-:]/g, '')
+          .replace(/\.(\d{3})Z$/, '-$1Z')
+          .replace('T', '_');
 
         let baseFilename;
         if (resolvedFullFilename) {
@@ -203,7 +217,7 @@ module.exports = function(RED) {
           const parsed = path.parse(resolvedFullFilename);
           if (parsed.ext) {
             const extLower = parsed.ext.slice(1).toLowerCase();
-            if (!['jpg', 'jpeg', 'png', 'webp'].includes(extLower)) {
+            if (!['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(extLower)) {
               throw new Error(`Unsupported extension in filename: ${parsed.ext}`);
             }
             fileExtension = parsed.ext.slice(1);
@@ -226,8 +240,9 @@ module.exports = function(RED) {
         let filePath = path.join(folderPath, filename);
 
         if (config.overwriteProtection !== false) {
+          const dirSet = await getCachedDir(folderPath);
           let counter = 2;
-          while (await fileExists(filePath)) {
+          while (dirSet.has(filename)) {
             filename = `${baseFilename}_${counter}.${fileExtension}`;
             filePath = path.join(folderPath, filename);
             counter += 1;
@@ -285,10 +300,7 @@ module.exports = function(RED) {
                 outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
                 break;
               case 'png':
-                const pngOptions = config.pngOptimize ? 
-                  { compressionLevel: 9, palette: true } : 
-                  { compressionLevel: 6 };
-                outputBuffer = await sharpInstance.png(pngOptions).toBuffer();
+                outputBuffer = await sharpInstance.png({ compressionLevel: pngCompression }).toBuffer();
                 break;
               case 'webp':
                 {
@@ -299,6 +311,8 @@ module.exports = function(RED) {
                   outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
                 }
                 break;
+              case 'bmp':
+                throw new Error('BMP output requires raw image data, not an encoded buffer');
               default:
                 throw new Error(`Unsupported format: ${format}`);
             }
@@ -315,60 +329,74 @@ module.exports = function(RED) {
           const channels = validatedImage.channels;
           let data = validatedImage.data;
           
-          // BGR/BGRA → RGB/RGBA for Sharp
-          if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
-            data = Buffer.from(data); // Copy to avoid mutating shared memory
-            for (let i = 0; i < data.length; i += channels) {
-              const t = data[i];
-              data[i] = data[i + 2];
-              data[i + 2] = t;
-            }
-          }
-          
-          const sharpInstance = sharp(data, {
-            raw: {
-              width: validatedImage.width,
-              height: validatedImage.height,
-              channels: channels
-            }
-          });
-          
-          // Apply colorspace conversion if needed
-          if (colorSpace === 'GRAY') {
-            sharpInstance.toColourspace('b-w');
-          }
-          
-          // Encode based on selected format
-          switch (format) {
-            case 'jpg':
-              outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
-              break;
-            case 'png':
-              const pngOptions = config.pngOptimize ? 
-                { compressionLevel: 9, palette: true } : 
-                { compressionLevel: 6 };
-              outputBuffer = await sharpInstance.png(pngOptions).toBuffer();
-              break;
-            case 'webp':
-              {
-                const webpOptions = { quality };
-                if (webpLossless) webpOptions.lossless = true;
-                if (!webpLossless && webpSmartSubsample) webpOptions.smartSubsample = true;
-                if (hasWebpEffort) webpOptions.effort = webpEffort;
-                outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
+          // BMP: encode raw pixels directly (no Sharp)
+          if (format === 'bmp') {
+            let nativeData = data;
+            if (colorSpace === 'RGB' || colorSpace === 'RGBA') {
+              nativeData = Buffer.from(data);
+              for (let i = 0; i < nativeData.length; i += channels) {
+                const t = nativeData[i]; nativeData[i] = nativeData[i + 2]; nativeData[i + 2] = t;
               }
-              break;
-            default:
-              throw new Error(`Unsupported format: ${format}`);
+            }
+            const buf = Buffer.isBuffer(nativeData) ? nativeData : Buffer.from(nativeData);
+            outputBuffer = encodeBmpRaw(buf, validatedImage.width, validatedImage.height, channels);
+          } else {
+            // BGR/BGRA → RGB/RGBA for Sharp
+            if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
+              data = Buffer.from(data); // Copy to avoid mutating shared memory
+              for (let i = 0; i < data.length; i += channels) {
+                const t = data[i];
+                data[i] = data[i + 2];
+                data[i + 2] = t;
+              }
+            }
+
+            const sharpInstance = sharp(data, {
+              raw: {
+                width: validatedImage.width,
+                height: validatedImage.height,
+                channels: channels
+              }
+            });
+
+            // Apply colorspace conversion if needed
+            if (colorSpace === 'GRAY') {
+              sharpInstance.toColourspace('b-w');
+            }
+
+            // Encode based on selected format
+            switch (format) {
+              case 'jpg':
+                outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
+                break;
+              case 'png':
+                const pngOptions = config.pngOptimize ?
+                  { compressionLevel: 9, palette: true } :
+                  { compressionLevel: 6 };
+                outputBuffer = await sharpInstance.png(pngOptions).toBuffer();
+                break;
+              case 'webp':
+                {
+                  const webpOptions = { quality };
+                  if (webpLossless) webpOptions.lossless = true;
+                  if (!webpLossless && webpSmartSubsample) webpOptions.smartSubsample = true;
+                  if (hasWebpEffort) webpOptions.effort = webpEffort;
+                  outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
+                }
+                break;
+              default:
+                throw new Error(`Unsupported format: ${format}`);
+            }
           }
         }
         
         // Write file to disk
         await fs.writeFile(filePath, outputBuffer);
+        dirCache.get(folderPath)?.add(filename);
 
         if (maxImages > 0) {
           try {
-            await enforceMaxImages(folderPath, maxImages);
+            await enforceMaxImages(folderPath, maxImages, dirCache.get(folderPath));
           } catch (policyErr) {
             node.warn(`Max images enforcement failed: ${policyErr.message}`);
           }
@@ -429,16 +457,6 @@ module.exports = function(RED) {
       }
     });
     
-    // Helper function to check if file exists
-    async function fileExists(filePath) {
-      try {
-        await fs.access(filePath);
-        return true;
-      } catch {
-        return false;
-      }
-    }
-
     async function getDiskUsageInfo(targetPath) {
       try {
         const stats = await fs.statfs(targetPath);
@@ -471,7 +489,7 @@ module.exports = function(RED) {
       }
     }
 
-    async function enforceMaxImages(folderPath, maxCount) {
+    async function enforceMaxImages(folderPath, maxCount, cachedSet) {
       if (maxCount <= 0) {
         return;
       }
@@ -510,6 +528,7 @@ module.exports = function(RED) {
           }
           try {
             await fs.unlink(oldest.path);
+            cachedSet?.delete(oldest.name);
           } catch (err) {
             throw new Error(`Failed to remove ${oldest.name}: ${err.message}`);
           }
@@ -517,6 +536,66 @@ module.exports = function(RED) {
       } catch (err) {
         throw new Error(`Unable to read folder "${folderPath}": ${err.message}`);
       }
+    }
+
+    function encodeBmpRaw(pixelData, width, height, channels) {
+      const bitsPerPixel = channels * 8;
+      const rowBytes = width * channels;
+      const rowPadding = (4 - (rowBytes % 4)) % 4;
+      const paddedRowSize = rowBytes + rowPadding;
+
+      const hasPalette = channels === 1;
+      const paletteSize = hasPalette ? 256 * 4 : 0;
+      const headerSize = 14;
+      const infoHeaderSize = 40;
+      const pixelDataOffset = headerSize + infoHeaderSize + paletteSize;
+      const pixelDataSize = paddedRowSize * height;
+      const fileSize = pixelDataOffset + pixelDataSize;
+
+      const buf = Buffer.alloc(fileSize);
+
+      // File header
+      buf.write('BM', 0);
+      buf.writeUInt32LE(fileSize, 2);
+      buf.writeUInt32LE(0, 6); // reserved
+      buf.writeUInt32LE(pixelDataOffset, 10);
+
+      // Info header (BITMAPINFOHEADER)
+      buf.writeUInt32LE(infoHeaderSize, 14);
+      buf.writeInt32LE(width, 18);
+      buf.writeInt32LE(height, 22); // positive = bottom-up
+      buf.writeUInt16LE(1, 26); // planes
+      buf.writeUInt16LE(bitsPerPixel, 28);
+      buf.writeUInt32LE(0, 30); // compression (BI_RGB)
+      buf.writeUInt32LE(pixelDataSize, 34);
+      buf.writeInt32LE(2835, 38); // X pixels per meter (~72 DPI)
+      buf.writeInt32LE(2835, 42); // Y pixels per meter
+      buf.writeUInt32LE(hasPalette ? 256 : 0, 46);
+      buf.writeUInt32LE(0, 50); // important colors
+
+      // Grayscale palette
+      if (hasPalette) {
+        let offset = headerSize + infoHeaderSize;
+        for (let i = 0; i < 256; i++) {
+          buf[offset++] = i; // B
+          buf[offset++] = i; // G
+          buf[offset++] = i; // R
+          buf[offset++] = 0; // reserved
+        }
+      }
+
+      // Pixel data (bottom-up row order)
+      const padBytes = Buffer.alloc(rowPadding);
+      for (let y = height - 1; y >= 0; y--) {
+        const srcOffset = y * rowBytes;
+        const dstOffset = pixelDataOffset + (height - 1 - y) * paddedRowSize;
+        pixelData.copy(buf, dstOffset, srcOffset, srcOffset + rowBytes);
+        if (rowPadding > 0) {
+          padBytes.copy(buf, dstOffset + rowBytes);
+        }
+      }
+
+      return buf;
     }
 
     // Handle cleanup

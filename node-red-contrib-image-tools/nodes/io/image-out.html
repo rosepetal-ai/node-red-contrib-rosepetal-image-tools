@@ -14,7 +14,7 @@
             inputPathType: { value: "msg" },
             outputFormat: { value: "jpg" },
             outputQuality: { value: 90 },
-            pngOptimize: { value: false },
+            pngCompression: { value: 8 },
             webpLossless: { value: false },
             webpEffort: { value: "" },
             webpSmartSubsample: { value: false },
@@ -131,32 +131,32 @@
             function updateQualityVisibility() {
                 const format = $('#node-input-outputFormat').val();
                 const qualityRow = $('#quality-row');
-                const pngOptimizeRow = $('#png-optimize-row');
+                const pngCompressionRow = $('#png-compression-row');
                 const webpLosslessRow = $('#webp-lossless-row');
                 const webpEffortRow = $('#webp-effort-row');
                 const webpSmartSubsampleRow = $('#webp-smartsubsample-row');
                 
                 if (format === 'jpg') {
                     qualityRow.show();
-                    pngOptimizeRow.hide();
+                    pngCompressionRow.hide();
                     webpLosslessRow.hide();
                     webpEffortRow.hide();
                     webpSmartSubsampleRow.hide();
                 } else if (format === 'webp') {
                     qualityRow.show();
-                    pngOptimizeRow.hide();
+                    pngCompressionRow.hide();
                     webpLosslessRow.show();
                     webpEffortRow.show();
                     webpSmartSubsampleRow.show();
                 } else if (format === 'png') {
                     qualityRow.hide();
-                    pngOptimizeRow.show();
+                    pngCompressionRow.show();
                     webpLosslessRow.hide();
                     webpEffortRow.hide();
                     webpSmartSubsampleRow.hide();
                 } else {
                     qualityRow.hide();
-                    pngOptimizeRow.hide();
+                    pngCompressionRow.hide();
                     webpLosslessRow.hide();
                     webpEffortRow.hide();
                     webpSmartSubsampleRow.hide();
@@ -364,6 +364,7 @@
             <option value="jpg">JPEG</option>
             <option value="png">PNG</option>
             <option value="webp">WebP</option>
+            <option value="bmp">BMP</option>
         </select>
     </div>
     
@@ -373,10 +374,10 @@
         <span style="margin-left: 10px; color: #666;">1-100 (JPEG/WebP only)</span>
     </div>
     
-    <div class="form-row" id="png-optimize-row" style="display: none;">
-        <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
-        <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
-        <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+    <div class="form-row" id="png-compression-row" style="display: none;">
+        <label for="node-input-pngCompression"><i class="fa fa-leaf"></i> Compression</label>
+        <input type="number" id="node-input-pngCompression" min="0" max="9" step="1" style="width: 70px;">
+        <span style="margin-left: 10px; color: #666;">0-9 (higher = smaller file, slower)</span>
     </div>
 
     <div class="form-row" id="webp-lossless-row" style="display: none;">
@@ -442,13 +443,13 @@
         <dd>Optional prefix for the auto-generated filename. If not specified, defaults to <code>image</code>. The final filename pattern is: <code>[prefix]_YYYYMMDD_HHMMSS.[ext]</code>.</dd>
         
         <dt>Full Filename <span class="property-type">string | msg | flow | global | JSONata</span></dt>
-        <dd>Overrides the prefix/timestamp pattern with an explicit name. Leave blank to keep automatic naming. You can include JSONata expressions or dynamic properties. If the expression supplies an extension (jpg/png/webp), the output format adjusts accordingly.</dd>
+        <dd>Overrides the prefix/timestamp pattern with an explicit name. Leave blank to keep automatic naming. You can include JSONata expressions or dynamic properties. If the expression supplies an extension (jpg/png/webp/bmp), the output format adjusts accordingly.</dd>
         
         <dt>Input from <span class="property-type">string</span></dt>
         <dd>The location of the image data to save. Defaults to <code>msg.payload</code>. Can be set to any message property, flow variable, or global variable.</dd>
         
         <dt>Output Format <span class="property-type">select</span></dt>
-        <dd>The image format to save: JPEG, PNG, or WebP.</dd>
+        <dd>The image format to save: JPEG, PNG, WebP, or BMP. BMP saves uncompressed with no additional options.</dd>
         
         <dt>Quality <span class="property-type">number</span></dt>
         <dd>Quality setting for JPEG and WebP formats (1-100). Higher values mean better quality but larger file sizes.</dd>
@@ -462,8 +463,8 @@
         <dt>WebP Smart Subsample <span class="property-type">boolean</span></dt>
         <dd>For lossy WebP only: enables smarter chroma downsampling to reduce color artifacts (slower).</dd>
         
-        <dt>PNG Optimize <span class="property-type">boolean</span></dt>
-        <dd>When enabled, applies maximum compression to PNG files. This creates smaller files but takes more processing time.</dd>
+        <dt>PNG Compression <span class="property-type">number</span></dt>
+        <dd>PNG compression level (0-9). Higher values produce smaller files but take more processing time.</dd>
         
         <dt>Overwrite Protection <span class="property-type">boolean</span></dt>
         <dd>When enabled (default), automatically appends <code>_2</code>, <code>_3</code>, etc. to filenames if a file with the same name already exists.</dd>

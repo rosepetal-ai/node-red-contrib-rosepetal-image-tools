@@ -260,6 +260,36 @@ for (const node of NODES) {
   console.log('');
 }
 
+// ─────────────────────────────────────────────────────────────
+// Add legacy keys to package.json files (so Node-RED can find legacy types)
+// ─────────────────────────────────────────────────────────────
+
+function addLegacyPackageJsonKeys(pkgPath) {
+  if (!fs.existsSync(pkgPath)) return;
+  const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+  const nodes = pkg['node-red'] && pkg['node-red'].nodes;
+  if (!nodes) return;
+
+  let added = 0;
+  for (const [key, value] of Object.entries(nodes)) {
+    if (key.startsWith('rp-')) {
+      const oldKey = key.replace(/^rp-/, '');
+      if (!nodes[oldKey]) {
+        nodes[oldKey] = value;
+        added++;
+      }
+    }
+  }
+
+  if (added > 0) {
+    if (!DRY_RUN) fs.writeFileSync(pkgPath, JSON.stringify(pkg, null, 4) + '\n');
+    console.log(`  package.json: ✓ Added ${added} legacy keys (${path.basename(path.dirname(pkgPath))})`);
+  }
+}
+
+console.log('[package.json]');
+addLegacyPackageJsonKeys(path.join(__dirname, '..', 'package.json'));
+
 console.log('\n=== Summary ===');
 console.log(`  JS:   ${jsOk} ok, ${jsFail} failed`);
 console.log(`  HTML: ${htmlOk} ok, ${htmlFail} failed`);

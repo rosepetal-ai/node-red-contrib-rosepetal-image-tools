@@ -107,12 +107,12 @@ main() {
         exit 1
     fi
 
-    print_step "Installing the Node-RED package..."
-    cd "$SCRIPT_DIR/node-red-contrib-image-tools"
+    print_step "Installing dependencies..."
+    cd "$SCRIPT_DIR"
     if npm install; then
-        print_success "Node-RED package installed successfully."
+        print_success "Dependencies installed successfully."
     else
-        print_error "Failed to install the Node-RED package."
+        print_error "Failed to install dependencies."
         exit 1
     fi
 
@@ -136,13 +136,13 @@ main() {
         echo
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             print_info "Installing into Node-RED..."
-            (cd "$NODE_RED_DIR" && npm install "$SCRIPT_DIR/node-red-contrib-image-tools")
+            (cd "$NODE_RED_DIR" && npm install "$SCRIPT_DIR")
             print_success "Successfully installed in Node-RED."
             print_info "Please restart your Node-RED instance to see the new nodes."
         else
             print_info "Skipping automatic installation."
             print_info "You can install it later by running this command:"
-            print_info "  cd ~/.node-red && npm install $SCRIPT_DIR/node-red-contrib-image-tools"
+            print_info "  cd ~/.node-red && npm install $SCRIPT_DIR"
         fi
     fi
 }

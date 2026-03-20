@@ -20,56 +20,141 @@ module.exports = function(RED) {
 
   async function getCachedDir(folderPath) {
     if (dirCache.has(folderPath)) return dirCache.get(folderPath);
-    let names;
+    const map = new Map();
     try {
-      names = await fs.readdir(folderPath);
+      const entries = await fs.readdir(folderPath, { withFileTypes: true });
+      const files = entries.filter(e => e.isFile());
+      const stats = await Promise.all(
+        files.map(async (f) => {
+          const st = await fs.stat(path.join(folderPath, f.name));
+          return { name: f.name, mtimeMs: st.mtimeMs };
+        })
+      );
+      for (const { name, mtimeMs } of stats) map.set(name, mtimeMs);
     } catch {
-      names = [];
+      // folder doesn't exist yet — empty cache is fine
     }
-    const set = new Set(names);
-    dirCache.set(folderPath, set);
-    return set;
+    dirCache.set(folderPath, map);
+    return map;
   }
 
   function ImageOutNode(config) {
     RED.nodes.createNode(this, config);
     const node = this;
-    
+
     // Initialize node state
-    node.active = config.active !== false; // Default to true if not set
+    node.active = config.active !== false;
     let diskCheckErrorLogged = false;
-    
-    // Update node appearance based on active state
+
     updateNodeStatus();
-    
+
     function updateNodeStatus() {
       if (!node.active) {
         node.status({ fill: "grey", shape: "dot", text: "inactive" });
       } else {
-        node.status({}); // Clear status when active and idle
+        node.status({});
       }
     }
-    
+
+    // Image encoding helper — shared by single and multiple modes
+    async function encodeImage(image, { format, quality, pngCompression, webpLossless, webpSmartSubsample, hasWebpEffort, webpEffort }) {
+      // Encoded buffer input (JPEG, PNG, WebP)
+      if (Buffer.isBuffer(image) && !image.width && !image.height) {
+        let inputFormat;
+        try {
+          const metadata = await sharp(image).metadata();
+          inputFormat = metadata.format;
+        } catch {
+          inputFormat = null;
+        }
+
+        const sameFormat = inputFormat === format || (inputFormat === 'jpeg' && format === 'jpg');
+        const needsWebpReencode = format === 'webp' && (webpLossless || hasWebpEffort);
+
+        if (sameFormat && !needsWebpReencode) {
+          return image;
+        }
+
+        const inst = sharp(image);
+        switch (format) {
+          case 'jpg': return inst.jpeg({ quality }).toBuffer();
+          case 'png': return inst.png({ compressionLevel: pngCompression }).toBuffer();
+          case 'webp': {
+            const wo = { quality };
+            if (webpLossless) wo.lossless = true;
+            if (!webpLossless && webpSmartSubsample) wo.smartSubsample = true;
+            if (hasWebpEffort) wo.effort = webpEffort;
+            return inst.webp(wo).toBuffer();
+          }
+          case 'bmp': throw new Error('BMP output requires raw image data, not an encoded buffer');
+          default: throw new Error(`Unsupported format: ${format}`);
+        }
+      }
+
+      // Raw image data
+      const validated = NodeUtils.validateImageStructure(image, node);
+      if (!validated) throw new Error("Invalid image structure");
+
+      const colorSpace = validated.colorSpace;
+      const channels = validated.channels;
+      let data = validated.data;
+
+      // BMP: encode raw pixels directly (no Sharp)
+      if (format === 'bmp') {
+        let nativeData = data;
+        if (colorSpace === 'RGB' || colorSpace === 'RGBA') {
+          nativeData = Buffer.from(data);
+          for (let i = 0; i < nativeData.length; i += channels) {
+            const t = nativeData[i]; nativeData[i] = nativeData[i + 2]; nativeData[i + 2] = t;
+          }
+        }
+        const buf = Buffer.isBuffer(nativeData) ? nativeData : Buffer.from(nativeData);
+        return encodeBmpRaw(buf, validated.width, validated.height, channels);
+      }
+
+      // BGR/BGRA → RGB/RGBA for Sharp
+      if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
+        data = Buffer.from(data);
+        for (let i = 0; i < data.length; i += channels) {
+          const t = data[i]; data[i] = data[i + 2]; data[i + 2] = t;
+        }
+      }
+
+      const inst = sharp(data, {
+        raw: { width: validated.width, height: validated.height, channels }
+      });
+      if (colorSpace === 'GRAY') inst.toColourspace('b-w');
+
+      switch (format) {
+        case 'jpg': return inst.jpeg({ quality }).toBuffer();
+        case 'png': return inst.png({ compressionLevel: pngCompression }).toBuffer();
+        case 'webp': {
+          const wo = { quality };
+          if (webpLossless) wo.lossless = true;
+          if (!webpLossless && webpSmartSubsample) wo.smartSubsample = true;
+          if (hasWebpEffort) wo.effort = webpEffort;
+          return inst.webp(wo).toBuffer();
+        }
+        default: throw new Error(`Unsupported format: ${format}`);
+      }
+    }
+
     node.on('input', async function(msg, send, done) {
-      // Skip processing if node is inactive
       if (!node.active) {
         if (done) done();
         return;
       }
-      
+
       const startTime = Date.now();
-      
+
       try {
         const evaluateProperty = (value, type, fallbackType = 'str') => {
           return new Promise((resolve, reject) => {
             const actualType = type || fallbackType;
             try {
               RED.util.evaluateNodeProperty(value, actualType, node, msg, (err, result) => {
-                if (err) {
-                  reject(err);
-                } else {
-                  resolve(result);
-                }
+                if (err) reject(err);
+                else resolve(result);
               });
             } catch (err) {
               reject(err);
@@ -77,27 +162,23 @@ module.exports = function(RED) {
           });
         };
 
-        // Resolve folder path (supports typed inputs)
-        const folderPathType = config.folderPathType || 'str';
-        let folderPath;
-        if (['msg', 'flow', 'global', 'jsonata', 'env'].includes(folderPathType)) {
-          folderPath = await evaluateProperty(config.folderPath, folderPathType);
-        } else {
-          folderPath = config.folderPath || '.';
+        if (!sharp) {
+          throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');
         }
 
-        if (folderPath === undefined || folderPath === null || String(folderPath).trim() === '') {
-          throw new Error('Folder path is not configured or resolved.');
-        }
-        folderPath = String(folderPath);
+        // Shared format config
+        let format = (config.outputFormat || 'jpg').toLowerCase();
+        if (!['jpg', 'png', 'webp', 'bmp'].includes(format)) format = 'jpg';
+        const quality = parseInt(config.outputQuality, 10) || 90;
+        const pngCompression = Math.max(0, Math.min(9, parseInt(config.pngCompression, 10) || 0));
+        const webpLossless = config.webpLossless === true || config.webpLossless === 'true';
+        const webpSmartSubsample = config.webpSmartSubsample === true || config.webpSmartSubsample === 'true';
+        const parsedEffort = parseInt(config.webpEffort, 10);
+        const hasWebpEffort = Number.isInteger(parsedEffort);
+        const webpEffort = hasWebpEffort ? Math.min(6, Math.max(0, parsedEffort)) : null;
+        const encodeOpts = { format, quality, pngCompression, webpLossless, webpSmartSubsample, hasWebpEffort, webpEffort };
 
-        try {
-          await fs.mkdir(folderPath, { recursive: true });
-        } catch (mkdirErr) {
-          throw new Error(`Cannot create directory: ${mkdirErr.message}`);
-        }
-
-        // Resolve optional maximum image count
+        // Shared max images
         let maxImages = 0;
         const maxImagesType = config.maxImagesType || 'num';
         const maxImagesConfigured = !(
@@ -105,18 +186,13 @@ module.exports = function(RED) {
           config.maxImages === null ||
           (typeof config.maxImages === 'string' && config.maxImages.trim() === '')
         );
-
         if (maxImagesConfigured || ['msg', 'flow', 'global', 'jsonata', 'env'].includes(maxImagesType)) {
           try {
             const resolvedMax = await evaluateProperty(config.maxImages, maxImagesType);
             if (resolvedMax !== undefined && resolvedMax !== null && resolvedMax !== '') {
               const numericMax = parseInt(resolvedMax, 10);
-              if (Number.isNaN(numericMax)) {
-                throw new Error(`Value "${resolvedMax}" is not a valid integer.`);
-              }
-              if (numericMax < 0) {
-                throw new Error('Value must be zero or a positive integer.');
-              }
+              if (Number.isNaN(numericMax)) throw new Error(`Value "${resolvedMax}" is not a valid integer.`);
+              if (numericMax < 0) throw new Error('Value must be zero or a positive integer.');
               maxImages = numericMax;
             }
           } catch (err) {
@@ -124,30 +200,206 @@ module.exports = function(RED) {
           }
         }
 
+        // ===== MULTIPLE MODE =====
+        if (config.mode === 'multiple') {
+          node.status({ fill: 'blue', shape: 'dot', text: 'saving...' });
+
+          const saveConfigType = config.saveConfigType || 'msg';
+          let saveConfig = await evaluateProperty(config.saveConfig || 'payload', saveConfigType);
+          if (!Array.isArray(saveConfig)) {
+            if (saveConfig && typeof saveConfig === 'object') {
+              saveConfig = [saveConfig];
+            } else {
+              throw new Error('Input must resolve to an array or object.');
+            }
+          }
+          if (saveConfig.length === 0) {
+            node.warn('Empty array — nothing to save.');
+            node.status({ fill: 'yellow', shape: 'ring', text: 'empty array' });
+            if (done) done();
+            return;
+          }
+
+          const imageField = config.imageField || 'bitmap';
+          const filenameField = config.filenameField || 'filename';
+          const filenameFieldType = config.filenameFieldType || 'item';
+          const outputDirField = config.outputDirField || 'outputDir';
+          const outputDirFieldType = config.outputDirFieldType || 'item';
+
+          let sharedFilename = null;
+          if (filenameFieldType !== 'item') {
+            sharedFilename = await evaluateProperty(filenameField, filenameFieldType);
+          }
+          let sharedOutputDir = null;
+          if (outputDirFieldType !== 'item') {
+            sharedOutputDir = await evaluateProperty(outputDirField, outputDirFieldType);
+          }
+
+          const results = [];
+          let skipped = 0;
+
+          for (let idx = 0; idx < saveConfig.length; idx++) {
+            try {
+              const item = saveConfig[idx];
+              if (!item || typeof item !== 'object') {
+                node.warn(`Item ${idx}: not an object, skipping.`);
+                skipped++;
+                continue;
+              }
+
+              const image = item[imageField];
+              if (!image) {
+                node.warn(`Item ${idx}: no image at "${imageField}", skipping.`);
+                skipped++;
+                continue;
+              }
+
+              // Resolve folder
+              const folderPath = String(
+                outputDirFieldType === 'item'
+                  ? (item[outputDirField] ?? '')
+                  : (sharedOutputDir ?? '')
+              ).trim();
+              if (!folderPath) {
+                node.warn(`Item ${idx}: empty folder path, skipping.`);
+                skipped++;
+                continue;
+              }
+              await fs.mkdir(folderPath, { recursive: true });
+
+              // Disk check
+              const diskInfo = await getDiskUsageInfo(folderPath);
+              if (diskInfo && diskInfo.usedRatio >= 0.9) {
+                const pct = (diskInfo.usedRatio * 100).toFixed(1);
+                node.warn(`Storage ${pct}% full, skipping remaining items.`);
+                node.status({ fill: 'yellow', shape: 'ring', text: `disk ${pct}% full` });
+                break;
+              }
+
+              // Resolve filename
+              const filenameRaw = String(
+                filenameFieldType === 'item'
+                  ? (item[filenameField] ?? '')
+                  : (sharedFilename ?? '')
+              ).trim();
+
+              // Determine per-item format & extension (filename ext can override)
+              let itemFormat = format;
+              let fileExtension = format === 'jpg' ? 'jpg' : format;
+              let baseFilename;
+
+              if (filenameRaw) {
+                if (/[\\/]/.test(filenameRaw)) {
+                  node.warn(`Item ${idx}: filename contains path separators, skipping.`);
+                  skipped++;
+                  continue;
+                }
+                const parsed = path.parse(filenameRaw);
+                if (parsed.ext) {
+                  const extLower = parsed.ext.slice(1).toLowerCase();
+                  if (['jpg', 'jpeg', 'png', 'webp', 'bmp'].includes(extLower)) {
+                    fileExtension = parsed.ext.slice(1);
+                    itemFormat = extLower === 'jpeg' ? 'jpg' : extLower;
+                  }
+                  baseFilename = parsed.name;
+                } else {
+                  baseFilename = parsed.base;
+                }
+              } else {
+                const ts = new Date()
+                  .toISOString()
+                  .replace(/[-:]/g, '')
+                  .replace(/\.(\d{3})Z$/, '-$1Z')
+                  .replace('T', '_');
+                baseFilename = `image_${ts}`;
+              }
+
+              let filename = `${baseFilename}.${fileExtension}`;
+              let filePath = path.join(folderPath, filename);
+
+              // Overwrite protection
+              if (config.overwriteProtection !== false) {
+                const dirMap = await getCachedDir(folderPath);
+                let counter = 2;
+                while (dirMap.has(filename)) {
+                  filename = `${baseFilename}_${counter}.${fileExtension}`;
+                  filePath = path.join(folderPath, filename);
+                  counter++;
+                  if (counter > 1000) throw new Error('Too many file variations');
+                }
+              }
+
+              // Encode & write
+              const itemEncodeOpts = itemFormat !== format
+                ? { ...encodeOpts, format: itemFormat }
+                : encodeOpts;
+              const outputBuffer = await encodeImage(image, itemEncodeOpts);
+              await fs.writeFile(filePath, outputBuffer);
+              dirCache.get(folderPath)?.set(filename, Date.now());
+
+              if (maxImages > 0) {
+                try {
+                  await enforceMaxImages(folderPath, maxImages, dirCache.get(folderPath));
+                } catch (policyErr) {
+                  node.warn(`Max images enforcement failed: ${policyErr.message}`);
+                }
+              }
+
+              results.push({ path: filePath, filename, format: itemFormat, extension: fileExtension });
+            } catch (itemErr) {
+              node.warn(`Item ${idx}: ${itemErr.message}`);
+              skipped++;
+            }
+          }
+
+          if (results.length === 0) {
+            throw new Error(`All ${saveConfig.length} items failed.`);
+          }
+
+          const elapsedMs = Date.now() - startTime;
+          const statusText = skipped > 0
+            ? `saved ${results.length}/${saveConfig.length} files (${elapsedMs}ms)`
+            : `saved ${results.length} files (${elapsedMs}ms)`;
+          node.status({ fill: 'green', shape: 'dot', text: statusText });
+
+          if (done) done();
+          return;
+        }
+
+        // ===== SINGLE MODE =====
+
+        // Resolve folder path
+        const folderPathType = config.folderPathType || 'str';
+        let folderPath;
+        if (['msg', 'flow', 'global', 'jsonata', 'env'].includes(folderPathType)) {
+          folderPath = await evaluateProperty(config.folderPath, folderPathType);
+        } else {
+          folderPath = config.folderPath || '.';
+        }
+        if (folderPath === undefined || folderPath === null || String(folderPath).trim() === '') {
+          throw new Error('Folder path is not configured or resolved.');
+        }
+        folderPath = String(folderPath);
+        try {
+          await fs.mkdir(folderPath, { recursive: true });
+        } catch (mkdirErr) {
+          throw new Error(`Cannot create directory: ${mkdirErr.message}`);
+        }
+
         // Retrieve input image
         const inputPath = config.inputPath || 'payload';
         const inputPathType = config.inputPathType || 'msg';
-
         let image;
         if (inputPathType === 'msg') {
           const { value, error } = NodeUtils.safeGetMessageProperty(msg, inputPath);
-          if (error) {
-            throw new Error(`Invalid inputPath "${inputPath}": ${error.message}`);
-          }
+          if (error) throw new Error(`Invalid inputPath "${inputPath}": ${error.message}`);
           image = value;
         } else if (inputPathType === 'flow') {
           image = node.context().flow.get(inputPath);
         } else if (inputPathType === 'global') {
           image = node.context().global.get(inputPath);
         }
-
-        if (!image) {
-          throw new Error('No image data found at specified input path');
-        }
-
-        if (!sharp) {
-          throw new Error('Sharp is not available. Install "sharp" in your Node-RED userDir and restart Node-RED.');
-        }
+        if (!image) throw new Error('No image data found at specified input path');
 
         node.status({ fill: 'blue', shape: 'dot', text: 'saving...' });
 
@@ -159,22 +411,19 @@ module.exports = function(RED) {
           config.filenameFull === null ||
           (typeof config.filenameFull === 'string' && config.filenameFull.trim() === '')
         );
-
         if (hasFullNameConfig || ['msg', 'flow', 'global', 'jsonata', 'env'].includes(fullNameType)) {
           try {
             const evaluated = await evaluateProperty(config.filenameFull, fullNameType);
             if (evaluated !== undefined && evaluated !== null) {
               const trimmed = String(evaluated).trim();
-              if (trimmed) {
-                resolvedFullFilename = trimmed;
-              }
+              if (trimmed) resolvedFullFilename = trimmed;
             }
           } catch (err) {
             throw new Error(`Unable to resolve full filename: ${err.message}`);
           }
         }
 
-        // Resolve prefix when full filename not provided
+        // Resolve prefix
         const prefixType = config.filenamePrefixType || 'str';
         let prefixValue = config.filenamePrefix || '';
         if (['msg', 'flow', 'global', 'jsonata', 'env'].includes(prefixType)) {
@@ -188,21 +437,8 @@ module.exports = function(RED) {
         prefixValue = (prefixValue || '').trim();
         const prefix = prefixValue ? `${prefixValue}_` : 'image_';
 
-        // Determine format & extension
-        let format = (config.outputFormat || 'jpg').toLowerCase();
-        if (!['jpg', 'png', 'webp', 'bmp'].includes(format)) {
-          format = 'jpg';
-        }
+        // Build filename
         let fileExtension = format === 'jpg' ? 'jpg' : format;
-        const pngCompression = Math.max(0, Math.min(9, parseInt(config.pngCompression, 10) || 0));
-        const webpLossless = config.webpLossless === true || config.webpLossless === 'true';
-        const webpSmartSubsample = config.webpSmartSubsample === true || config.webpSmartSubsample === 'true';
-        const parsedEffort = parseInt(config.webpEffort, 10);
-        const hasWebpEffort = Number.isInteger(parsedEffort);
-        // Sharp expects 0-6 (6 = slowest/smallest); clamp to be safe
-        const webpEffort = hasWebpEffort ? Math.min(6, Math.max(0, parsedEffort)) : null;
-
-        // Build filename (timestamp-based fallback)
         const timestamp = new Date()
           .toISOString()
           .replace(/[-:]/g, '')
@@ -240,15 +476,13 @@ module.exports = function(RED) {
         let filePath = path.join(folderPath, filename);
 
         if (config.overwriteProtection !== false) {
-          const dirSet = await getCachedDir(folderPath);
+          const dirMap = await getCachedDir(folderPath);
           let counter = 2;
-          while (dirSet.has(filename)) {
+          while (dirMap.has(filename)) {
             filename = `${baseFilename}_${counter}.${fileExtension}`;
             filePath = path.join(folderPath, filename);
             counter += 1;
-            if (counter > 1000) {
-              throw new Error('Too many file variations exist');
-            }
+            if (counter > 1000) throw new Error('Too many file variations exist');
           }
         }
 
@@ -261,138 +495,12 @@ module.exports = function(RED) {
           return;
         }
 
-        // Convert image to buffer based on format
-        let outputBuffer;
-        const quality = parseInt(config.outputQuality, 10) || 90;
-        
-        // Check if image is already an encoded Buffer (JPEG, PNG, WebP)
-        if (Buffer.isBuffer(image) && !image.width && !image.height) {
-          // It's an encoded image buffer
-          // We can either save it directly or re-encode if format is different
-          
-          // Try to detect the input format using Sharp metadata
-          let inputFormat;
-          try {
-            const metadata = await sharp(image).metadata();
-            inputFormat = metadata.format; // Will be 'jpeg', 'png', 'webp', etc.
-          } catch (err) {
-            // If we can't detect format, we'll re-encode anyway
-            inputFormat = null;
-          }
-          
-          // Check if we need to re-encode or can save directly
-          const sameFormat =
-            inputFormat === format ||
-            (inputFormat === 'jpeg' && format === 'jpg');
+        // Encode image (format may have been overridden by filename extension)
+        const outputBuffer = await encodeImage(image, { ...encodeOpts, format });
 
-          const needsWebpReencode =
-            format === 'webp' && (webpLossless || hasWebpEffort);
-
-          if (sameFormat && !needsWebpReencode) {
-            // Same format and no special WebP options: save directly (fastest)
-            outputBuffer = image;
-          } else {
-            // Different format or unknown input, re-encode using Sharp
-            const sharpInstance = sharp(image);
-            
-            switch (format) {
-              case 'jpg':
-                outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
-                break;
-              case 'png':
-                outputBuffer = await sharpInstance.png({ compressionLevel: pngCompression }).toBuffer();
-                break;
-              case 'webp':
-                {
-                  const webpOptions = { quality };
-                  if (webpLossless) webpOptions.lossless = true;
-                  if (!webpLossless && webpSmartSubsample) webpOptions.smartSubsample = true;
-                  if (hasWebpEffort) webpOptions.effort = webpEffort;
-                  outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
-                }
-                break;
-              case 'bmp':
-                throw new Error('BMP output requires raw image data, not an encoded buffer');
-              default:
-                throw new Error(`Unsupported format: ${format}`);
-            }
-          }
-        } else {
-          // It's raw image data - validate and process as before
-          const validatedImage = NodeUtils.validateImageStructure(image, node);
-          if (!validatedImage) {
-            throw new Error("Invalid image structure");
-          }
-          
-          // Convert from raw image format to Sharp-compatible format
-          const colorSpace = validatedImage.colorSpace;
-          const channels = validatedImage.channels;
-          let data = validatedImage.data;
-          
-          // BMP: encode raw pixels directly (no Sharp)
-          if (format === 'bmp') {
-            let nativeData = data;
-            if (colorSpace === 'RGB' || colorSpace === 'RGBA') {
-              nativeData = Buffer.from(data);
-              for (let i = 0; i < nativeData.length; i += channels) {
-                const t = nativeData[i]; nativeData[i] = nativeData[i + 2]; nativeData[i + 2] = t;
-              }
-            }
-            const buf = Buffer.isBuffer(nativeData) ? nativeData : Buffer.from(nativeData);
-            outputBuffer = encodeBmpRaw(buf, validatedImage.width, validatedImage.height, channels);
-          } else {
-            // BGR/BGRA → RGB/RGBA for Sharp
-            if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
-              data = Buffer.from(data); // Copy to avoid mutating shared memory
-              for (let i = 0; i < data.length; i += channels) {
-                const t = data[i];
-                data[i] = data[i + 2];
-                data[i + 2] = t;
-              }
-            }
-
-            const sharpInstance = sharp(data, {
-              raw: {
-                width: validatedImage.width,
-                height: validatedImage.height,
-                channels: channels
-              }
-            });
-
-            // Apply colorspace conversion if needed
-            if (colorSpace === 'GRAY') {
-              sharpInstance.toColourspace('b-w');
-            }
-
-            // Encode based on selected format
-            switch (format) {
-              case 'jpg':
-                outputBuffer = await sharpInstance.jpeg({ quality }).toBuffer();
-                break;
-              case 'png':
-                const pngOptions = config.pngOptimize ?
-                  { compressionLevel: 9, palette: true } :
-                  { compressionLevel: 6 };
-                outputBuffer = await sharpInstance.png(pngOptions).toBuffer();
-                break;
-              case 'webp':
-                {
-                  const webpOptions = { quality };
-                  if (webpLossless) webpOptions.lossless = true;
-                  if (!webpLossless && webpSmartSubsample) webpOptions.smartSubsample = true;
-                  if (hasWebpEffort) webpOptions.effort = webpEffort;
-                  outputBuffer = await sharpInstance.webp(webpOptions).toBuffer();
-                }
-                break;
-              default:
-                throw new Error(`Unsupported format: ${format}`);
-            }
-          }
-        }
-        
         // Write file to disk
         await fs.writeFile(filePath, outputBuffer);
-        dirCache.get(folderPath)?.add(filename);
+        dirCache.get(folderPath)?.set(filename, Date.now());
 
         if (maxImages > 0) {
           try {
@@ -408,39 +516,27 @@ module.exports = function(RED) {
         if (config.debugEnabled) {
           try {
             const debugResult = await NodeUtils.debugImageDisplay(
-              outputBuffer,
-              format,
-              quality,
-              node,
-              true,
-              config.debugWidth || 200
+              outputBuffer, format, quality, node, true, config.debugWidth || 200
             );
-            
             if (debugResult) {
-              const statusText = renameOccurred ?
-                `saved: ${filename} (avoided overwrite)` :
-                `saved: ${filename}`;
-
-              node.status({ 
-                fill: "green", 
-                shape: "dot", 
-                text: statusText + ` | ${format} debug`
-              });
+              const statusText = renameOccurred
+                ? `saved: ${filename} (avoided overwrite)`
+                : `saved: ${filename}`;
+              node.status({ fill: "green", shape: "dot", text: statusText + ` | ${format} debug` });
             }
           } catch (debugError) {
             node.warn(`Debug display error: ${debugError.message}`);
           }
         } else {
           const elapsedMs = Date.now() - startTime;
-          const statusText = renameOccurred ?
-            `saved: ${filename} (${elapsedMs}ms, avoided overwrite)` :
-            `saved: ${filename} (${elapsedMs}ms)`;
-
+          const statusText = renameOccurred
+            ? `saved: ${filename} (${elapsedMs}ms, avoided overwrite)`
+            : `saved: ${filename} (${elapsedMs}ms)`;
           node.status({ fill: "green", shape: "dot", text: statusText });
         }
-        
+
         if (done) done();
-        
+
       } catch (err) {
         node.status({ fill: "red", shape: "ring", text: "Error" });
         const { message, hint } = NodeUtils.explainError(err, 'image-out', {
@@ -450,13 +546,11 @@ module.exports = function(RED) {
           outputFormat: config.outputFormat || 'jpg'
         });
         node.error(`Error saving image: ${message}`, msg);
-        if (hint) {
-          node.warn(`Hint: ${hint}`);
-        }
+        if (hint) node.warn(`Hint: ${hint}`);
         if (done) done(err);
       }
     });
-    
+
     async function getDiskUsageInfo(targetPath) {
       try {
         const stats = await fs.statfs(targetPath);
@@ -489,52 +583,63 @@ module.exports = function(RED) {
       }
     }
 
-    async function enforceMaxImages(folderPath, maxCount, cachedSet) {
-      if (maxCount <= 0) {
+    async function enforceMaxImages(folderPath, maxCount, cachedMap) {
+      if (maxCount <= 0) return;
+
+      const entries = await fs.readdir(folderPath, { withFileTypes: true });
+      const diskFiles = new Set();
+      for (const e of entries) {
+        if (e.isFile()) diskFiles.add(e.name);
+      }
+      if (diskFiles.size <= maxCount) {
+        if (cachedMap) {
+          for (const name of cachedMap.keys()) {
+            if (!diskFiles.has(name)) cachedMap.delete(name);
+          }
+        }
         return;
       }
 
-      try {
-        const entries = await fs.readdir(folderPath, { withFileTypes: true });
-        const files = entries
-          .filter((entry) => entry.isFile())
-          .map((entry) => entry.name);
-
-        if (files.length <= maxCount) {
-          return;
+      if (cachedMap) {
+        for (const name of cachedMap.keys()) {
+          if (!diskFiles.has(name)) cachedMap.delete(name);
         }
-
-        const fileStats = [];
-        for (const name of files) {
-          try {
-            const fullPath = path.join(folderPath, name);
-            const stats = await fs.stat(fullPath);
-            fileStats.push({
-              name,
-              path: fullPath,
-              mtime: stats.mtimeMs,
-            });
-          } catch (err) {
-            node.warn(`Unable to inspect file ${name}: ${err.message}`);
-          }
+        const unknown = [];
+        for (const name of diskFiles) {
+          if (!cachedMap.has(name)) unknown.push(name);
         }
-
-        fileStats.sort((a, b) => a.mtime - b.mtime);
-
-        while (fileStats.length > maxCount) {
-          const oldest = fileStats.shift();
-          if (!oldest) {
-            break;
-          }
-          try {
-            await fs.unlink(oldest.path);
-            cachedSet?.delete(oldest.name);
-          } catch (err) {
-            throw new Error(`Failed to remove ${oldest.name}: ${err.message}`);
-          }
+        if (unknown.length > 0) {
+          const stats = await Promise.all(
+            unknown.map(async (name) => {
+              const st = await fs.stat(path.join(folderPath, name));
+              return { name, mtimeMs: st.mtimeMs };
+            })
+          );
+          for (const { name, mtimeMs } of stats) cachedMap.set(name, mtimeMs);
         }
-      } catch (err) {
-        throw new Error(`Unable to read folder "${folderPath}": ${err.message}`);
+      }
+
+      let sorted;
+      if (cachedMap && cachedMap.size > 0) {
+        sorted = Array.from(cachedMap.entries()).map(([name, mtimeMs]) => ({ name, mtimeMs }));
+      } else {
+        sorted = await Promise.all(
+          Array.from(diskFiles).map(async (name) => {
+            const st = await fs.stat(path.join(folderPath, name));
+            return { name, mtimeMs: st.mtimeMs };
+          })
+        );
+      }
+      sorted.sort((a, b) => a.mtimeMs - b.mtimeMs);
+
+      const toRemove = sorted.length - maxCount;
+      for (let i = 0; i < toRemove; i++) {
+        try {
+          await fs.unlink(path.join(folderPath, sorted[i].name));
+        } catch (err) {
+          if (err.code !== 'ENOENT') throw err;
+        }
+        cachedMap?.delete(sorted[i].name);
       }
     }
 
@@ -600,7 +705,6 @@ module.exports = function(RED) {
 
     // Handle cleanup
     node.on('close', function() {
-      // Clear any debug images
       try {
         RED.comms.publish("debug-image", {
           id: node.id,
@@ -611,7 +715,7 @@ module.exports = function(RED) {
       }
     });
   }
-  
+
   // Register HTTP endpoint for button state changes
   RED.httpAdmin.post("/image-out/:id", RED.auth.needsPermission("flows.write"), function(req, res) {
     const node = RED.nodes.getNode(req.params.id);
@@ -619,28 +723,28 @@ module.exports = function(RED) {
       if (typeof node.active === "undefined") {
         node.active = true;
       }
-      
+
       let desiredState;
       if (req.body && Object.prototype.hasOwnProperty.call(req.body, 'active')) {
         desiredState = !!req.body.active;
       } else {
-        desiredState = !node.active; // Legacy behaviour
+        desiredState = !node.active;
       }
 
       node.active = desiredState;
-      
-      // Update node status
+
       if (!node.active) {
         node.status({ fill: "grey", shape: "dot", text: "inactive" });
       } else {
         node.status({});
       }
-      
+
       res.json({ active: node.active });
     } else {
       res.sendStatus(404);
     }
   });
-  
+
   RED.nodes.registerType("rp-image-out", ImageOutNode);
+  RED.nodes.registerType("image-out", ImageOutNode);  // legacy compat
 };

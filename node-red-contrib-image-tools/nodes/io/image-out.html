@@ -4,7 +4,8 @@
         color: '#A6C8A6',
         defaults: {
             name: { value: "" },
-            folderPath: { value: "", required: true },
+            mode: { value: "single" },
+            folderPath: { value: "" },
             folderPathType: { value: "str" },
             filenamePrefix: { value: "" },
             filenamePrefixType: { value: "str" },
@@ -12,6 +13,13 @@
             filenameFullType: { value: "str" },
             inputPath: { value: "payload" },
             inputPathType: { value: "msg" },
+            saveConfig: { value: "payload" },
+            saveConfigType: { value: "msg" },
+            imageField: { value: "bitmap" },
+            filenameField: { value: "filename" },
+            filenameFieldType: { value: "item" },
+            outputDirField: { value: "outputDir" },
+            outputDirFieldType: { value: "item" },
             outputFormat: { value: "jpg" },
             outputQuality: { value: 90 },
             pngCompression: { value: 8 },
@@ -22,7 +30,6 @@
             maxImages: { value: "" },
             maxImagesType: { value: "num" },
             active: { value: true },
-            // Debug configuration
             debugEnabled: { value: false },
             debugWidth: { value: 200 },
             debugWidthType: { value: "num" }
@@ -77,20 +84,40 @@
             }
         },
         oneditprepare: function() {
+            // Mode toggle
+            function toggleMode() {
+                var isMultiple = $('#node-input-mode').val() === 'multiple';
+                if (isMultiple) {
+                    $('.imageout-single-mode').hide();
+                    $('.imageout-multiple-mode').show();
+                } else {
+                    $('.imageout-single-mode').show();
+                    $('.imageout-multiple-mode').hide();
+                }
+            }
+            $('#node-input-mode').change(toggleMode);
+            toggleMode();
+
+            // Item field custom type for typedInputs
+            var itemFieldType = {
+                value: 'item',
+                label: 'Item field',
+                icon: 'red/images/typedInput/json.svg'
+            };
+
             // Initialize TypedInput for folder path
             $("#node-input-folderPath").typedInput({
                 default: 'str',
                 types: ['str', 'msg', 'flow', 'global'],
                 typeField: "#node-input-folderPathType"
             });
-            
-            const jsonataTypeOption = {
+
+            var jsonataTypeOption = {
                 value: 'jsonata',
                 label: 'JSONata',
                 icon: 'red/images/typedInput/expr.svg'
             };
-
-            const nameTypes = ['str', 'msg', 'flow', 'global', jsonataTypeOption];
+            var nameTypes = ['str', 'msg', 'flow', 'global', jsonataTypeOption];
 
             // Initialize TypedInput for filename prefix
             $("#node-input-filenamePrefix").typedInput({
@@ -105,12 +132,31 @@
                 types: nameTypes,
                 typeField: "#node-input-filenameFullType"
             });
-            
+
             // Initialize TypedInput for input path
             $("#node-input-inputPath").typedInput({
                 default: 'msg',
                 types: ['msg', 'flow', 'global'],
                 typeField: "#node-input-inputPathType"
+            });
+
+            // Multiple mode TypedInputs
+            $("#node-input-saveConfig").typedInput({
+                default: 'msg',
+                types: ['msg', 'flow', 'global'],
+                typeField: "#node-input-saveConfigType"
+            });
+
+            $("#node-input-filenameField").typedInput({
+                default: 'item',
+                types: [itemFieldType, 'str', 'msg', 'flow', 'global'],
+                typeField: "#node-input-filenameFieldType"
+            });
+
+            $("#node-input-outputDirField").typedInput({
+                default: 'item',
+                types: [itemFieldType, 'str', 'msg', 'flow', 'global'],
+                typeField: "#node-input-outputDirFieldType"
             });
 
             // Initialize TypedInput for maximum images
@@ -119,23 +165,23 @@
                 types: ['num', 'msg', 'flow', 'global'],
                 typeField: "#node-input-maxImagesType"
             });
-            
+
             // Initialize debug width TypedInput
             $("#node-input-debugWidth").typedInput({
                 default: 'num',
                 types: ['num', 'msg', 'flow', 'global'],
                 typeField: "#node-input-debugWidthType"
             });
-            
+
             // Show/hide quality row based on format
             function updateQualityVisibility() {
-                const format = $('#node-input-outputFormat').val();
-                const qualityRow = $('#quality-row');
-                const pngCompressionRow = $('#png-compression-row');
-                const webpLosslessRow = $('#webp-lossless-row');
-                const webpEffortRow = $('#webp-effort-row');
-                const webpSmartSubsampleRow = $('#webp-smartsubsample-row');
-                
+                var format = $('#node-input-outputFormat').val();
+                var qualityRow = $('#quality-row');
+                var pngCompressionRow = $('#png-compression-row');
+                var webpLosslessRow = $('#webp-lossless-row');
+                var webpEffortRow = $('#webp-effort-row');
+                var webpSmartSubsampleRow = $('#webp-smartsubsample-row');
+
                 if (format === 'jpg') {
                     qualityRow.show();
                     pngCompressionRow.hide();
@@ -162,14 +208,14 @@
                     webpSmartSubsampleRow.hide();
                 }
             }
-            
+
             $('#node-input-outputFormat').change(updateQualityVisibility);
             updateQualityVisibility();
-            
+
             // Debug checkbox logic
-            const debugCheckbox = $('#node-input-debugEnabled');
-            const debugWidthRow = $('#debug-width-row');
-            
+            var debugCheckbox = $('#node-input-debugEnabled');
+            var debugWidthRow = $('#debug-width-row');
+
             function updateDebugWidthVisibility() {
                 if (debugCheckbox.prop('checked')) {
                     debugWidthRow.show();
@@ -177,15 +223,15 @@
                     debugWidthRow.hide();
                 }
             }
-            
+
             debugCheckbox.change(updateDebugWidthVisibility);
             updateDebugWidthVisibility();
-            
+
             // Initialize debug image display
             initDebugImageDisplay();
         }
     });
-    
+
     function sendToggleRequest(node, active, onSuccess, onError) {
         $.ajax({
             url: "image-out/" + node.id,
@@ -205,18 +251,18 @@
         });
     }
 
-    // Debug image display functionality (same as other nodes)
+    // Debug image display functionality
     function initDebugImageDisplay() {
         (function() {
             var isSubscribed = false;
-            
+
             function subscribeToDebugImages() {
                 if (isSubscribed || typeof RED === 'undefined' || !RED.comms) return;
                 isSubscribed = true;
-                
+
                 RED.comms.subscribe('debug-image', function(event, data) {
                     if (!data || !data.id) return;
-                    
+
                     try {
                         renderDebugImage(data);
                     } catch (err) {
@@ -224,25 +270,24 @@
                     }
                 });
             }
-            
+
             function renderDebugImage(data) {
-                const nodeId = data.id;
-                const base64Data = data.data;
-                const format = data.format || 'unknown';
-                const mimeType = data.mimeType || 'jpeg';
-                
+                var nodeId = data.id;
+                var base64Data = data.data;
+                var format = data.format || 'unknown';
+                var mimeType = data.mimeType || 'jpeg';
+
                 if (!base64Data) {
                     removeDebugImage(nodeId);
                     return;
                 }
-                
-                const nodeElement = document.getElementById(nodeId);
+
+                var nodeElement = document.getElementById(nodeId);
                 if (!nodeElement) return;
-                
-                let debugContainer = document.getElementById('debug-img-container-' + nodeId);
-                
+
+                var debugContainer = document.getElementById('debug-img-container-' + nodeId);
+
                 if (!debugContainer) {
-                    // Create SVG foreignObject to embed HTML content in SVG
                     debugContainer = document.createElementNS('http://www.w3.org/2000/svg', 'foreignObject');
                     debugContainer.id = 'debug-img-container-' + nodeId;
                     debugContainer.setAttribute('x', '70');
@@ -250,9 +295,8 @@
                     debugContainer.setAttribute('width', '120');
                     debugContainer.setAttribute('height', '120');
                     debugContainer.style.overflow = 'visible';
-                    
-                    // Create simple image directly inside foreignObject
-                    const img = document.createElement('img');
+
+                    var img = document.createElement('img');
                     img.id = 'debug-img-' + nodeId;
                     img.style.width = '100%';
                     img.style.height = 'auto';
@@ -260,40 +304,39 @@
                     img.style.cursor = 'pointer';
                     img.style.maxHeight = '100px';
                     img.style.maxWidth = '100px';
-                    
+
                     img.onclick = function() {
                         removeDebugImage(nodeId);
                     };
-                    
+
                     debugContainer.appendChild(img);
                     nodeElement.appendChild(debugContainer);
                 }
-                
-                const img = document.getElementById('debug-img-' + nodeId);
-                
-                if (img) {
-                    img.src = `data:image/${mimeType};base64,${base64Data}`;
-                    img.title = 'Debug image (click to hide)';
+
+                var imgEl = document.getElementById('debug-img-' + nodeId);
+
+                if (imgEl) {
+                    imgEl.src = 'data:image/' + mimeType + ';base64,' + base64Data;
+                    imgEl.title = 'Debug image (click to hide)';
                 }
             }
-            
+
             function removeDebugImage(nodeId) {
-                const debugContainer = document.getElementById('debug-img-container-' + nodeId);
+                var debugContainer = document.getElementById('debug-img-container-' + nodeId);
                 if (debugContainer) {
                     debugContainer.remove();
                 }
             }
-            
+
             function initializeWhenReady() {
                 if (typeof RED !== 'undefined' && RED.comms) {
                     subscribeToDebugImages();
-                    
-                    // Clean up orphaned debug images periodically
+
                     setInterval(function() {
-                        const debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
-                        debugContainers.forEach(container => {
-                            const nodeId = container.id.replace('debug-img-container-', '');
-                            const nodeElement = document.getElementById(nodeId);
+                        var debugContainers = document.querySelectorAll('[id^="debug-img-container-"]');
+                        debugContainers.forEach(function(container) {
+                            var nodeId = container.id.replace('debug-img-container-', '');
+                            var nodeElement = document.getElementById(nodeId);
                             if (!nodeElement) {
                                 container.remove();
                             }
@@ -303,7 +346,7 @@
                     setTimeout(initializeWhenReady, 100);
                 }
             }
-            
+
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', initializeWhenReady);
             } else {
@@ -318,46 +361,88 @@
         <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
         <input type="text" id="node-input-name" placeholder="Name">
     </div>
-    
+
     <hr>
-    
-    <!-- Folder Configuration -->
+
+    <!-- Mode Selection -->
     <div class="form-row">
-        <label for="node-input-folderPath"><i class="fa fa-folder"></i> Folder Path</label>
-        <input type="text" id="node-input-folderPath" style="width: 70%;" placeholder="/path/to/save/folder">
-        <input type="hidden" id="node-input-folderPathType">
+        <label for="node-input-mode"><i class="fa fa-list"></i> Mode</label>
+        <select id="node-input-mode" style="width: 200px;">
+            <option value="single">Single image</option>
+            <option value="multiple">Multiple images</option>
+        </select>
     </div>
-    
-    <div class="form-row">
-        <label for="node-input-filenamePrefix"><i class="fa fa-tag"></i> Filename Prefix</label>
-        <input type="text" id="node-input-filenamePrefix" style="width: 70%;" placeholder="image (optional)">
-        <input type="hidden" id="node-input-filenamePrefixType">
-        <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
-            Pattern: [prefix]_YYYYMMDD_HHMMSS.[ext]
+
+    <!-- Single Mode Fields -->
+    <div class="imageout-single-mode">
+        <div class="form-row">
+            <label for="node-input-folderPath"><i class="fa fa-folder"></i> Folder Path</label>
+            <input type="text" id="node-input-folderPath" style="width: 70%;" placeholder="/path/to/save/folder">
+            <input type="hidden" id="node-input-folderPathType">
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-filenamePrefix"><i class="fa fa-tag"></i> Filename Prefix</label>
+            <input type="text" id="node-input-filenamePrefix" style="width: 70%;" placeholder="image (optional)">
+            <input type="hidden" id="node-input-filenamePrefixType">
+            <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
+                Pattern: [prefix]_YYYYMMDD_HHMMSS.[ext]
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-filenameFull"><i class="fa fa-file-text-o"></i> Full Filename</label>
+            <input type="text" id="node-input-filenameFull" style="width: 70%;" placeholder="photo.jpg (optional)">
+            <input type="hidden" id="node-input-filenameFullType">
+            <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
+                Overrides prefix & timestamp when provided. Leave blank for automatic naming.
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="form-row">
+            <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
+            <input type="text" id="node-input-inputPath" style="width: 70%;">
+            <input type="hidden" id="node-input-inputPathType">
         </div>
     </div>
 
-    <div class="form-row">
-        <label for="node-input-filenameFull"><i class="fa fa-file-text-o"></i> Full Filename</label>
-        <input type="text" id="node-input-filenameFull" style="width: 70%;" placeholder="photo_${payload.id}.jpg (optional)">
-        <input type="hidden" id="node-input-filenameFullType">
-        <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
-            Overrides prefix & timestamp when provided. Leave blank for automatic naming.
+    <!-- Multiple Mode Fields -->
+    <div class="imageout-multiple-mode" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-saveConfig"><i class="fa fa-sign-in"></i> Input</label>
+            <input type="text" id="node-input-saveConfig" style="width: 70%;">
+            <input type="hidden" id="node-input-saveConfigType">
+            <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
+                Array of objects, each containing an image and optional filename/folder.
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-imageField"><i class="fa fa-picture-o"></i> Image field</label>
+            <input type="text" id="node-input-imageField" placeholder="bitmap" style="width: 200px;">
+            <div style="margin-left: 106px; margin-top: 4px; color: #666; font-size: 12px;">
+                Key name holding the image data in each object.
+            </div>
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-outputDirField"><i class="fa fa-folder"></i> Output dir</label>
+            <input type="text" id="node-input-outputDirField" style="width: 70%;">
+            <input type="hidden" id="node-input-outputDirFieldType">
+        </div>
+
+        <div class="form-row">
+            <label for="node-input-filenameField"><i class="fa fa-file-text-o"></i> Filename</label>
+            <input type="text" id="node-input-filenameField" style="width: 70%;">
+            <input type="hidden" id="node-input-filenameFieldType">
         </div>
     </div>
-    
+
     <hr>
-    
-    <!-- Input Configuration -->
-    <div class="form-row">
-        <label for="node-input-inputPath"><i class="fa fa-sign-in"></i> Input from</label>
-        <input type="text" id="node-input-inputPath" style="width: 70%;">
-        <input type="hidden" id="node-input-inputPathType">
-    </div>
-    
-    <hr>
-    
-    <!-- Output Format Configuration -->
+
+    <!-- Output Format Configuration (shared) -->
     <div class="form-row">
         <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
         <select id="node-input-outputFormat" style="width: 200px;">
@@ -367,13 +452,13 @@
             <option value="bmp">BMP</option>
         </select>
     </div>
-    
+
     <div class="form-row" id="quality-row">
         <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
         <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
         <span style="margin-left: 10px; color: #666;">1-100 (JPEG/WebP only)</span>
     </div>
-    
+
     <div class="form-row" id="png-compression-row" style="display: none;">
         <label for="node-input-pngCompression"><i class="fa fa-leaf"></i> Compression</label>
         <input type="number" id="node-input-pngCompression" min="0" max="9" step="1" style="width: 70px;">
@@ -397,10 +482,10 @@
         <input type="number" id="node-input-webpEffort" min="0" max="6" placeholder="4" style="width: 70px;">
         <span style="margin-left: 10px; color: #666;">0-6 (higher = smaller file, slower)</span>
     </div>
-    
+
     <hr>
-    
-    <!-- Protection Settings -->
+
+    <!-- Protection Settings (shared) -->
     <div class="form-row">
         <label for="node-input-overwriteProtection"><i class="fa fa-shield"></i> Protection</label>
         <input type="checkbox" id="node-input-overwriteProtection" style="display:inline-block; width:auto; vertical-align:baseline;" checked>
@@ -413,14 +498,14 @@
         <input type="hidden" id="node-input-maxImagesType">
         <span style="margin-left: 10px; color: #666;">0 or blank keeps all files.</span>
     </div>
-    
+
     <!-- Debug Configuration -->
     <div class="form-row">
         <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
         <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
         <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show saved image preview</label>
     </div>
-    
+
     <div class="form-row" id="debug-width-row" style="display: none;">
         <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
         <input type="text" id="node-input-debugWidth" style="width: 120px;">
@@ -430,78 +515,83 @@
 
 <script type="text/x-red" data-help-name="rp-image-out">
     <p>Saves images to the filesystem with automatic timestamp-based naming and optional overwrite protection.</p>
-    
+
     <h3>Details</h3>
     <p>This node saves image data to disk with automatic timestamp naming to ensure unique filenames. It includes an enable/disable button (similar to the debug node) that allows you to control whether images are saved without modifying your flow.</p>
-    
+
+    <h3>Mode</h3>
+    <dl class="message-properties">
+        <dt>Single image</dt>
+        <dd>Saves one image per message using the configured input path, folder, and filename settings.</dd>
+        <dt>Multiple images</dt>
+        <dd>Accepts an array of objects (e.g., from a batch pipeline). Each object contains an image and optionally a filename and output directory. Saves are processed sequentially to ensure correct overwrite protection and max-images enforcement.</dd>
+    </dl>
+
     <h3>Properties</h3>
     <dl class="message-properties">
         <dt>Folder Path <span class="property-type">string | msg | flow | global</span></dt>
-        <dd>The directory where images will be saved. Can be an absolute or relative path. The folder will be created if it doesn't exist. Can be dynamically set from message properties, flow context, or global context.</dd>
-        
+        <dd>(Single mode) The directory where images will be saved. Created automatically if missing.</dd>
+
         <dt>Filename Prefix <span class="property-type">string | msg | flow | global | JSONata</span></dt>
-        <dd>Optional prefix for the auto-generated filename. If not specified, defaults to <code>image</code>. The final filename pattern is: <code>[prefix]_YYYYMMDD_HHMMSS.[ext]</code>.</dd>
-        
+        <dd>(Single mode) Optional prefix for the auto-generated filename. Defaults to <code>image</code>. Pattern: <code>[prefix]_YYYYMMDD_HHMMSS.[ext]</code>.</dd>
+
         <dt>Full Filename <span class="property-type">string | msg | flow | global | JSONata</span></dt>
-        <dd>Overrides the prefix/timestamp pattern with an explicit name. Leave blank to keep automatic naming. You can include JSONata expressions or dynamic properties. If the expression supplies an extension (jpg/png/webp/bmp), the output format adjusts accordingly.</dd>
-        
-        <dt>Input from <span class="property-type">string</span></dt>
-        <dd>The location of the image data to save. Defaults to <code>msg.payload</code>. Can be set to any message property, flow variable, or global variable.</dd>
-        
+        <dd>(Single mode) Overrides prefix & timestamp with an explicit name. If the extension is provided (jpg/png/webp/bmp), the output format adjusts accordingly.</dd>
+
+        <dt>Input from <span class="property-type">msg | flow | global</span></dt>
+        <dd>(Single mode) Location of the image data to save. Defaults to <code>msg.payload</code>.</dd>
+
+        <dt>Input <span class="property-type">msg | flow | global</span></dt>
+        <dd>(Multiple mode) Array of objects to iterate. Defaults to <code>msg.payload</code>.</dd>
+
+        <dt>Image field <span class="property-type">string</span></dt>
+        <dd>(Multiple mode) Key name in each object holding the image data. Defaults to <code>bitmap</code>.</dd>
+
+        <dt>Output dir <span class="property-type">item field | str | msg | flow | global</span></dt>
+        <dd>(Multiple mode) Per-item folder from a key in each object, or a shared value for all items. Defaults to reading <code>outputDir</code> from each item.</dd>
+
+        <dt>Filename <span class="property-type">item field | str | msg | flow | global</span></dt>
+        <dd>(Multiple mode) Per-item filename from a key in each object, or a shared value. When blank, a timestamped name is generated. Defaults to reading <code>filename</code> from each item.</dd>
+
         <dt>Output Format <span class="property-type">select</span></dt>
-        <dd>The image format to save: JPEG, PNG, WebP, or BMP. BMP saves uncompressed with no additional options.</dd>
-        
+        <dd>Image format: JPEG, PNG, WebP, or BMP.</dd>
+
         <dt>Quality <span class="property-type">number</span></dt>
-        <dd>Quality setting for JPEG and WebP formats (1-100). Higher values mean better quality but larger file sizes.</dd>
+        <dd>Quality for JPEG and WebP (1-100).</dd>
+
+        <dt>PNG Compression <span class="property-type">number</span></dt>
+        <dd>PNG compression level (0-9). Higher = smaller file, slower.</dd>
 
         <dt>WebP Lossless <span class="property-type">boolean</span></dt>
-        <dd>When enabled and WebP is selected, encodes using lossless WebP (ignores the lossy quality slider).</dd>
+        <dd>Lossless WebP encoding (ignores quality slider).</dd>
 
         <dt>WebP Effort <span class="property-type">number</span></dt>
-        <dd>Optional 0-6 encoder effort when WebP is selected. Higher values are slower but can yield slightly smaller files. Leave blank to use the default.</dd>
+        <dd>Encoder effort 0-6 for WebP.</dd>
 
         <dt>WebP Smart Subsample <span class="property-type">boolean</span></dt>
-        <dd>For lossy WebP only: enables smarter chroma downsampling to reduce color artifacts (slower).</dd>
-        
-        <dt>PNG Compression <span class="property-type">number</span></dt>
-        <dd>PNG compression level (0-9). Higher values produce smaller files but take more processing time.</dd>
-        
-        <dt>Overwrite Protection <span class="property-type">boolean</span></dt>
-        <dd>When enabled (default), automatically appends <code>_2</code>, <code>_3</code>, etc. to filenames if a file with the same name already exists.</dd>
+        <dd>Smarter chroma downsampling for lossy WebP.</dd>
 
-        <dt>Max Images <span class="property-type">number | msg | flow | global | JSONata</span></dt>
-        <dd>Optional FIFO retention policy for the target folder. When greater than zero, the node deletes the oldest files after saving to keep at most the specified number of images.</dd>
-        
+        <dt>Overwrite Protection <span class="property-type">boolean</span></dt>
+        <dd>Appends <code>_2</code>, <code>_3</code>, etc. if a file already exists.</dd>
+
+        <dt>Max Images <span class="property-type">number | msg | flow | global</span></dt>
+        <dd>FIFO retention: deletes oldest files to keep at most this many.</dd>
+
         <dt>Active Button <span class="property-type">button</span></dt>
-        <dd>Click the button on the node to enable/disable saving. When disabled, the node passes messages through without saving images. The state is indicated by the button color (green = active, gray = inactive).</dd>
+        <dd>Enable/disable saving without modifying the flow.</dd>
     </dl>
-    
+
     <h3>Inputs</h3>
     <dl class="message-properties">
         <dt>Image Object <span class="property-type">object</span></dt>
-        <dd>Standard image structure with properties: data (Buffer), width, height, channels, colorSpace, dtype.</dd>
+        <dd>Standard image structure with properties: data (Buffer), width, height, channels, colorSpace, dtype. Or an encoded Buffer (JPEG/PNG/WebP).</dd>
     </dl>
-    
-    <h3>Outputs</h3>
-    <p>This node has no outputs. It is a terminal node that saves images to the filesystem.</p>
-    
-    <h3>Examples</h3>
-    <ul>
-        <li><strong>Basic Save:</strong> Connect to any image processing node output to save the result with timestamp naming.</li>
-        <li><strong>Dynamic Folder:</strong> Set folder path from <code>msg.folder</code> to save to different locations based on message content.</li>
-        <li><strong>With Prefix:</strong> Use prefix "webcam" to generate files like: <code>webcam_20240109_143022.jpg</code></li>
-        <li><strong>Overwrite Protection:</strong> If <code>image_20240109_143022.jpg</code> exists, saves as <code>image_20240109_143022_2.jpg</code></li>
-        <li><strong>Conditional Saving:</strong> Use the button to enable/disable saving during development or testing.</li>
-    </ul>
-    
+
     <h3>Status Indicators</h3>
     <ul>
         <li><strong>Gray dot "inactive":</strong> Node is disabled via button</li>
-        <li><strong>Blue dot "saving...":</strong> Currently writing file to disk</li>
-        <li><strong>Green dot "saved: filename":</strong> Successfully saved with filename shown</li>
-        <li><strong>Red dot "Error":</strong> Save failed (check debug panel for details)</li>
+        <li><strong>Blue dot "saving...":</strong> Currently writing file(s) to disk</li>
+        <li><strong>Green dot "saved: ...":</strong> Successfully saved (shows filename or count)</li>
+        <li><strong>Red dot "Error":</strong> Save failed (check debug panel)</li>
     </ul>
-    
-    <h3>Performance</h3>
-    <p>Image encoding and file writing are performed asynchronously for optimal performance. The node status displays the save time in milliseconds.</p>
 </script>

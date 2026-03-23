@@ -178,6 +178,14 @@ async function transformSegmentation(seg, pointFn, opts = {}) {
     s.area = s.polygons.reduce((sum, c) => sum + shoelaceArea(c), 0);
   }
 
+  // Segmentations from the inferencer may also carry raw_boxes — transform them too
+  if (s.raw_boxes && Array.isArray(s.raw_boxes) && s.raw_boxes.length === 4) {
+    s.raw_boxes = transformPoints(s.raw_boxes, pointFn);
+    if (opts.clip) s.raw_boxes = clipPoints(s.raw_boxes);
+    s.raw_boxes = reorderBoxPoints(s.raw_boxes);
+    recalculateBoxFormats(s);
+  }
+
   // Transform bitmap mask
   if (s.mask && opts.maskTransformFn) {
     try {
@@ -362,12 +370,8 @@ function makeConcatTransforms(params) {
 
   // Compute offsets along main axis
   let offset = 0;
-  const offsets = [];
   // For direction=up, C++ reverses tile order before vconcat
   const order = (direction === 'up') ? [...placements].reverse() : placements;
-  const indexMap = (direction === 'up')
-    ? placements.map((_, i) => placements.length - 1 - i)
-    : placements.map((_, i) => i);
 
   // Build offset array indexed by original image index
   const offsetByIdx = new Array(placements.length);

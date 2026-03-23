@@ -116,14 +116,6 @@ main() {
         exit 1
     fi
 
-    print_step "Adding legacy node type compatibility..."
-    cd "$SCRIPT_DIR"
-    if node scripts/dual-register.js; then
-        print_success "Legacy compatibility added."
-    else
-        print_info "Warning: Legacy compatibility script failed. Old flow type names may not work."
-    fi
-
     echo "================================================="
     print_success "Build complete!"
     echo "================================================="

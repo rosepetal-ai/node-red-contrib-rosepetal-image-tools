@@ -157,6 +157,30 @@ module.exports = function (RED) {
           taskMs: tMs
         }, elapsedTime);
 
+        // --- Inference Transform ---
+        if (cfg.inferenceEnabled === true || cfg.inferenceEnabled === 'true') {
+          try {
+            const InfTx = require('../../lib/inference-transform.js');
+            const infPath = cfg.inferencePath || 'inference';
+            const infPathType = cfg.inferencePathType || 'msg';
+            const infOutPath = cfg.inferenceOutputPath || 'inference';
+            const infOutPathType = cfg.inferenceOutputPathType || 'msg';
+            const { value: inferences } = NodeUtils.getInputValue(node, msg, infPath, infPathType);
+
+            if (inferences && Array.isArray(inferences) && inferences.length > 0) {
+              const origImg = imgs[0];
+              const txInfo = InfTx.makePaddingTransform({
+                top: tVal, bottom: bVal, left: lVal, right: rVal,
+                origW: origImg.width, origH: origImg.height
+              });
+              const transformed = await InfTx.applyTransform(inferences, txInfo, CppProcessor);
+              NodeUtils.setOutputValue(node, msg, infOutPath, infOutPathType, transformed);
+            }
+          } catch (infErr) {
+            node.warn(`Inference transform: ${infErr.message}`);
+          }
+        }
+
         send(msg); done && done();
       } catch (err) {
         NodeUtils.handleNodeErrorWithPassthrough(

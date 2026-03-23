@@ -154,6 +154,31 @@ module.exports = function (RED) {
           taskMs: totalTaskMs
         }, durMs);
 
+        // --- Inference Transform ---
+        if (config.inferenceEnabled === true || config.inferenceEnabled === 'true') {
+          try {
+            const InfTx = require('../../lib/inference-transform.js');
+            const infPath = config.inferencePath || 'inference';
+            const infPathType = config.inferencePathType || 'msg';
+            const infOutPath = config.inferenceOutputPath || 'inference';
+            const infOutPathType = config.inferenceOutputPathType || 'msg';
+            const { value: inferences } = NodeUtils.getInputValue(node, msg, infPath, infPathType);
+
+            if (inferences && Array.isArray(inferences) && inferences.length > 0) {
+              const origImg = imgs[0];
+              const txInfo = InfTx.makeRotateTransform({
+                angleDeg: angle,
+                origW: origImg.width,
+                origH: origImg.height
+              });
+              const transformed = await InfTx.applyTransform(inferences, txInfo, CppProcessor);
+              NodeUtils.setOutputValue(node, msg, infOutPath, infOutPathType, transformed);
+            }
+          } catch (infErr) {
+            node.warn(`Inference transform: ${infErr.message}`);
+          }
+        }
+
         send(msg);
         done && done();
       } catch (err) {

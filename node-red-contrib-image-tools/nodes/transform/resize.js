@@ -180,6 +180,36 @@ module.exports = function (RED) {
 
         NodeUtils.setOutputValue(node, msg, outputPath, outputPathType, out);
 
+        // --- Inference Transform ---
+        // For resize, normalized coords are invariant (identity transform).
+        // Only bitmap masks would need resizing, but we pass through coords unchanged.
+        if (config.inferenceEnabled === true || config.inferenceEnabled === 'true') {
+          try {
+            const InfTx = require('../../lib/inference-transform.js');
+            const infPath = config.inferencePath || 'inference';
+            const infPathType = config.inferencePathType || 'msg';
+            const infOutPath = config.inferenceOutputPath || 'inference';
+            const infOutPathType = config.inferenceOutputPathType || 'msg';
+            const { value: inferences } = NodeUtils.getInputValue(node, msg, infPath, infPathType);
+
+            if (inferences && Array.isArray(inferences) && inferences.length > 0) {
+              const origImg = inputList[0];
+              // Try to get output dims from raw result; fall back to input dims
+              const rawResult = results[0] && results[0].image;
+              const newW = (rawResult && rawResult.width) || origImg.width;
+              const newH = (rawResult && rawResult.height) || origImg.height;
+              const txInfo = InfTx.makeResizeTransform({
+                origW: origImg.width, origH: origImg.height,
+                newW, newH
+              });
+              const transformed = await InfTx.applyTransform(inferences, txInfo, CppProcessor);
+              NodeUtils.setOutputValue(node, msg, infOutPath, infOutPathType, transformed);
+            }
+          } catch (infErr) {
+            node.warn(`Inference transform: ${infErr.message}`);
+          }
+        }
+
         send(msg);
         done && done();
       } catch (err) {

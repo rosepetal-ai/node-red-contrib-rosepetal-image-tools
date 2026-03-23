@@ -134,6 +134,29 @@ module.exports = function (RED) {
 
         NodeUtils.recordPerformanceMetrics(node, msg, timing || {}, total);
 
+        // --- Inference Transform ---
+        if (config.inferenceEnabled === true || config.inferenceEnabled === 'true') {
+          try {
+            const InfTx = require('../../lib/inference-transform.js');
+            const infPath = config.inferencePath || 'inference';
+            const infPathType = config.inferencePathType || 'msg';
+            const infOutPath = config.inferenceOutputPath || 'inference';
+            const infOutPathType = config.inferenceOutputPathType || 'msg';
+            const { value: inferences } = NodeUtils.getInputValue(node, msg, infPath, infPathType);
+
+            if (inferences && Array.isArray(inferences) && inferences.length > 0) {
+              const imageDims = imgs.map(img => ({ width: img.width, height: img.height }));
+              const transforms = InfTx.makeConcatTransforms({
+                direction, strategy, imageDims
+              });
+              const transformed = await InfTx.applyMultiImageTransform(inferences, transforms, Cpp);
+              NodeUtils.setOutputValue(node, msg, infOutPath, infOutPathType, transformed);
+            }
+          } catch (infErr) {
+            node.warn(`Inference transform: ${infErr.message}`);
+          }
+        }
+
         send(msg);
         done && done();
       } catch (err) {

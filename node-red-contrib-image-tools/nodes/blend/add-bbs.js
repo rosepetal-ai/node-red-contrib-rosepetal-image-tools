@@ -137,18 +137,14 @@ module.exports = function (RED) {
             );
           }
 
-          // Validate 4-corner format
-          const [[x1, y1], [x2, y1_check], [x2_check, y2], [x1_check, y2_check]] = boxObj.raw_boxes;
-
-          if (x2 !== x2_check || x1 !== x1_check || y1 !== y1_check || y2 !== y2_check) {
-            return NodeUtils.handleValidationErrorWithPassthrough(
-              node, `Inconsistent corner points at index ${boxIndex}`, msg, send, done,
-              { originalPayload, outputPath, outputType: 'single' }
-            );
-          }
+          // Compute axis-aligned bounding box from 4 corners (supports rotated boxes)
+          const xs = boxObj.raw_boxes.map(p => p[0]);
+          const ys = boxObj.raw_boxes.map(p => p[1]);
+          const x1 = Math.min(...xs), x2 = Math.max(...xs);
+          const y1 = Math.min(...ys), y2 = Math.max(...ys);
 
           // Check normalized range
-          if (x1 < 0 || x1 > 1 || x2 < 0 || x2 > 1 || y1 < 0 || y1 > 1 || y2 < 0 || y2 > 1) {
+          if (x1 < 0 || x2 > 1 || y1 < 0 || y2 > 1) {
             return NodeUtils.handleValidationErrorWithPassthrough(
               node, `Box coordinates out of range [0,1] at index ${boxIndex}`, msg, send, done,
               { originalPayload, outputPath, outputType: 'single' }

@@ -163,6 +163,37 @@ module.exports = function (RED) {
           taskMs: totalTaskMs
         }, dur);
 
+        // --- Inference Transform ---
+        if (config.inferenceEnabled === true || config.inferenceEnabled === 'true') {
+          try {
+            const InfTx = require('../../lib/inference-transform.js');
+            const infPath = config.inferencePath || 'inference';
+            const infPathType = config.inferencePathType || 'msg';
+            const infOutPath = config.inferenceOutputPath || 'inference';
+            const infOutPathType = config.inferenceOutputPathType || 'msg';
+            const { value: inferences } = NodeUtils.getInputValue(node, msg, infPath, infPathType);
+
+            if (inferences && Array.isArray(inferences) && inferences.length > 0) {
+              const origImg = imgs[0];
+              // Normalize crop coords to 0-1 if in pixel mode
+              let cx0, cy0, cw, ch;
+              if (normalized) {
+                cx0 = x; cy0 = y; cw = width; ch = height;
+              } else {
+                cx0 = x / origImg.width;
+                cy0 = y / origImg.height;
+                cw = width / origImg.width;
+                ch = height / origImg.height;
+              }
+              const txInfo = InfTx.makeCropTransform({ x0: cx0, y0: cy0, w: cw, h: ch });
+              const transformed = await InfTx.applyTransform(inferences, txInfo, CppProcessor);
+              NodeUtils.setOutputValue(node, msg, infOutPath, infOutPathType, transformed);
+            }
+          } catch (infErr) {
+            node.warn(`Inference transform: ${infErr.message}`);
+          }
+        }
+
         send(msg);
         done && done();
       } catch (err) {

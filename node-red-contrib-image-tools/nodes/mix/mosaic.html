@@ -28,7 +28,11 @@
       backgroundColor:{value:"#000000"},
       coordNorm:{value:false},
       
-      positions:{value:[]}  // Array of {arrayIndex, x, y} objects
+      positions:{value:[]},  // Array of {arrayIndex, x, y} objects
+      // Inference transform
+      inferenceEnabled:{value:false},
+      inferencePath:{value:"inference"}, inferencePathType:{value:"msg"},
+      inferenceOutputPath:{value:"inference"}, inferenceOutputPathType:{value:"msg"}
     },
   
     inputs:1, outputs:1,
@@ -178,6 +182,21 @@
             // Store debug state for runtime access
             $('#node-input-debugEnabled').data('debug-enabled', enabled);
         });
+
+        // === Inference Transform Logic ===
+        $("#node-input-inferencePath").typedInput({
+          default:'msg', types:['msg','flow','global'],
+          typeField:"#node-input-inferencePathType"
+        });
+        $("#node-input-inferenceOutputPath").typedInput({
+          default:'msg', types:['msg','flow','global'],
+          typeField:"#node-input-inferenceOutputPathType"
+        });
+        const infCb = $('#node-input-inferenceEnabled');
+        const infRows = $('#inference-config-rows');
+        function updateInfVis(){ infRows.toggle(infCb.is(':checked')); }
+        updateInfVis();
+        infCb.on('change', updateInfVis);
     }
   });
 
@@ -409,6 +428,32 @@
     <li><b>Dynamic Configuration:</b> Use Add/Remove buttons to manage position mappings</li>
   </ul>
 </div>
+
+<!-- Advanced Options -->
+<details id="advanced-options" style="margin-top: 12px;">
+  <summary style="cursor: pointer; font-weight: bold; padding: 4px 0;">
+    <i class="fa fa-cog"></i> Advanced options
+  </summary>
+  <div style="margin-top: 8px;">
+    <div class="form-row">
+      <label for="node-input-inferenceEnabled"><i class="fa fa-crosshairs"></i> Inference</label>
+      <input type="checkbox" id="node-input-inferenceEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+      <label for="node-input-inferenceEnabled" style="width:auto; margin-left:5px;">Transform inference coordinates</label>
+    </div>
+    <div id="inference-config-rows" style="display: none;">
+      <div class="form-row">
+        <label for="node-input-inferencePath"><i class="fa fa-sign-in"></i> Inf. Input</label>
+        <input type="text" id="node-input-inferencePath" style="width:70%;">
+        <input type="hidden" id="node-input-inferencePathType">
+      </div>
+      <div class="form-row">
+        <label for="node-input-inferenceOutputPath"><i class="fa fa-sign-out"></i> Inf. Output</label>
+        <input type="text" id="node-input-inferenceOutputPath" style="width:70%;">
+        <input type="hidden" id="node-input-inferenceOutputPathType">
+      </div>
+    </div>
+  </div>
+</details>
 </script>
 
 <!-- 3 ▸ Help panel -->

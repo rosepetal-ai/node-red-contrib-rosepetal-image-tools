@@ -47,9 +47,6 @@
             "rp-image-in": "node-red-contrib-image-tools/nodes/io/image-in.js",
             "rp-folder-in": "node-red-contrib-image-tools/nodes/io/folder-in.js",
             "rp-image-out": "node-red-contrib-image-tools/nodes/io/image-out.js",
-            "rp-array-in": "node-red-contrib-image-tools/nodes/io/array-in.js",
-            "rp-array-out": "node-red-contrib-image-tools/nodes/io/array-out.js",
-            "rp-array-select": "node-red-contrib-image-tools/nodes/io/array-select.js",
             "rp-cropBB": "node-red-contrib-image-tools/nodes/specialized/cropBB.js",
             "rp-image-align": "node-red-contrib-image-tools/nodes/specialized/image-align.js",
             "rp-resize": "node-red-contrib-image-tools/nodes/transform/resize.js",
@@ -65,11 +62,7 @@
             "rp-blend": "node-red-contrib-image-tools/nodes/blend/blend.js",
             "rp-add-mask": "node-red-contrib-image-tools/nodes/blend/add-mask.js",
             "rp-add-masks": "node-red-contrib-image-tools/nodes/blend/add-masks.js",
-            "rp-add-bbs": "node-red-contrib-image-tools/nodes/blend/add-bbs.js",
-            "rp-queue": "node-red-contrib-image-tools/nodes/io/queue.js",
-            "rp-save-file": "node-red-contrib-image-tools/nodes/io/save-file.js",
-            "rp-clean-debug": "node-red-contrib-image-tools/nodes/util/clean-debug.js",
-            "rp-block-detect": "node-red-contrib-image-tools/nodes/util/block-detect.js"
+            "rp-add-bbs": "node-red-contrib-image-tools/nodes/blend/add-bbs.js"
         }
     }
 }

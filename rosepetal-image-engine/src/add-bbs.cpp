@@ -197,12 +197,20 @@ public:
           color[2] * 255.0f   // R
         );
 
-        // Convert normalized coordinates to pixels
+        // Convert normalized coordinates to pixels (supports rotated boxes)
+        float minX = corners[0].x, maxX = corners[0].x;
+        float minY = corners[0].y, maxY = corners[0].y;
+        for (int i = 1; i < 4; i++) {
+          minX = std::min(minX, corners[i].x);
+          maxX = std::max(maxX, corners[i].x);
+          minY = std::min(minY, corners[i].y);
+          maxY = std::max(maxY, corners[i].y);
+        }
         cv::Rect bbox;
-        bbox.x = static_cast<int>(corners[0].x * imageMat.cols);
-        bbox.y = static_cast<int>(corners[0].y * imageMat.rows);
-        bbox.width = static_cast<int>((corners[2].x - corners[0].x) * imageMat.cols);
-        bbox.height = static_cast<int>((corners[2].y - corners[0].y) * imageMat.rows);
+        bbox.x = static_cast<int>(minX * imageMat.cols);
+        bbox.y = static_cast<int>(minY * imageMat.rows);
+        bbox.width = static_cast<int>((maxX - minX) * imageMat.cols);
+        bbox.height = static_cast<int>((maxY - minY) * imageMat.rows);
 
         // Clamp to image bounds
         bbox.x = std::max(0, std::min(imageMat.cols - 1, bbox.x));

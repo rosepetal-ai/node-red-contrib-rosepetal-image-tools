@@ -296,25 +296,6 @@
       <span style="margin-left: 10px; color: #666;">pixels</span>
     </div>
 
-    <!-- Inference Transform -->
-    <div class="form-row">
-      <label for="node-input-inferenceEnabled"><i class="fa fa-crosshairs"></i> Inference</label>
-      <input type="checkbox" id="node-input-inferenceEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
-      <label for="node-input-inferenceEnabled" style="width:auto; margin-left:5px;">Transform inference coordinates</label>
-    </div>
-    <div id="inference-config-rows" style="display: none;">
-      <div class="form-row">
-        <label for="node-input-inferencePath"><i class="fa fa-sign-in"></i> Inf. Input</label>
-        <input type="text" id="node-input-inferencePath" style="width:70%;">
-        <input type="hidden" id="node-input-inferencePathType">
-      </div>
-      <div class="form-row">
-        <label for="node-input-inferenceOutputPath"><i class="fa fa-sign-out"></i> Inf. Output</label>
-        <input type="text" id="node-input-inferenceOutputPath" style="width:70%;">
-        <input type="hidden" id="node-input-inferenceOutputPathType">
-      </div>
-    </div>
-
     <hr>
 
     <strong>Margins (pixels)</strong>
@@ -343,6 +324,32 @@
       <label for="node-input-padColor"><i class="fa fa-tint"></i> Colour</label>
       <input type="color" id="node-input-padColor" style="width:80px;">
     </div>
+
+    <!-- Advanced Options -->
+    <details id="advanced-options" style="margin-top: 12px;">
+      <summary style="cursor: pointer; font-weight: bold; padding: 4px 0;">
+        <i class="fa fa-cog"></i> Advanced options
+      </summary>
+      <div style="margin-top: 8px;">
+        <div class="form-row">
+          <label for="node-input-inferenceEnabled"><i class="fa fa-crosshairs"></i> Inference</label>
+          <input type="checkbox" id="node-input-inferenceEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+          <label for="node-input-inferenceEnabled" style="width:auto; margin-left:5px;">Transform inference coordinates</label>
+        </div>
+        <div id="inference-config-rows" style="display: none;">
+          <div class="form-row">
+            <label for="node-input-inferencePath"><i class="fa fa-sign-in"></i> Inf. Input</label>
+            <input type="text" id="node-input-inferencePath" style="width:70%;">
+            <input type="hidden" id="node-input-inferencePathType">
+          </div>
+          <div class="form-row">
+            <label for="node-input-inferenceOutputPath"><i class="fa fa-sign-out"></i> Inf. Output</label>
+            <input type="text" id="node-input-inferenceOutputPath" style="width:70%;">
+            <input type="hidden" id="node-input-inferenceOutputPathType">
+          </div>
+        </div>
+      </div>
+    </details>
     </script>
     
     <!-- 3 ▸ Help panel --------------------------------------------------------->

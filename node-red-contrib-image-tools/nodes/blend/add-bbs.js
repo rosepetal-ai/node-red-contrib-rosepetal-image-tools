@@ -9,6 +9,7 @@
  */
 const { performance } = require('perf_hooks');
 const Cpp = require('../../lib/cpp-bridge.js');
+const InfTx = require('../../lib/inference-transform.js');
 
 module.exports = function (RED) {
   const NodeUtils = require('../../lib/node-utils.js')(RED);
@@ -122,6 +123,9 @@ module.exports = function (RED) {
               { originalPayload, outputPath, outputType: 'single' }
             );
           }
+
+          // Convert any box format (xywhr, cwh, 4points, 2points) to raw_boxes
+          InfTx.ensureRawBoxes(boxObj);
 
           if (!boxObj.hasOwnProperty('raw_boxes') || !Array.isArray(boxObj.raw_boxes)) {
             return NodeUtils.handleValidationErrorWithPassthrough(

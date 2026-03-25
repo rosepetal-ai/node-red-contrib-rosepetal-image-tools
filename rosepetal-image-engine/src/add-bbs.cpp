@@ -12,7 +12,8 @@
 
 // Structure for bounding box information
 struct BBoxInfo {
-  cv::Rect boundingRect;     // Pixel coordinates
+  cv::Rect boundingRect;              // Axis-aligned bounding rect (for label positioning)
+  std::vector<cv::Point> cornersPx;   // 4 oriented corner points in pixels (TL, TR, BR, BL)
   std::string className;
   float confidence;
   cv::Scalar bgrColor;       // Pre-computed BGR color (0-255)
@@ -197,22 +198,29 @@ public:
           color[2] * 255.0f   // R
         );
 
-        // Convert normalized coordinates to pixels (supports rotated boxes)
+        // Convert normalized corners to pixel coordinates
+        std::vector<cv::Point> pixelCorners;
+        pixelCorners.reserve(4);
         float minX = corners[0].x, maxX = corners[0].x;
         float minY = corners[0].y, maxY = corners[0].y;
-        for (int i = 1; i < 4; i++) {
+        for (int i = 0; i < 4; i++) {
+          int px = static_cast<int>(corners[i].x * imageMat.cols);
+          int py = static_cast<int>(corners[i].y * imageMat.rows);
+          px = std::max(0, std::min(imageMat.cols - 1, px));
+          py = std::max(0, std::min(imageMat.rows - 1, py));
+          pixelCorners.emplace_back(px, py);
           minX = std::min(minX, corners[i].x);
           maxX = std::max(maxX, corners[i].x);
           minY = std::min(minY, corners[i].y);
           maxY = std::max(maxY, corners[i].y);
         }
+
+        // Axis-aligned bounding rect (for label positioning)
         cv::Rect bbox;
         bbox.x = static_cast<int>(minX * imageMat.cols);
         bbox.y = static_cast<int>(minY * imageMat.rows);
         bbox.width = static_cast<int>((maxX - minX) * imageMat.cols);
         bbox.height = static_cast<int>((maxY - minY) * imageMat.rows);
-
-        // Clamp to image bounds
         bbox.x = std::max(0, std::min(imageMat.cols - 1, bbox.x));
         bbox.y = std::max(0, std::min(imageMat.rows - 1, bbox.y));
         bbox.width = std::min(bbox.width, imageMat.cols - bbox.x);
@@ -234,6 +242,7 @@ public:
         // Store bbox info with pre-computed values
         BBoxInfo info;
         info.boundingRect = bbox;
+        info.cornersPx = pixelCorners;
         info.className = className;
         info.confidence = confidence;
         info.bgrColor = bgrColor;
@@ -308,29 +317,39 @@ protected:
 
     // Process each bounding box
     for (const auto& bbox : bboxInfos) {
-      // Draw bounding box rectangle with faster LINE_4
-      cv::rectangle(result, bbox.boundingRect, bbox.bgrColor, actualBoxThickness, cv::LINE_4);
+      // Draw oriented bounding box as a closed polygon
+      const cv::Point* pts = bbox.cornersPx.data();
+      const int npts = static_cast<int>(bbox.cornersPx.size());
+      cv::polylines(result, &pts, &npts, 1, true, bbox.bgrColor, actualBoxThickness, cv::LINE_4);
 
       // Draw label if there's text
       if (!bbox.labelText.empty()) {
 
-        // Pre-calculated positions
-        const int textX = bbox.boundingRect.x + 2;
-        const int textY = bbox.boundingRect.y - 3;
+        // Find the topmost corner (smallest Y) for label anchor
+        int topIdx = 0;
+        for (int i = 1; i < npts; i++) {
+          if (bbox.cornersPx[i].y < bbox.cornersPx[topIdx].y ||
+              (bbox.cornersPx[i].y == bbox.cornersPx[topIdx].y &&
+               bbox.cornersPx[i].x < bbox.cornersPx[topIdx].x)) {
+            topIdx = i;
+          }
+        }
+        const int anchorX = bbox.cornersPx[topIdx].x;
+        const int anchorY = bbox.cornersPx[topIdx].y;
 
-        // Always draw background rectangle above the box (full opacity)
+        const int textX = anchorX + 2;
+        const int textY = anchorY - 3;
+
+        // Draw axis-aligned label background above the topmost corner
         if (labelBackground) {
-          // Pre-calculate and clamp coordinates
-          const int bgX1 = std::max(0, bbox.boundingRect.x);
-          const int bgY1 = std::max(0, bbox.boundingRect.y - bbox.textSize.height - 6);
-          const int bgX2 = std::min(result.cols - 1, bbox.boundingRect.x + bbox.textSize.width + 4);
-          const int bgY2 = std::min(result.rows - 1, bbox.boundingRect.y - 1);
+          const int bgX1 = std::max(0, anchorX);
+          const int bgY1 = std::max(0, anchorY - bbox.textSize.height - 6);
+          const int bgX2 = std::min(result.cols - 1, anchorX + bbox.textSize.width + 4);
+          const int bgY2 = std::min(result.rows - 1, anchorY - 1);
 
-          // Full opacity background with bbox color
           cv::rectangle(result, cv::Point(bgX1, bgY1), cv::Point(bgX2, bgY2), bbox.bgrColor, cv::FILLED);
         }
 
-        // Draw text with faster LINE_8 instead of LINE_AA
         cv::Scalar textColor = labelBackground ? cv::Scalar(0, 0, 0) : bbox.bgrColor;
         cv::putText(result, bbox.labelText, cv::Point(textX, textY), fontFace, fontScale, textColor, fontThickness, cv::LINE_8);
       }

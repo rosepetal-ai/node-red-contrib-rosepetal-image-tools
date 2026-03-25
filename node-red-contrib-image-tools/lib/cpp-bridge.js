@@ -173,14 +173,14 @@ function tryBuildFromSource() {
 function loadAddon() {
   const platformId = detectPlatform();
 
-  // 1. Try platform-specific package first (production)
-  let addon = tryLoadFromPackage(platformId);
+  // 1. Try local build first (development / install.sh)
+  let addon = tryLoadFromLocalBuild();
   if (addon) {
     return addon;
   }
 
-  // 2. Try local build (development)
-  addon = tryLoadFromLocalBuild();
+  // 2. Try platform-specific package (npm install without build tools)
+  addon = tryLoadFromPackage(platformId);
   if (addon) {
     return addon;
   }

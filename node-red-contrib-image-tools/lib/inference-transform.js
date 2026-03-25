@@ -38,6 +38,55 @@ function shoelaceArea(polygon) {
   return Math.abs(a) / 2;
 }
 
+// ─── Box Format Conversion ──────────────────────────────────────────────────
+
+/** xywhr (top-left origin, rotation in degrees) → 4 corners [TL, TR, BR, BL] */
+function xywhrToCorners(x, y, w, h, r) {
+  const rad = r * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  return [
+    [x, y],
+    [x + w * cos, y + w * sin],
+    [x + w * cos - h * sin, y + w * sin + h * cos],
+    [x - h * sin, y + h * cos]
+  ];
+}
+
+/** cwh (center origin, rotation in degrees) → 4 corners [TL, TR, BR, BL] */
+function cwhToCorners(cx, cy, w, h, r) {
+  const rad = r * Math.PI / 180;
+  const cos = Math.cos(rad), sin = Math.sin(rad);
+  const hw = w / 2, hh = h / 2;
+  return [
+    [cx - hw * cos + hh * sin, cy - hw * sin - hh * cos],
+    [cx + hw * cos + hh * sin, cy + hw * sin - hh * cos],
+    [cx + hw * cos - hh * sin, cy + hw * sin + hh * cos],
+    [cx - hw * cos - hh * sin, cy - hw * sin + hh * cos]
+  ];
+}
+
+/**
+ * Ensure a detection object has `raw_boxes` by converting from whichever
+ * format is available. Priority: raw_boxes > 4points > xywhr > cwh > 2points.
+ */
+function ensureRawBoxes(det) {
+  if (det.raw_boxes && Array.isArray(det.raw_boxes) && det.raw_boxes.length === 4) return;
+
+  if (det['4points']) {
+    const p = det['4points'];
+    det.raw_boxes = [[p.x0, p.y0], [p.x1, p.y1], [p.x2, p.y2], [p.x3, p.y3]];
+  } else if (det.xywhr) {
+    const { x, y, w, h, r } = det.xywhr;
+    det.raw_boxes = xywhrToCorners(x, y, w, h, r);
+  } else if (det.cwh) {
+    const { x, y, w, h, r } = det.cwh;
+    det.raw_boxes = cwhToCorners(x, y, w, h, r);
+  } else if (det['2points']) {
+    const { xmin, ymin, xmax, ymax } = det['2points'];
+    det.raw_boxes = [[xmin, ymin], [xmax, ymin], [xmax, ymax], [xmin, ymax]];
+  }
+}
+
 /**
  * Re-sort 4 corner points into canonical clockwise order: TL, TR, BR, BL.
  * After geometric transforms (rotation, etc.) the point order may change.
@@ -63,17 +112,24 @@ function reorderBoxPoints(points) {
  * box formats that were present on the original detection.
  */
 function recalculateBoxFormats(det) {
-  // Re-sort points into canonical TL, TR, BR, BL order
-  det.raw_boxes = reorderBoxPoints(det.raw_boxes);
+  // Do NOT reorder points — edge topology must be preserved for oriented boxes.
+  // Point 0→1 is always the width edge, point 0→3 is the height edge.
   const rb = det.raw_boxes; // [[x0,y0],[x1,y1],[x2,y2],[x3,y3]]
 
-  // 2points — axis-aligned bounding box
+  // 2points — only valid for axis-aligned boxes; remove if box is oriented
   if (det.hasOwnProperty('2points')) {
-    const xs = rb.map(p => p[0]), ys = rb.map(p => p[1]);
-    det['2points'] = {
-      xmin: Math.min(...xs), ymin: Math.min(...ys),
-      xmax: Math.max(...xs), ymax: Math.max(...ys)
-    };
+    const dx = rb[1][0] - rb[0][0];
+    const dy = rb[1][1] - rb[0][1];
+    const isAxisAligned = Math.abs(dy) < 1e-6 && Math.abs(rb[0][1] - rb[1][1]) < 1e-6;
+    if (isAxisAligned) {
+      const xs = rb.map(p => p[0]), ys = rb.map(p => p[1]);
+      det['2points'] = {
+        xmin: Math.min(...xs), ymin: Math.min(...ys),
+        xmax: Math.max(...xs), ymax: Math.max(...ys)
+      };
+    } else {
+      delete det['2points'];
+    }
   }
 
   // 4points — flat
@@ -142,6 +198,9 @@ function overlapFraction(rawBoxes, cropRegion) {
  * @returns {object|null} transformed detection or null if filtered out
  */
 function transformDetection(det, pointFn, opts = {}) {
+  // Convert any input format to raw_boxes if not already present
+  ensureRawBoxes(det);
+
   // Check overlap before cloning (optimization)
   if (opts.cropRegion) {
     const frac = overlapFraction(det.raw_boxes, opts.cropRegion);
@@ -234,9 +293,9 @@ function makeRotateTransform(params) {
     return { pointFn: (x, y) => [x, y], opts: {}, maskTransformFn: null };
   }
   if (near(90)) {
-    // Empirically verified: angle=90 produces CW rotation (BLUE→TL, RED→TR)
+    // C++ uses cv::ROTATE_90_COUNTERCLOCKWISE for angle=90
     return {
-      pointFn: (x, y) => [1 - y, x],
+      pointFn: (x, y) => [y, 1 - x],
       opts: {},
       maskTransformFn: async (mask, cppBridge) => {
         const { image } = await cppBridge.rotate(mask, 90, '#00000000', 'raw', 90, false);
@@ -255,9 +314,9 @@ function makeRotateTransform(params) {
     };
   }
   if (near(270)) {
-    // Empirically verified: angle=270 produces CCW rotation
+    // C++ uses cv::ROTATE_90_CLOCKWISE for angle=270
     return {
-      pointFn: (x, y) => [y, 1 - x],
+      pointFn: (x, y) => [1 - y, x],
       opts: {},
       maskTransformFn: async (mask, cppBridge) => {
         const { image } = await cppBridge.rotate(mask, 270, '#00000000', 'raw', 90, false);
@@ -606,6 +665,9 @@ module.exports = {
   reorderBoxPoints,
   recalculateBoxFormats,
   overlapFraction,
+  ensureRawBoxes,
+  xywhrToCorners,
+  cwhToCorners,
 
   // Core transforms
   transformDetection,

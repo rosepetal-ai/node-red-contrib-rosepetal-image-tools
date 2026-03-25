@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/rosepetal-engine-win32-x64",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "description": "Prebuilt rosepetal-image-engine binary for Windows x64",
   "os": ["win32"],
   "cpu": ["x64"],

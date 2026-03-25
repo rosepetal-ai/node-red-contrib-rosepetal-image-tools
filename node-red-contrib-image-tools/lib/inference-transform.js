@@ -292,40 +292,8 @@ function makeRotateTransform(params) {
   if (near(0)) {
     return { pointFn: (x, y) => [x, y], opts: {}, maskTransformFn: null };
   }
-  if (near(90)) {
-    // C++ uses cv::ROTATE_90_COUNTERCLOCKWISE for angle=90
-    return {
-      pointFn: (x, y) => [y, 1 - x],
-      opts: {},
-      maskTransformFn: async (mask, cppBridge) => {
-        const { image } = await cppBridge.rotate(mask, 90, '#00000000', 'raw', 90, false);
-        return image;
-      }
-    };
-  }
-  if (near(180)) {
-    return {
-      pointFn: (x, y) => [1 - x, 1 - y],
-      opts: {},
-      maskTransformFn: async (mask, cppBridge) => {
-        const { image } = await cppBridge.rotate(mask, 180, '#00000000', 'raw', 90, false);
-        return image;
-      }
-    };
-  }
-  if (near(270)) {
-    // C++ uses cv::ROTATE_90_CLOCKWISE for angle=270
-    return {
-      pointFn: (x, y) => [1 - y, x],
-      opts: {},
-      maskTransformFn: async (mask, cppBridge) => {
-        const { image } = await cppBridge.rotate(mask, 270, '#00000000', 'raw', 90, false);
-        return image;
-      }
-    };
-  }
 
-  // Arbitrary angle — replicate OpenCV getRotationMatrix2D + adjust
+  // All non-zero angles use the affine matrix path (matches C++ getRotationMatrix2D)
   const rad = angleDeg * DEG;
   const cosA = Math.cos(rad), sinA = Math.sin(rad);
   const absCos = Math.abs(cosA), absSin = Math.abs(sinA);

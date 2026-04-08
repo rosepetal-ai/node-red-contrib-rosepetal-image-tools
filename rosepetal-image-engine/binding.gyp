@@ -56,8 +56,7 @@
                 "-O3",
                 "-fexceptions",
                 "-frtti",
-                "-fno-omit-frame-pointer",
-                "-flto"
+                "-fno-omit-frame-pointer"
               ],
               "conditions": [
                 ["target_arch=='x64'", {
@@ -74,8 +73,7 @@
               ],
               "ldflags": [
                 "-static-libgcc",
-                "-static-libstdc++",
-                "-flto"
+                "-static-libstdc++"
               ]
             }],
             ["OS=='mac'", {

@@ -1,6 +1,6 @@
 {
   "name": "@rosepetal/node-red-contrib-image-tools-darwin-arm64",
-  "version": "1.4.3",
+  "version": "1.5.0",
   "description": "Prebuilt native binary for macOS ARM64 (Apple Silicon)",
   "os": ["darwin"],
   "cpu": ["arm64"],

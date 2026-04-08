@@ -53,6 +53,14 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     fi
 fi
 
+# CPU baseline: enable AVX2 + dispatch on x86_64 hosts only.
+# AVX2 is supported by every x86 CPU made since ~2013, so it's safe for the
+# published binary. Skipping on ARM64 (AVX2 doesn't exist there).
+SIMD_FLAGS=""
+if [[ "$(uname -m)" == "x86_64" || "$(uname -m)" == "amd64" ]]; then
+    SIMD_FLAGS="-DCPU_BASELINE=AVX2 -DCPU_DISPATCH=AVX2,FP16,AVX512_SKX"
+fi
+
 cmake .. \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}" \
@@ -60,7 +68,7 @@ cmake .. \
     -DBUILD_SHARED_LIBS=OFF \
     -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
     \
-    -DBUILD_LIST=core,imgproc,imgcodecs,video \
+    -DBUILD_LIST=core,imgproc,imgcodecs,video,features2d,calib3d,flann \
     \
     -DWITH_JPEG=ON \
     -DWITH_PNG=ON \
@@ -98,10 +106,13 @@ cmake .. \
     -DWITH_EIGEN=OFF \
     -DWITH_LAPACK=OFF \
     -DWITH_IPP=OFF \
-    -DWITH_TBB=OFF \
+    -DWITH_TBB=ON \
+    -DBUILD_TBB=ON \
     -DWITH_ITT=OFF \
     -DWITH_OPENMP=OFF \
     -DWITH_PTHREADS_PF=ON \
+    -DENABLE_FAST_MATH=ON \
+    ${SIMD_FLAGS} \
     \
     -DWITH_PROTOBUF=OFF \
     -DWITH_QUIRC=OFF \

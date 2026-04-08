@@ -168,6 +168,23 @@ static AlignPipeline ParsePipeline(const std::string& name) {
         " (expected: ecc, features, or features+ecc)");
 }
 
+// ECC refinement policy (only meaningful when pipeline == FEATURES_ECC):
+//   ALWAYS - run ECC refinement on every call (legacy default, preserves accuracy)
+//   AUTO   - skip ECC when ORB+RANSAC inlier count >= threshold (much faster
+//            on clean feature-rich data; may sacrifice ~5-10% accuracy on
+//            edge cases). Threshold = 50 inliers.
+//   NEVER  - never run ECC; equivalent to pipeline=features but keeps the
+//            features+ecc pipeline mode in the saved config.
+enum class EccRefineMode { ALWAYS, AUTO, NEVER };
+
+static EccRefineMode ParseEccRefine(const std::string& name) {
+    if (name == "always") return EccRefineMode::ALWAYS;
+    if (name == "auto")   return EccRefineMode::AUTO;
+    if (name == "never")  return EccRefineMode::NEVER;
+    throw std::runtime_error("Unknown eccRefine: " + name +
+        " (expected: always, auto, or never)");
+}
+
 class ImageAlignWorker : public Napi::AsyncWorker {
 public:
     ImageAlignWorker(Napi::Function& callback,
@@ -182,7 +199,8 @@ public:
                     bool returnMatrix = false,
                     const Napi::Value& polygonValue = Napi::Value(),
                     std::string motionModel = "translation",
-                    std::string pipeline = "ecc")
+                    std::string pipeline = "ecc",
+                    std::string eccRefine = "always")
         : Napi::AsyncWorker(callback),
           scale(scale),
           maxIterations(maxIterations),
@@ -196,6 +214,8 @@ public:
           useHomography(false),
           pipelineName(std::move(pipeline)),
           pipelineMode(AlignPipeline::ECC),
+          eccRefineName(std::move(eccRefine)),
+          eccRefineMode(EccRefineMode::ALWAYS),
           alignmentSuccess(false),
           hasPolygon(false),
           isPolygonArray(false) {
@@ -210,6 +230,9 @@ public:
 
             // Same for pipeline mode (ecc / features / features+ecc).
             pipelineMode = ParsePipeline(pipelineName);
+
+            // And the ECC refinement policy (always / auto / never).
+            eccRefineMode = ParseEccRefine(eccRefineName);
 
             // Convert input images to OpenCV Mat
             referenceMat = ConvertToMat(referenceImage);
@@ -449,6 +472,7 @@ protected:
                 matrix.Set("transform", matrix3x3);  // Alias for backward compatibility
                 matrix.Set("motionModel", Napi::String::New(env, motionModelName));
                 matrix.Set("pipeline", Napi::String::New(env, pipelineName));
+                matrix.Set("eccRefine", Napi::String::New(env, eccRefineName));
                 response.Set("transformMatrix", matrix);
             }
             
@@ -516,6 +540,10 @@ private:
     // Pipeline selection (which alignment algorithm(s) to run)
     std::string pipelineName;     // raw string from JS ('ecc' | 'features' | 'features+ecc')
     AlignPipeline pipelineMode;   // resolved enum
+
+    // ECC refinement policy (only meaningful when pipelineMode == FEATURES_ECC)
+    std::string eccRefineName;    // raw string from JS ('always' | 'auto' | 'never')
+    EccRefineMode eccRefineMode;  // resolved enum
 
     bool alignmentSuccess;
     
@@ -589,7 +617,8 @@ private:
     // The output coordinate space is the same as the input grayscale Mats:
     // callers are responsible for any further rescaling (e.g. to full resolution).
     bool RunFeatureSeed(const cv::Mat& refGray, const cv::Mat& targetGray,
-                        int motionFlagLocal, cv::Mat& outMatrix) const {
+                        int motionFlagLocal, cv::Mat& outMatrix,
+                        int* outInlierCount = nullptr) const {
         try {
             // First check the seed-matrix cache: if we've already solved this
             // exact (ref, target, motion) triple, return the saved matrix and
@@ -609,6 +638,7 @@ private:
                     // We must clone here so we don't corrupt the cached entry across
                     // successive calls.
                     outMatrix = hit.matrix.clone();
+                    if (outInlierCount) *outInlierCount = hit.inlierCount;
                     return true;
                 }
             }
@@ -678,28 +708,33 @@ private:
                     return false;
                 }
 
+                cv::Mat inlierMask;
                 if (motionFlagLocal == cv::MOTION_HOMOGRAPHY) {
-                    cv::Mat H = cv::findHomography(srcPts, dstPts, cv::USAC_MAGSAC, 5.0);
+                    cv::Mat H = cv::findHomography(srcPts, dstPts, cv::USAC_MAGSAC, 5.0, inlierMask);
                     if (H.empty()) return false;
                     H.convertTo(outMatrix, CV_32F);
+                    if (outInlierCount) *outInlierCount = cv::countNonZero(inlierMask);
                     return true;
                 }
 
                 if (motionFlagLocal == cv::MOTION_AFFINE) {
-                    cv::Mat A = cv::estimateAffine2D(srcPts, dstPts, cv::noArray(),
+                    cv::Mat A = cv::estimateAffine2D(srcPts, dstPts, inlierMask,
                                                      cv::USAC_MAGSAC, 5.0);
                     if (A.empty()) return false;
                     A.convertTo(outMatrix, CV_32F);
+                    if (outInlierCount) *outInlierCount = cv::countNonZero(inlierMask);
                     return true;
                 }
 
                 // Translation and Euclidean both start from a partial-affine estimate
                 // (translation + rotation + uniform scale = 4 DoF), then post-process
                 // it to drop the unwanted DoFs.
-                cv::Mat P = cv::estimateAffinePartial2D(srcPts, dstPts, cv::noArray(),
+                cv::Mat P = cv::estimateAffinePartial2D(srcPts, dstPts, inlierMask,
                                                         cv::USAC_MAGSAC, 5.0);
                 if (P.empty()) return false;
                 P.convertTo(P, CV_32F);
+
+                if (outInlierCount) *outInlierCount = cv::countNonZero(inlierMask);
 
                 if (motionFlagLocal == cv::MOTION_EUCLIDEAN) {
                     float a = P.at<float>(0, 0);
@@ -725,10 +760,11 @@ private:
             const bool ok = solve();
 
             // Record into the seed-matrix cache so future calls with the same
-            // (ref, target, motion) skip everything above.
+            // (ref, target, motion) skip everything above. Inlier count is
+            // saved so cache hits can also feed the smart-ECC-skip heuristic.
             SeedMatrixEntry entry;
             entry.ok = ok;
-            entry.inlierCount = 0;  // unused, kept for ABI compat with cache entries
+            entry.inlierCount = outInlierCount ? *outInlierCount : 0;
             if (ok) entry.matrix = outMatrix.clone();
             SeedMatrixCache::Get().Insert(seedKey, std::move(entry));
 
@@ -806,10 +842,14 @@ private:
 
             // -------- Stage 1: optional ORB feature seed -----------------
             cv::Mat seedMatrix;     // small-frame coords
+            int seedInliers = 0;
             bool haveSeed = false;
             if (pipelineMode == AlignPipeline::FEATURES ||
                 pipelineMode == AlignPipeline::FEATURES_ECC) {
-                haveSeed = RunFeatureSeed(refSmall, targetSmall, motionFlag, seedMatrix);
+                // Only ask RANSAC for the inlier count when the smart-skip
+                // policy actually needs it (saves a tiny cv::countNonZero call).
+                int* inlierOut = (eccRefineMode == EccRefineMode::AUTO) ? &seedInliers : nullptr;
+                haveSeed = RunFeatureSeed(refSmall, targetSmall, motionFlag, seedMatrix, inlierOut);
                 if (!haveSeed && pipelineMode == AlignPipeline::FEATURES) {
                     // Features-only and we couldn't find a seed -> can't recover.
                     return false;
@@ -821,6 +861,23 @@ private:
                 transformMatrix = seedMatrix;  // already in small-frame coords
                 RescaleSmallToFull(transformMatrix);
                 return true;
+            }
+
+            // -------- Smart ECC skip (opt-in via eccRefine config) --------
+            // FEATURES_ECC + eccRefine='never': always skip ECC after a good seed.
+            // FEATURES_ECC + eccRefine='auto':  skip ECC when the seed is high-
+            //                                   confidence (>=50 inliers from RANSAC),
+            //                                   keeping ECC's accuracy benefit only
+            //                                   on edge cases where features are weak.
+            if (pipelineMode == AlignPipeline::FEATURES_ECC && haveSeed) {
+                const bool skipForNever = (eccRefineMode == EccRefineMode::NEVER);
+                const bool skipForAuto  = (eccRefineMode == EccRefineMode::AUTO &&
+                                           seedInliers >= 50);
+                if (skipForNever || skipForAuto) {
+                    transformMatrix = seedMatrix;
+                    RescaleSmallToFull(transformMatrix);
+                    return true;
+                }
             }
 
             // -------- ECC path (with or without feature seed) ------------
@@ -1012,8 +1069,8 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     // Validate arguments - expect callback as last argument
-    if (info.Length() < 3 || info.Length() > 13 || !info[info.Length() - 1].IsFunction()) {
-        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], [polygon], [motionModel], [pipeline], callback)")
+    if (info.Length() < 3 || info.Length() > 14 || !info[info.Length() - 1].IsFunction()) {
+        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], [polygon], [motionModel], [pipeline], [eccRefine], callback)")
             .ThrowAsJavaScriptException();
         return env.Null();
     }
@@ -1037,6 +1094,8 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     std::string motionModel = "translation";
     // Default pipeline is ECC-only for the same back-compat reason.
     std::string pipeline = "ecc";
+    // Default eccRefine is "always" - never silently skips ECC.
+    std::string eccRefine = "always";
 
     // Parse optional parameters (before callback)
     if (info.Length() >= 4) {
@@ -1069,12 +1128,15 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     if (info.Length() >= 13) {
         pipeline = info[11].As<Napi::String>().Utf8Value();
     }
+    if (info.Length() >= 14) {
+        eccRefine = info[12].As<Napi::String>().Utf8Value();
+    }
 
     // Create and queue worker
     ImageAlignWorker* worker = new ImageAlignWorker(callback, referenceImage, targetImage,
                                                    scale, maxIterations, terminationEps,
                                                    outputFormat, quality, pngOptimize, returnMatrix, polygon,
-                                                   motionModel, pipeline);
+                                                   motionModel, pipeline, eccRefine);
     worker->Queue();
 
     return env.Undefined();

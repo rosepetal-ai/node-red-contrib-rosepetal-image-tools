@@ -108,6 +108,30 @@ module.exports = function (RED) {
           );
         }
 
+        // ECC refinement policy. Only meaningful when pipeline === 'features+ecc'.
+        //   always - run ECC refinement on every call (legacy default)
+        //   auto   - skip ECC when ORB seed has high RANSAC inlier count (>=50);
+        //            saves ~10-75% time on clean feature-rich data with ~5%
+        //            accuracy loss in edge cases
+        //   never  - never run ECC; equivalent to pipeline=features but keeps
+        //            the features+ecc mode in saved config for easy toggling
+        // Default 'always' for back-compat. New nodes also default to 'always'
+        // unless the user explicitly opts in via the dropdown.
+        const eccRefine = config.eccRefine || 'always';
+        const VALID_ECC_REFINE = ['always', 'auto', 'never'];
+        if (!VALID_ECC_REFINE.includes(eccRefine)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid eccRefine "${eccRefine}"`,
+              hint: `eccRefine must be one of: ${VALID_ECC_REFINE.join(', ')}`,
+              details: { eccRefine, referenceImagePath, targetImagePath, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          );
+        }
+
         /* ▸ Read images from message ------------------------------------ */
         // Validate input images
         const ref = NodeUtils.validateImageStructure(referenceImage, node);
@@ -297,7 +321,8 @@ module.exports = function (RED) {
           returnMatrix,
           polygon,
           motionModel,
-          pipeline
+          pipeline,
+          eccRefine
         );
 
         if (useSharpWebp) {
@@ -356,7 +381,8 @@ module.exports = function (RED) {
           timing: result.timing,
           preset: preset,
           motionModel: motionModel,
-          pipeline: pipeline
+          pipeline: pipeline,
+          eccRefine: eccRefine
         };
         
         // Add transformation matrix if returned

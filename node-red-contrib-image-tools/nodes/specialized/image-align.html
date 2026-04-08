@@ -36,6 +36,13 @@
             // New nodes default to features+ecc; existing saved flows fall
             // back to ecc in image-align.js for full backward compatibility.
             pipeline: { value: "features+ecc" },
+            // ECC refinement policy when pipeline=features+ecc:
+            //   always - run ECC every call (legacy default, preserves accuracy)
+            //   auto   - skip ECC when ORB seed has high RANSAC inlier count
+            //            (>=50). Big speedup on clean feature-rich data.
+            //   never  - never run ECC (equivalent to pipeline=features)
+            // Default 'always' for back-compat. Existing saved flows use 'always'.
+            eccRefine: { value: "always" },
             returnMatrix: { value: false },
             transformPolygon: { value: false },
             polygonPath: { value: "payload.polygon" },
@@ -191,7 +198,7 @@
             $('#node-input-preset').on('change', updatePresetDescription);
             updatePresetDescription();
 
-            // Pipeline description
+            // Pipeline description + ECC Refine row visibility
             function updatePipelineDescription() {
                 const pipeline = $('#node-input-pipeline').val();
                 let description = '';
@@ -207,10 +214,34 @@
                         break;
                 }
                 $('#pipeline-description').text(description);
+                // ECC Refine policy is only meaningful when ECC actually runs
+                $('#ecc-refine-row').toggle(pipeline === 'features+ecc');
+                $('#ecc-refine-description').toggle(pipeline === 'features+ecc');
             }
 
             $('#node-input-pipeline').on('change', updatePipelineDescription);
             updatePipelineDescription();
+
+            // ECC Refine description
+            function updateEccRefineDescription() {
+                const eccRefine = $('#node-input-eccRefine').val();
+                let description = '';
+                switch (eccRefine) {
+                    case 'always':
+                        description = 'Always run ECC refinement (legacy default, most accurate).';
+                        break;
+                    case 'auto':
+                        description = 'Skip ECC when ORB seed has 50+ RANSAC inliers. Big speedup on clean feature-rich data with ~5% accuracy loss in edge cases.';
+                        break;
+                    case 'never':
+                        description = 'Never run ECC. Equivalent to pipeline=features but keeps the features+ecc mode in saved config.';
+                        break;
+                }
+                $('#ecc-refine-description').text(description);
+            }
+
+            $('#node-input-eccRefine').on('change', updateEccRefineDescription);
+            updateEccRefineDescription();
 
             // Motion Model description
             function updateMotionModelDescription() {
@@ -458,6 +489,19 @@
         <div id="pipeline-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
     </div>
 
+    <div class="form-row" id="ecc-refine-row">
+        <label for="node-input-eccRefine"><i class="fa fa-rocket"></i> ECC Refine</label>
+        <select id="node-input-eccRefine" style="width: 250px;">
+            <option value="always">Always (legacy, accurate)</option>
+            <option value="auto">Auto (skip when seed is strong)</option>
+            <option value="never">Never (use seed only)</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <div id="ecc-refine-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+    </div>
+
     <div class="form-row">
         <label for="node-input-motionModel"><i class="fa fa-arrows"></i> Motion Model</label>
         <select id="node-input-motionModel" style="width: 200px;">
@@ -543,6 +587,15 @@
       </ul>
       New nodes default to <code>features+ecc</code>; existing saved flows that lack this field fall back to <code>ecc</code> for full backward compatibility. If ECC diverges after a successful feature seed, the seed itself is returned (rather than failing the alignment).
     </dd>
+    <dt>ECC Refine <span class="property-type">string</span></dt>
+    <dd>Only used when Pipeline is <code>features+ecc</code>. Controls whether ECC's slow iterative refinement actually runs after the ORB seed:
+      <ul>
+        <li><code>always</code> &mdash; run ECC every call. Most accurate. Legacy default.</li>
+        <li><code>auto</code> &mdash; skip ECC when the ORB seed has 50+ RANSAC inliers (high confidence). On clean feature-rich data this can save 30-200ms per call with negligible accuracy impact. ECC still runs when features are weak.</li>
+        <li><code>never</code> &mdash; never run ECC. Equivalent to <code>pipeline=features</code> but keeps the features+ecc mode in the saved config for easy toggling.</li>
+      </ul>
+      Default <code>always</code> for new nodes and back-compat with existing saved flows.
+    </dd>
     <dt>Motion Model <span class="property-type">string</span></dt>
     <dd>Geometric transform shape that the chosen pipeline is allowed to recover. One of <code>translation</code> (2 DoF), <code>euclidean</code> (3 DoF, +rotation), <code>affine</code> (6 DoF, +anisotropic scale + shear), or <code>homography</code> (8 DoF, full perspective). Default for new nodes is <code>affine</code>; existing saved flows that lack this field continue to use <code>translation</code> for full backward compatibility.</dd>
     <dt>Speed Preset <span class="property-type">string</span></dt>
@@ -570,6 +623,7 @@
         <li><code>timing</code>: processing timing breakdown</li>
         <li><code>preset</code>: speed preset used</li>
         <li><code>pipeline</code>: pipeline used (<code>ecc</code>, <code>features</code>, or <code>features+ecc</code>)</li>
+        <li><code>eccRefine</code>: ECC refinement policy used (<code>always</code>, <code>auto</code>, or <code>never</code>)</li>
         <li><code>motionModel</code>: motion model used (<code>translation</code>, <code>euclidean</code>, <code>affine</code>, or <code>homography</code>)</li>
         <li><code>transformMatrix</code>: (optional) transformation matrix when enabled:
           <ul>

@@ -57,7 +57,7 @@ $CMakeArgs = @(
     "-DCMAKE_POSITION_INDEPENDENT_CODE=ON",
 
     # Only required modules
-    "-DBUILD_LIST=core,imgproc,imgcodecs,video",
+    "-DBUILD_LIST=core,imgproc,imgcodecs,video,features2d,calib3d,flann",
 
     # Image format support (bundled)
     "-DWITH_JPEG=ON",
@@ -100,12 +100,17 @@ $CMakeArgs = @(
     "-DWITH_EIGEN=OFF",
     "-DWITH_LAPACK=OFF",
     "-DWITH_IPP=OFF",
-    "-DWITH_TBB=OFF",
+    "-DWITH_TBB=ON",
+    "-DBUILD_TBB=ON",
     "-DWITH_ITT=OFF",
     "-DWITH_OPENMP=OFF",
     "-DWITH_PROTOBUF=OFF",
     "-DWITH_QUIRC=OFF",
     "-DWITH_FLATBUFFERS=OFF",
+    "-DENABLE_FAST_MATH=ON",
+    # x64 always supports AVX2 baseline since ~2013
+    "-DCPU_BASELINE=AVX2",
+    "-DCPU_DISPATCH=AVX2,FP16,AVX512_SKX",
 
     # Disable bindings
     "-DBUILD_opencv_python2=OFF",

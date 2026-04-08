@@ -69,6 +69,45 @@ module.exports = function (RED) {
         const returnMatrix = config.returnMatrix || false;
         const transformPolygon = config.transformPolygon || false;
 
+        // Default to 'translation' so existing flows that were saved before
+        // motionModel was added behave bit-identically. New nodes set
+        // motionModel = 'affine' via the HTML defaults.
+        const motionModel = config.motionModel || 'translation';
+        const VALID_MOTION_MODELS = ['translation', 'euclidean', 'affine', 'homography'];
+        if (!VALID_MOTION_MODELS.includes(motionModel)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid motionModel "${motionModel}"`,
+              hint: `motionModel must be one of: ${VALID_MOTION_MODELS.join(', ')}`,
+              details: { motionModel, referenceImagePath, targetImagePath, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          );
+        }
+
+        // Pipeline: which alignment algorithm(s) to run.
+        //   ecc           - intensity-based ECC only (legacy default)
+        //   features      - ORB+RANSAC only, no ECC refinement
+        //   features+ecc  - ORB seed -> ECC refinement (best accuracy)
+        // Default 'ecc' for back-compat with flows saved before this field existed;
+        // new nodes get 'features+ecc' via the HTML defaults block.
+        const pipeline = config.pipeline || 'ecc';
+        const VALID_PIPELINES = ['ecc', 'features', 'features+ecc'];
+        if (!VALID_PIPELINES.includes(pipeline)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid pipeline "${pipeline}"`,
+              hint: `pipeline must be one of: ${VALID_PIPELINES.join(', ')}`,
+              details: { pipeline, referenceImagePath, targetImagePath, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          );
+        }
+
         /* ▸ Read images from message ------------------------------------ */
         // Validate input images
         const ref = NodeUtils.validateImageStructure(referenceImage, node);
@@ -256,7 +295,9 @@ module.exports = function (RED) {
           outputQuality,
           pngOptimize,
           returnMatrix,
-          polygon
+          polygon,
+          motionModel,
+          pipeline
         );
 
         if (useSharpWebp) {
@@ -313,7 +354,9 @@ module.exports = function (RED) {
         msg.alignment = {
           success: result.success,
           timing: result.timing,
-          preset: preset
+          preset: preset,
+          motionModel: motionModel,
+          pipeline: pipeline
         };
         
         // Add transformation matrix if returned

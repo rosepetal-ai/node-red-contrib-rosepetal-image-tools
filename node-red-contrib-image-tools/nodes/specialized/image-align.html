@@ -23,6 +23,19 @@
             debugWidthType: { value: "num" },
             // Alignment configuration
             preset: { value: "ultra-fast" },
+            // Motion model used by the alignment algorithm(s). Default for NEW
+            // nodes is "affine" (handles translation + rotation + anisotropic
+            // scale + shear); existing saved flows that lack this field fall
+            // back to "translation" in image-align.js for full backward
+            // compatibility.
+            motionModel: { value: "affine" },
+            // Pipeline: which alignment algorithm(s) to run.
+            //   ecc           - intensity-only ECC, identity init (legacy)
+            //   features      - ORB+RANSAC only, fast and robust
+            //   features+ecc  - ORB seed -> ECC refinement (best accuracy)
+            // New nodes default to features+ecc; existing saved flows fall
+            // back to ecc in image-align.js for full backward compatibility.
+            pipeline: { value: "features+ecc" },
             returnMatrix: { value: false },
             transformPolygon: { value: false },
             polygonPath: { value: "payload.polygon" },
@@ -177,6 +190,51 @@
             
             $('#node-input-preset').on('change', updatePresetDescription);
             updatePresetDescription();
+
+            // Pipeline description
+            function updatePipelineDescription() {
+                const pipeline = $('#node-input-pipeline').val();
+                let description = '';
+                switch (pipeline) {
+                    case 'ecc':
+                        description = 'Intensity-based ECC only. Fast for small misalignments; diverges if golden and scan are far apart.';
+                        break;
+                    case 'features':
+                        description = 'ORB feature matching + RANSAC. Robust to large misalignments; no sub-pixel refinement.';
+                        break;
+                    case 'features+ecc':
+                        description = 'ORB seeds an ECC refinement pass. Most accurate; recommended default.';
+                        break;
+                }
+                $('#pipeline-description').text(description);
+            }
+
+            $('#node-input-pipeline').on('change', updatePipelineDescription);
+            updatePipelineDescription();
+
+            // Motion Model description
+            function updateMotionModelDescription() {
+                const motionModel = $('#node-input-motionModel').val();
+                let description = '';
+                switch (motionModel) {
+                    case 'translation':
+                        description = 'Pure x/y shift (fastest, 2 DoF). Use when scans only translate.';
+                        break;
+                    case 'euclidean':
+                        description = 'Translation + rotation (3 DoF). Use for rigid in-plane rotation.';
+                        break;
+                    case 'affine':
+                        description = 'Translation + rotation + anisotropic scale + shear (6 DoF). Best general default for printed labels and documents.';
+                        break;
+                    case 'homography':
+                        description = 'Full perspective transform (8 DoF). Use only if you have real perspective distortion; slowest to converge.';
+                        break;
+                }
+                $('#motion-model-description').text(description);
+            }
+
+            $('#node-input-motionModel').on('change', updateMotionModelDescription);
+            updateMotionModelDescription();
         }
     });
 
@@ -388,6 +446,33 @@
     <hr>
 
     <div class="form-row">
+        <label for="node-input-pipeline"><i class="fa fa-cogs"></i> Pipeline</label>
+        <select id="node-input-pipeline" style="width: 250px;">
+            <option value="ecc">ECC only (intensity)</option>
+            <option value="features">Features only (ORB)</option>
+            <option value="features+ecc">Features &rarr; ECC refine</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <div id="pipeline-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+    </div>
+
+    <div class="form-row">
+        <label for="node-input-motionModel"><i class="fa fa-arrows"></i> Motion Model</label>
+        <select id="node-input-motionModel" style="width: 200px;">
+            <option value="translation">Translation (2 DoF)</option>
+            <option value="euclidean">Euclidean (3 DoF, +rotation)</option>
+            <option value="affine">Affine (6 DoF, +scale+shear)</option>
+            <option value="homography">Homography (8 DoF, +perspective)</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <div id="motion-model-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+    </div>
+
+    <div class="form-row">
         <label for="node-input-preset"><i class="fa fa-tachometer"></i> Speed Preset</label>
         <select id="node-input-preset" style="width: 200px;">
             <option value="ultra-fast">Ultra Fast</option>
@@ -449,8 +534,19 @@
     <dd>Location where aligned image will be stored. Defaults to <code>msg.payload</code>.</dd>
     <dt>Output Format <span class="property-type">string</span></dt>
     <dd>Output format: <code>raw</code> (fastest), <code>jpg</code>, <code>png</code>, or <code>webp</code>.</dd>
+    <dt>Pipeline <span class="property-type">string</span></dt>
+    <dd>Which alignment algorithm(s) to run:
+      <ul>
+        <li><code>ecc</code> &mdash; intensity-based ECC only, identity init. Legacy behavior. Fast for small misalignments but diverges when golden and scan are far apart.</li>
+        <li><code>features</code> &mdash; ORB+RANSAC feature matching only. Robust to large misalignments and rotation/scale; no sub-pixel refinement.</li>
+        <li><code>features+ecc</code> &mdash; ORB result seeds an ECC refinement pass. Best accuracy. Recommended default for new nodes.</li>
+      </ul>
+      New nodes default to <code>features+ecc</code>; existing saved flows that lack this field fall back to <code>ecc</code> for full backward compatibility. If ECC diverges after a successful feature seed, the seed itself is returned (rather than failing the alignment).
+    </dd>
+    <dt>Motion Model <span class="property-type">string</span></dt>
+    <dd>Geometric transform shape that the chosen pipeline is allowed to recover. One of <code>translation</code> (2 DoF), <code>euclidean</code> (3 DoF, +rotation), <code>affine</code> (6 DoF, +anisotropic scale + shear), or <code>homography</code> (8 DoF, full perspective). Default for new nodes is <code>affine</code>; existing saved flows that lack this field continue to use <code>translation</code> for full backward compatibility.</dd>
     <dt>Speed Preset <span class="property-type">string</span></dt>
-    <dd>Alignment speed/quality balance: <code>ultra-fast</code>, <code>fast</code>, <code>balanced</code>, or <code>quality</code>.</dd>
+    <dd>Alignment speed/quality balance: <code>ultra-fast</code>, <code>fast</code>, <code>balanced</code>, or <code>quality</code>. Higher-DoF motion models (affine, homography) may benefit from <code>balanced</code> or <code>quality</code> presets if you observe convergence issues.</dd>
     <dt>Transform Polygon <span class="property-type">boolean</span></dt>
     <dd>When enabled, transforms polygon coordinates from the specified path using the alignment transformation.</dd>
     <dt>Polygon Path <span class="property-type">string</span></dt>
@@ -473,13 +569,16 @@
         <li><code>success</code>: boolean indicating alignment success</li>
         <li><code>timing</code>: processing timing breakdown</li>
         <li><code>preset</code>: speed preset used</li>
+        <li><code>pipeline</code>: pipeline used (<code>ecc</code>, <code>features</code>, or <code>features+ecc</code>)</li>
+        <li><code>motionModel</code>: motion model used (<code>translation</code>, <code>euclidean</code>, <code>affine</code>, or <code>homography</code>)</li>
         <li><code>transformMatrix</code>: (optional) transformation matrix when enabled:
           <ul>
             <li><code>dx</code>: horizontal translation in pixels</li>
             <li><code>dy</code>: vertical translation in pixels</li>
-            <li><code>matrix2x3</code>: OpenCV 2x3 matrix format [a, b, dx, c, d, dy]</li>
-            <li><code>matrix3x3</code>: standard 3x3 homogeneous matrix [a, b, dx, c, d, dy, 0, 0, 1]</li>
+            <li><code>matrix2x3</code>: OpenCV 2x3 matrix format [a, b, dx, c, d, dy] (upper rows for homography)</li>
+            <li><code>matrix3x3</code>: 3x3 homogeneous matrix - canonical [a,b,dx,c,d,dy,0,0,1] for affine-family, full perspective matrix for homography</li>
             <li><code>transform</code>: alias for matrix3x3 (backward compatibility)</li>
+            <li><code>motionModel</code>: copy of the motion model string for introspection</li>
           </ul>
         </li>
         <li><code>originalPolygon</code>: (optional) original polygon coordinates when Transform Polygon is enabled</li>
@@ -504,12 +603,17 @@
   </ul>
 
   <h3>Algorithm Details</h3>
-  <p>Uses OpenCV's <code>findTransformECC</code> with <code>MOTION_TRANSLATION</code> for ultra-fast translation-only alignment:</p>
+  <p>Two complementary alignment families are available, selectable via the Pipeline dropdown:</p>
   <ul>
-    <li>Images are downscaled for speed (configurable scale factor)</li>
-    <li>ECC alignment finds optimal translation transform</li>
-    <li>Transform is scaled back to full resolution and applied</li>
-    <li>Target image dimensions are adjusted to match reference</li>
+    <li><strong>Feature-based</strong> (ORB + RANSAC): detects keypoints in both images, matches descriptors with brute-force Hamming + Lowe's ratio test, then runs RANSAC to fit the chosen motion model. Robust to large displacements, rotations, and scale changes. Routes to <code>cv::estimateAffinePartial2D</code> (translation/euclidean), <code>cv::estimateAffine2D</code> (affine), or <code>cv::findHomography</code> (homography).</li>
+    <li><strong>Intensity-based</strong> (<code>cv::findTransformECC</code>): iterative pixel-wise optimization. Sub-pixel accurate but a local optimizer &mdash; needs a good initial guess. Routes to <code>cv::MOTION_TRANSLATION</code> / <code>EUCLIDEAN</code> / <code>AFFINE</code> / <code>HOMOGRAPHY</code> depending on the motion model.</li>
+  </ul>
+  <p>The two are combined in <code>features+ecc</code>: ORB+RANSAC produces a coarse seed, then ECC refines it from that initial guess. If ECC diverges after the seed, the feature result is returned rather than failing the alignment.</p>
+  <ul>
+    <li>Images are downscaled for speed (configurable scale factor); both feature detection and ECC refinement run on the same downscaled grid, and the resulting matrix is rescaled to full resolution at the end.</li>
+    <li>Affine-family models are warped via <code>cv::warpAffine</code>; homography uses <code>cv::warpPerspective</code>.</li>
+    <li>Target image dimensions are adjusted to match reference before alignment.</li>
+    <li>Polygon coordinates are remapped through the inverse warp using <code>cv::transform</code> (affine) or <code>cv::perspectiveTransform</code> (homography).</li>
   </ul>
 
   <h3>Flexible Input Configuration</h3>

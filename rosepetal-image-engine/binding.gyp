@@ -22,7 +22,8 @@
         "src/add-bbs.cpp",
         "src/image-align.cpp",
         "src/draw.cpp",
-        "src/color-convert.cpp"
+        "src/color-convert.cpp",
+        "src/heat-diff.cpp"
       ],
       "defines": [
         "NAPI_CPP_EXCEPTIONS"

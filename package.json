@@ -62,7 +62,8 @@
             "rp-blend": "node-red-contrib-image-tools/nodes/blend/blend.js",
             "rp-add-mask": "node-red-contrib-image-tools/nodes/blend/add-mask.js",
             "rp-add-masks": "node-red-contrib-image-tools/nodes/blend/add-masks.js",
-            "rp-add-bbs": "node-red-contrib-image-tools/nodes/blend/add-bbs.js"
+            "rp-add-bbs": "node-red-contrib-image-tools/nodes/blend/add-bbs.js",
+            "rp-heat-diff": "node-red-contrib-image-tools/nodes/specialized/heat-diff.js"
         }
     }
 }

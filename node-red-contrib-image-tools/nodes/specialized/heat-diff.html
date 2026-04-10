@@ -1,0 +1,218 @@
+<!-- nodes/specialized/heat-diff.html -->
+
+<script type="text/javascript">
+    RED.nodes.registerType('rp-heat-diff',{
+      category:'RP Image',
+      color:'#FF6B6B',
+      icon:'font-awesome/fa-fire',
+      defaults:{
+        name:{value:""},
+        image1Path:{value:"payload"}, image1PathType:{value:"msg"},
+        image2Path:{value:"goldenImage"}, image2PathType:{value:"msg"},
+        outputPath:{value:"payload"},outputPathType:{value:"msg"},
+        outputFormat:{value:"raw"},
+        outputQuality:{value:90},
+        pngOptimize:{value:false},
+        webpLossless:{value:false},
+        webpSmartSubsample:{value:false},
+        webpEffort:{value:""},
+        debugEnabled:{value:false},
+        debugWidth:{value:200},
+        debugWidthType:{value:"num"},
+        colormap:{value:"JET"},
+        blurSize:{value:0},
+        threshold:{value:0}
+      },
+      inputs:1,outputs:1,
+      label:function(){return this.name||"rp-heat-diff";},
+      oneditprepare:function(){
+        $("#node-input-image1Path").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-image1PathType"});
+        $("#node-input-image2Path").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-image2PathType"});
+        $("#node-input-outputPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-outputPathType"});
+
+        // Threshold slider
+        var $thresholdSlider = $("#node-input-threshold");
+        var $thresholdValue = $("#threshold-value");
+        function updateThresholdDisplay() {
+          $thresholdValue.text($thresholdSlider.val());
+        }
+        $thresholdSlider.on("input", updateThresholdDisplay);
+        updateThresholdDisplay();
+
+        // Output format visibility
+        function updateQualityVisibility(){
+          var format = $("#node-input-outputFormat").val();
+          $("#quality-row").toggle(format === "jpg" || format === "webp");
+          $("#png-optimize-row").toggle(format === "png");
+          var isWebp = format === 'webp';
+          $("#webp-lossless-row").toggle(isWebp);
+          $("#webp-smartsubsample-row").toggle(isWebp);
+          $("#webp-effort-row").toggle(isWebp);
+        }
+        $("#node-input-outputFormat").on("change", updateQualityVisibility);
+        updateQualityVisibility();
+
+        // Debug display
+        var debugCheckbox = $('#node-input-debugEnabled');
+        var debugWidthRow = $('#debug-width-row');
+        $("#node-input-debugWidth").typedInput({
+            default: 'num',
+            types: ['num', 'msg', 'flow', 'global'],
+            typeField: "#node-input-debugWidthType"
+        });
+        function updateDebugWidthVisibility() {
+            debugWidthRow.toggle(debugCheckbox.is(':checked'));
+        }
+        updateDebugWidthVisibility();
+        debugCheckbox.on('change', updateDebugWidthVisibility);
+      }
+    });
+</script>
+
+<script type="text/x-red" data-template-name="rp-heat-diff">
+  <div class="form-row">
+    <label for="node-input-name"><i class="fa fa-tag"></i> Name</label>
+    <input type="text" id="node-input-name" placeholder="Name">
+  </div>
+
+  <div class="form-row">
+    <label><i class="fa fa-picture-o"></i> Image 1</label>
+    <input type="text" id="node-input-image1Path" style="width:70%;">
+    <input type="hidden" id="node-input-image1PathType">
+  </div>
+
+  <div class="form-row">
+    <label><i class="fa fa-picture-o"></i> Image 2</label>
+    <input type="text" id="node-input-image2Path" style="width:70%;">
+    <input type="hidden" id="node-input-image2PathType">
+  </div>
+
+  <div class="form-row">
+    <label><i class="fa fa-sign-out"></i> Output</label>
+    <input type="text" id="node-input-outputPath" style="width:70%;">
+    <input type="hidden" id="node-input-outputPathType">
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
+    <select id="node-input-outputFormat" style="width: 200px;">
+      <option value="raw">Raw (fastest)</option>
+      <option value="jpg">JPEG</option>
+      <option value="png">PNG</option>
+      <option value="webp">WebP</option>
+    </select>
+  </div>
+
+  <div class="form-row" id="quality-row">
+    <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
+    <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">1-100 (JPG/WebP only)</span>
+  </div>
+
+  <div class="form-row" id="png-optimize-row" style="display: none;">
+    <label for="node-input-pngOptimize"><i class="fa fa-compress"></i> PNG Optimize</label>
+    <input type="checkbox" id="node-input-pngOptimize" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-pngOptimize" style="width:auto; margin-left:5px;">Compress PNG (slower, smaller file)</label>
+  </div>
+  <div class="form-row" id="webp-lossless-row" style="display: none;">
+    <label for="node-input-webpLossless"><i class="fa fa-lock"></i> Lossless</label>
+    <input type="checkbox" id="node-input-webpLossless" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-webpLossless" style="width:auto; margin-left:5px;">Encode WebP without loss</label>
+  </div>
+  <div class="form-row" id="webp-smartsubsample-row" style="display: none;">
+    <label for="node-input-webpSmartSubsample"><i class="fa fa-magic"></i> Smart Subsample</label>
+    <input type="checkbox" id="node-input-webpSmartSubsample" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-webpSmartSubsample" style="width:auto; margin-left:5px;">Better chroma downsampling (lossy only)</label>
+  </div>
+  <div class="form-row" id="webp-effort-row" style="display: none;">
+    <label for="node-input-webpEffort"><i class="fa fa-tachometer"></i> Effort</label>
+    <input type="number" id="node-input-webpEffort" min="0" max="6" placeholder="4" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">0-6 (higher = smaller file, slower)</span>
+  </div>
+
+  <!-- Debug Configuration -->
+  <div class="form-row">
+    <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
+    <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
+  </div>
+  <div class="form-row" id="debug-width-row" style="display: none;">
+    <label for="node-input-debugWidth"><i class="fa fa-arrows-h"></i> Debug Width</label>
+    <input type="text" id="node-input-debugWidth" style="width: 120px;">
+    <input type="hidden" id="node-input-debugWidthType">
+    <span style="margin-left: 10px; color: #666;">pixels</span>
+  </div>
+
+  <hr/>
+
+  <div class="form-row">
+    <label for="node-input-colormap"><i class="fa fa-fire"></i> Colormap</label>
+    <select id="node-input-colormap" style="width: 200px;">
+      <option value="JET">Jet (blue-cyan-green-yellow-red)</option>
+      <option value="HOT">Hot (black-red-yellow-white)</option>
+      <option value="INFERNO">Inferno (black-purple-red-yellow)</option>
+      <option value="TURBO">Turbo (improved rainbow)</option>
+      <option value="BONE">Bone (blue-tinted grayscale)</option>
+      <option value="COOL">Cool (cyan-magenta)</option>
+      <option value="RAINBOW">Rainbow</option>
+      <option value="OCEAN">Ocean (blue shades)</option>
+      <option value="PINK">Pink</option>
+      <option value="HSV">HSV</option>
+    </select>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-blurSize"><i class="fa fa-circle-o"></i> Blur</label>
+    <input type="number" id="node-input-blurSize" min="0" max="99" value="0" style="width: 70px;">
+    <span style="margin-left: 10px; color: #666;">Gaussian blur kernel size (0 = off, odd values)</span>
+  </div>
+
+  <div class="form-row">
+    <label for="node-input-threshold"><i class="fa fa-filter"></i> Threshold</label>
+    <input type="range" id="node-input-threshold" min="0" max="255" value="0" style="width: 200px;">
+    <span id="threshold-value" style="margin-left: 10px; font-weight: bold;">0</span>
+    <div style="margin-top: 5px; font-size: 10px; color: #999;">
+      Pixel differences below this value are suppressed (0 = show all)
+    </div>
+  </div>
+</script>
+
+<script type="text/x-red" data-help-name="rp-heat-diff">
+  <p><b>rosepetal-heat-diff</b> computes the absolute pixel difference between two images and visualizes the result as a color-mapped heat image. Useful for comparing a scanned image against a golden reference after alignment.</p>
+
+  <h3>Details</h3>
+  <p>Both input images are converted to grayscale, then the per-pixel absolute difference is computed. The difference map is passed through a configurable colormap to produce a heat visualization where brighter/warmer colors indicate larger differences.</p>
+
+  <h3>Properties</h3>
+  <dl class="message-properties">
+    <dt>Image 1 <span class="property-type">string</span></dt>
+    <dd>Path to the first image (e.g. the scanned/test image).</dd>
+
+    <dt>Image 2 <span class="property-type">string</span></dt>
+    <dd>Path to the second image (e.g. the golden/reference image).</dd>
+
+    <dt>Output to <span class="property-type">string</span></dt>
+    <dd>Message property where the heat map image will be stored.</dd>
+
+    <dt>Colormap <span class="property-type">string</span></dt>
+    <dd>Color mapping applied to the difference: JET, HOT, INFERNO, TURBO, BONE, COOL, RAINBOW, OCEAN, PINK, HSV.</dd>
+
+    <dt>Blur <span class="property-type">number</span></dt>
+    <dd>Gaussian blur kernel size applied to the difference before colormapping. Smooths noise. 0 to disable.</dd>
+
+    <dt>Threshold <span class="property-type">number</span></dt>
+    <dd>Pixel differences below this value (0-255) are set to zero before colormapping. Suppresses minor noise.</dd>
+  </dl>
+
+  <h3>Inputs</h3>
+  <p>Two images in the standard format (raw image object or encoded buffer). Images of different sizes are resized to match the larger one.</p>
+
+  <h3>Outputs</h3>
+  <p>A 3-channel BGR heat map image in the selected output format.</p>
+</script>

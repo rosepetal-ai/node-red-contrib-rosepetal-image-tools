@@ -66,10 +66,21 @@ module.exports = function (RED) {
           msg
         ));
 
-        // Validate parameters
-        kernelSize = Math.max(3, Math.min(kernelSize, 15));
-        if (kernelSize % 2 === 0) kernelSize++; // Ensure odd size
-        intensity = Math.max(0.0, Math.min(intensity, 2.0));
+        // Override parameters for filter types with their own config
+        if (filterType === 'otsu') {
+          kernelSize = Math.max(0, Math.min(parseInt(config.otsuPreBlur) || 0, 15));
+          if (kernelSize > 0 && kernelSize < 3) kernelSize = 3;
+          if (kernelSize > 0 && kernelSize % 2 === 0) kernelSize++;
+          intensity = config.otsuInvert ? 1.0 : 0.0;
+        } else if (filterType === 'histogram_eq') {
+          kernelSize = 3; // unused but must be valid
+          intensity = Math.max(0.0, Math.min((parseInt(config.histEqStrength) || 100) / 100.0, 1.0));
+        } else {
+          // Standard filters: validate parameters
+          kernelSize = Math.max(3, Math.min(kernelSize, 15));
+          if (kernelSize % 2 === 0) kernelSize++; // Ensure odd size
+          intensity = Math.max(0.0, Math.min(intensity, 2.0));
+        }
 
         // Validate input images
         if (Array.isArray(originalPayload)) {

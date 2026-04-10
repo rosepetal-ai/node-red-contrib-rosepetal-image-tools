@@ -24,7 +24,12 @@
             kernelSize: { value: "3" },
             kernelSizeType: { value: "num" },
             intensity: { value: "1.0" },
-            intensityType: { value: "num" }
+            intensityType: { value: "num" },
+            // Otsu-specific
+            otsuInvert: { value: false },
+            otsuPreBlur: { value: 0 },
+            // Histogram EQ-specific
+            histEqStrength: { value: 100 }
         },
         inputs: 1,
         outputs: 1,
@@ -59,12 +64,37 @@
             });
 
             // === Dynamic parameter updates based on filter type ===
+            // Otsu strength display
+            var $otsuPreBlur = $("#node-input-otsuPreBlur");
+            var $otsuPreBlurValue = $("#otsu-preblur-value");
+            function updateOtsuPreBlurDisplay() {
+                var v = parseInt($otsuPreBlur.val());
+                $otsuPreBlurValue.text(v === 0 ? "Off" : v + "px");
+            }
+            $otsuPreBlur.on("input", updateOtsuPreBlurDisplay);
+            updateOtsuPreBlurDisplay();
+
+            // Histogram EQ strength display
+            var $histEqStrength = $("#node-input-histEqStrength");
+            var $histEqValue = $("#histeq-strength-value");
+            function updateHistEqDisplay() {
+                $histEqValue.text(parseInt($histEqStrength.val()) + "%");
+            }
+            $histEqStrength.on("input", updateHistEqDisplay);
+            updateHistEqDisplay();
+
             function updateFilterParameters() {
                 const filterType = $("#node-input-filterType").val();
                 const kernelSizeRow = $("#kernel-size-row");
                 const intensityRow = $("#intensity-row");
                 const intensityLabel = $("#intensity-label");
-                
+                const otsuRows = $("#otsu-params");
+                const histEqRows = $("#histeq-params");
+
+                // Hide all filter-specific rows first
+                otsuRows.hide();
+                histEqRows.hide();
+
                 // Show/hide and update labels based on filter type
                 switch (filterType) {
                     case 'blur':
@@ -91,6 +121,21 @@
                         kernelSizeRow.show();
                         intensityRow.show();
                         intensityLabel.text("Blur Radius");
+                        break;
+                    case 'otsu':
+                        kernelSizeRow.hide();
+                        intensityRow.hide();
+                        otsuRows.show();
+                        break;
+                    case 'histogram_eq':
+                        kernelSizeRow.hide();
+                        intensityRow.hide();
+                        histEqRows.show();
+                        break;
+                    case 'clahe':
+                        kernelSizeRow.show();
+                        intensityRow.show();
+                        intensityLabel.text("Clip Limit");
                         break;
                     default:
                         kernelSizeRow.show();
@@ -340,6 +385,9 @@
             <option value="edge">Edge Detection</option>
             <option value="emboss">Emboss</option>
             <option value="gaussian">Gaussian Blur</option>
+            <option value="otsu">Otsu Threshold</option>
+            <option value="histogram_eq">Histogram Equalization</option>
+            <option value="clahe">CLAHE (Adaptive Hist. Eq.)</option>
         </select>
     </div>
 
@@ -353,6 +401,35 @@
         <label for="node-input-intensity" id="intensity-label"><i class="fa fa-sliders"></i> Intensity</label>
         <input type="text" id="node-input-intensity" style="width: 70%;" placeholder="0.0 - 2.0">
         <input type="hidden" id="node-input-intensityType">
+    </div>
+
+    <!-- Otsu-specific parameters -->
+    <div id="otsu-params" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-otsuInvert"><i class="fa fa-exchange"></i> Invert</label>
+            <input type="checkbox" id="node-input-otsuInvert" style="display:inline-block; width:auto; vertical-align:baseline;">
+            <label for="node-input-otsuInvert" style="width:auto; margin-left:5px;">Invert binary output (white background, black foreground)</label>
+        </div>
+        <div class="form-row">
+            <label for="node-input-otsuPreBlur"><i class="fa fa-circle-o"></i> Pre-blur</label>
+            <input type="range" id="node-input-otsuPreBlur" min="0" max="15" step="2" value="0" style="width: 200px;">
+            <span id="otsu-preblur-value" style="margin-left: 10px; font-weight: bold;">Off</span>
+            <div style="margin-top: 5px; font-size: 10px; color: #999;">
+                Gaussian blur before thresholding to reduce noise (0 = off, odd values 3-15)
+            </div>
+        </div>
+    </div>
+
+    <!-- Histogram EQ-specific parameters -->
+    <div id="histeq-params" style="display: none;">
+        <div class="form-row">
+            <label for="node-input-histEqStrength"><i class="fa fa-sliders"></i> Strength</label>
+            <input type="range" id="node-input-histEqStrength" min="0" max="100" value="100" style="width: 200px;">
+            <span id="histeq-strength-value" style="margin-left: 10px; font-weight: bold;">100%</span>
+            <div style="margin-top: 5px; font-size: 10px; color: #999;">
+                Blend between original (0%) and fully equalized (100%)
+            </div>
+        </div>
     </div>
 
     <div class="form-tips">

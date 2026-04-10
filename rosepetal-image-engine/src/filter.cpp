@@ -68,6 +68,12 @@ protected:
         ApplyEmbossFilter();
       } else if (filterType_ == "gaussian") {
         ApplyGaussianFilter();
+      } else if (filterType_ == "otsu") {
+        ApplyOtsuFilter();
+      } else if (filterType_ == "histogram_eq") {
+        ApplyHistogramEqualization();
+      } else if (filterType_ == "clahe") {
+        ApplyCLAHE();
       } else {
         throw std::runtime_error("Unknown filter type: " + filterType_);
       }
@@ -180,6 +186,144 @@ private:
     cv::Size ksize(kernelSize_, kernelSize_);
     double sigma = kernelSize_ / 6.0 * intensity_; // Scale sigma with intensity
     cv::GaussianBlur(input_, result_, ksize, sigma);
+  }
+
+  void ApplyOtsuFilter() {
+    // kernelSize_ = pre-blur kernel (0 = none, 3+ = Gaussian blur)
+    // intensity_  = invert flag (0 = normal THRESH_BINARY, >0 = THRESH_BINARY_INV)
+
+    // Convert to grayscale if needed
+    cv::Mat gray;
+    bool wasColor = (input_.channels() > 1);
+
+    if (wasColor) {
+      if (channel_ == "BGR" || channel_ == "BGRA")
+        cv::cvtColor(input_, gray, input_.channels() == 4 ? cv::COLOR_BGRA2GRAY : cv::COLOR_BGR2GRAY);
+      else
+        cv::cvtColor(input_, gray, input_.channels() == 4 ? cv::COLOR_RGBA2GRAY : cv::COLOR_RGB2GRAY);
+    } else {
+      gray = input_;
+    }
+
+    // Optional pre-blur to reduce noise before thresholding
+    if (kernelSize_ >= 3) {
+      int k = kernelSize_ | 1; // ensure odd
+      cv::GaussianBlur(gray, gray, cv::Size(k, k), 0);
+    }
+
+    int threshType = (intensity_ > 0.5) ? cv::THRESH_BINARY_INV : cv::THRESH_BINARY;
+    cv::Mat binary;
+    cv::threshold(gray, binary, 0, 255, threshType | cv::THRESH_OTSU);
+
+    // Convert back to original channel count
+    if (wasColor) {
+      if (channel_ == "BGR" || channel_ == "BGRA") {
+        cv::cvtColor(binary, result_, cv::COLOR_GRAY2BGR);
+        if (input_.channels() == 4) cv::cvtColor(result_, result_, cv::COLOR_BGR2BGRA);
+      } else {
+        cv::cvtColor(binary, result_, cv::COLOR_GRAY2RGB);
+        if (input_.channels() == 4) cv::cvtColor(result_, result_, cv::COLOR_RGB2RGBA);
+      }
+    } else {
+      result_ = binary;
+    }
+  }
+
+  void ApplyHistogramEqualization() {
+    // intensity_ = strength blend factor (0.0 = original, 1.0 = fully equalized)
+    cv::Mat equalized;
+
+    if (input_.channels() == 1) {
+      cv::equalizeHist(input_, equalized);
+    } else {
+      // For color images, convert to YCrCb, equalize Y channel, convert back
+      cv::Mat ycrcb;
+      if (channel_ == "BGR" || channel_ == "BGRA") {
+        cv::Mat bgr = input_;
+        if (input_.channels() == 4) cv::cvtColor(input_, bgr, cv::COLOR_BGRA2BGR);
+        cv::cvtColor(bgr, ycrcb, cv::COLOR_BGR2YCrCb);
+      } else {
+        cv::Mat bgr;
+        if (input_.channels() == 4) cv::cvtColor(input_, bgr, cv::COLOR_RGBA2BGR);
+        else cv::cvtColor(input_, bgr, cv::COLOR_RGB2BGR);
+        cv::cvtColor(bgr, ycrcb, cv::COLOR_BGR2YCrCb);
+      }
+
+      std::vector<cv::Mat> channels;
+      cv::split(ycrcb, channels);
+      cv::equalizeHist(channels[0], channels[0]);
+      cv::merge(channels, ycrcb);
+
+      cv::Mat bgr_out;
+      cv::cvtColor(ycrcb, bgr_out, cv::COLOR_YCrCb2BGR);
+
+      if (channel_ == "BGR") {
+        equalized = bgr_out;
+      } else if (channel_ == "BGRA") {
+        cv::cvtColor(bgr_out, equalized, cv::COLOR_BGR2BGRA);
+      } else if (channel_ == "RGB") {
+        cv::cvtColor(bgr_out, equalized, cv::COLOR_BGR2RGB);
+      } else if (channel_ == "RGBA") {
+        cv::cvtColor(bgr_out, equalized, cv::COLOR_BGR2RGBA);
+      } else {
+        equalized = bgr_out;
+      }
+    }
+
+    // Blend between original and equalized based on strength
+    double strength = std::max(0.0, std::min(intensity_, 1.0));
+    if (strength >= 0.999) {
+      result_ = equalized;
+    } else if (strength <= 0.001) {
+      result_ = input_.clone();
+    } else {
+      cv::addWeighted(equalized, strength, input_, 1.0 - strength, 0, result_);
+    }
+  }
+
+  void ApplyCLAHE() {
+    // Contrast Limited Adaptive Histogram Equalization
+    // intensity_ controls clip limit (default 2.0), kernelSize_ controls tile grid
+    double clipLimit = std::max(1.0, intensity_ * 4.0); // scale intensity 0-2 -> clipLimit 0-8
+    int tileSize = std::max(2, kernelSize_); // use kernel size as tile grid size
+
+    auto clahe = cv::createCLAHE(clipLimit, cv::Size(tileSize, tileSize));
+
+    if (input_.channels() == 1) {
+      clahe->apply(input_, result_);
+    } else {
+      cv::Mat ycrcb;
+      if (channel_ == "BGR" || channel_ == "BGRA") {
+        cv::Mat bgr = input_;
+        if (input_.channels() == 4) cv::cvtColor(input_, bgr, cv::COLOR_BGRA2BGR);
+        cv::cvtColor(bgr, ycrcb, cv::COLOR_BGR2YCrCb);
+      } else {
+        cv::Mat bgr;
+        if (input_.channels() == 4) cv::cvtColor(input_, bgr, cv::COLOR_RGBA2BGR);
+        else cv::cvtColor(input_, bgr, cv::COLOR_RGB2BGR);
+        cv::cvtColor(bgr, ycrcb, cv::COLOR_BGR2YCrCb);
+      }
+
+      std::vector<cv::Mat> channels;
+      cv::split(ycrcb, channels);
+      clahe->apply(channels[0], channels[0]);
+      cv::merge(channels, ycrcb);
+
+      cv::Mat bgr_out;
+      cv::cvtColor(ycrcb, bgr_out, cv::COLOR_YCrCb2BGR);
+
+      if (channel_ == "BGR") {
+        result_ = bgr_out;
+      } else if (channel_ == "BGRA") {
+        cv::cvtColor(bgr_out, result_, cv::COLOR_BGR2BGRA);
+      } else if (channel_ == "RGB") {
+        cv::cvtColor(bgr_out, result_, cv::COLOR_BGR2RGB);
+      } else if (channel_ == "RGBA") {
+        cv::cvtColor(bgr_out, result_, cv::COLOR_BGR2RGBA);
+      } else {
+        result_ = bgr_out;
+      }
+    }
   }
 };
 

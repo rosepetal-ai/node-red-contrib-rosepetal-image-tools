@@ -44,6 +44,10 @@ module.exports = function(RED) {
 
     // Initialize node state
     node.active = config.active !== false;
+    const diskThresholdPct = parseInt(config.diskThreshold, 10);
+    const diskThreshold = (Number.isInteger(diskThresholdPct) && diskThresholdPct > 0 && diskThresholdPct <= 100)
+      ? diskThresholdPct / 100
+      : 0;
     let diskCheckErrorLogged = false;
 
     updateNodeStatus();
@@ -268,8 +272,8 @@ module.exports = function(RED) {
               await fs.mkdir(folderPath, { recursive: true });
 
               // Disk check
-              const diskInfo = await getDiskUsageInfo(folderPath);
-              if (diskInfo && diskInfo.usedRatio >= 0.9) {
+              const diskInfo = diskThreshold > 0 ? await getDiskUsageInfo(folderPath) : null;
+              if (diskInfo && diskInfo.usedRatio >= diskThreshold) {
                 const pct = (diskInfo.usedRatio * 100).toFixed(1);
                 node.warn(`Storage ${pct}% full, skipping remaining items.`);
                 node.status({ fill: 'yellow', shape: 'ring', text: `disk ${pct}% full` });
@@ -486,8 +490,8 @@ module.exports = function(RED) {
           }
         }
 
-        const diskInfo = await getDiskUsageInfo(folderPath);
-        if (diskInfo && diskInfo.usedRatio >= 0.9) {
+        const diskInfo = diskThreshold > 0 ? await getDiskUsageInfo(folderPath) : null;
+        if (diskInfo && diskInfo.usedRatio >= diskThreshold) {
           const usedPercent = (diskInfo.usedRatio * 100).toFixed(1);
           node.warn(`Storage at "${folderPath}" is ${usedPercent}% full. Skipping image save to avoid exhausting disk space.`);
           node.status({ fill: "yellow", shape: "ring", text: `disk ${usedPercent}% full` });

@@ -29,6 +29,7 @@
             overwriteProtection: { value: true },
             maxImages: { value: "" },
             maxImagesType: { value: "num" },
+            diskThreshold: { value: 90 },
             active: { value: true },
             debugEnabled: { value: false },
             debugWidth: { value: 200 },
@@ -499,6 +500,12 @@
         <span style="margin-left: 10px; color: #666;">0 or blank keeps all files.</span>
     </div>
 
+    <div class="form-row">
+        <label for="node-input-diskThreshold"><i class="fa fa-hdd-o"></i> Disk Limit</label>
+        <input type="number" id="node-input-diskThreshold" min="0" max="100" step="1" style="width: 70px;">
+        <span style="margin-left: 10px; color: #666;">% full — skip saving above this. 0 disables check.</span>
+    </div>
+
     <!-- Debug Configuration -->
     <div class="form-row">
         <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
@@ -576,6 +583,9 @@
 
         <dt>Max Images <span class="property-type">number | msg | flow | global</span></dt>
         <dd>FIFO retention: deletes oldest files to keep at most this many.</dd>
+
+        <dt>Disk Limit <span class="property-type">number</span></dt>
+        <dd>Percentage of disk usage above which saving is skipped (default 90). Set to 0 to disable the check.</dd>
 
         <dt>Active Button <span class="property-type">button</span></dt>
         <dd>Enable/disable saving without modifying the flow.</dd>

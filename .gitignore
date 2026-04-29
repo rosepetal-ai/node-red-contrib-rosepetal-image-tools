@@ -58,5 +58,34 @@ ehthumbs_vista.db
 
 package-lock.json
 
-.claude
-CLAUDE.md
+# .claude/ — version team-shared config; ignore session/runtime artefacts and personal overrides
+
+# Personal overrides
+.claude/settings.local.json
+.claude/**/*.local.md
+
+# Runtime caches and session state
+.claude/cache/
+.claude/plans/
+.claude/memory/
+.claude/agent-memory/
+.claude/projects/
+.claude/todos/
+.claude/tasks/
+.claude/sessions/
+.claude/shell-snapshots/
+.claude/file-history/
+.claude/session-env/
+.claude/paste-cache/
+.claude/debug/
+.claude/telemetry/
+.claude/ide/
+.claude/backups/
+.claude/history.jsonl
+.claude/plugins/
+
+# Credentials — never commit
+.claude/.credentials.json
+
+# Project-level CLAUDE.md is versioned; CLAUDE.local.md is not
+CLAUDE.local.md

@@ -1,0 +1,43 @@
+# {{display_name}} Node
+
+> **Type**: `rp-{{name}}` · **Category**: {{category_label}} · **Since**: v{{since_version}}
+
+## Overview
+
+{{overview_paragraph}}
+
+**Use cases**
+{{use_cases_bullets}}
+
+![{{display_name}} Demo](../../../assets/nodes/{{category}}/{{name}}-demo.gif)
+
+## Inputs
+
+{{inputs_section}}
+
+> Image-format details, the typed-input mechanism (`msg`/`flow`/`global`/literal), and the array-vs-single behaviour are documented in `docs/concepts/`. Don't restate them here.
+
+## Outputs
+
+{{outputs_section}}
+
+- `msg.performance.rpimage.{{performance_key}}`: `{ conversion, task, total }` in milliseconds.
+- On failure: `msg.error = { message, hint, details, operation, nodeId, nodeName, nodeType, timestamp, validationError? }` and the original payload is passed through (`outputType: 'preserve'`).
+
+## Configuration
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+{{configuration_rows}}
+
+## Examples
+
+{{examples_section}}
+
+## Troubleshooting
+
+{{troubleshooting_section}}
+
+## See Also
+
+{{see_also_links}}

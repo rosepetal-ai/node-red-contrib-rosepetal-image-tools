@@ -24,7 +24,7 @@
             outputQuality: { value: 90 },
             pngCompression: { value: 8 },
             webpLossless: { value: false },
-            webpEffort: { value: "" },
+            webpEffort: { value: 0 },
             webpSmartSubsample: { value: false },
             overwriteProtection: { value: true },
             maxImages: { value: "" },
@@ -480,7 +480,7 @@
 
     <div class="form-row" id="webp-effort-row" style="display: none;">
         <label for="node-input-webpEffort"><i class="fa fa-tachometer"></i> WebP Effort</label>
-        <input type="number" id="node-input-webpEffort" min="0" max="6" placeholder="4" style="width: 70px;">
+        <input type="number" id="node-input-webpEffort" min="0" max="6" placeholder="0" style="width: 70px;">
         <span style="margin-left: 10px; color: #666;">0-6 (higher = smaller file, slower)</span>
     </div>
 

@@ -68,13 +68,29 @@ module.exports = function (RED) {
 
         // Override parameters for filter types with their own config
         if (filterType === 'otsu') {
-          kernelSize = Math.max(0, Math.min(parseInt(config.otsuPreBlur) || 0, 15));
+          const preBlurResolved = NodeUtils.resolveDimension(
+            node,
+            config.otsuPreBlurType || 'num',
+            config.otsuPreBlur,
+            msg
+          );
+          let preBlur = parseInt(preBlurResolved);
+          if (!Number.isFinite(preBlur)) preBlur = 0;
+          kernelSize = Math.max(0, Math.min(preBlur, 15));
           if (kernelSize > 0 && kernelSize < 3) kernelSize = 3;
           if (kernelSize > 0 && kernelSize % 2 === 0) kernelSize++;
           intensity = config.otsuInvert ? 1.0 : 0.0;
         } else if (filterType === 'histogram_eq') {
           kernelSize = 3; // unused but must be valid
-          intensity = Math.max(0.0, Math.min((parseInt(config.histEqStrength) || 100) / 100.0, 1.0));
+          const strengthResolved = NodeUtils.resolveDimension(
+            node,
+            config.histEqStrengthType || 'num',
+            config.histEqStrength,
+            msg
+          );
+          let strength = parseInt(strengthResolved);
+          if (!Number.isFinite(strength)) strength = 100;
+          intensity = Math.max(0.0, Math.min(strength / 100.0, 1.0));
         } else {
           // Standard filters: validate parameters
           kernelSize = Math.max(3, Math.min(kernelSize, 15));

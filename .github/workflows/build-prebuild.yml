@@ -315,7 +315,13 @@ jobs:
           for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-arm64; do
             echo "Publishing @rosepetal/node-red-contrib-image-tools-$platform..."
             cd npm/$platform
-            npm publish --access public || echo "Package may already exist"
+            name=$(node -p "require('./package.json').name")
+            version=$(node -p "require('./package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already published, skipping"
+            else
+              npm publish --access public
+            fi
             cd ../..
           done
 
@@ -326,4 +332,10 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          npm publish --access public || echo "Package may already exist"
+          name=$(node -p "require('./package.json').name")
+          version=$(node -p "require('./package.json').version")
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already published, skipping"
+          else
+            npm publish --access public
+          fi

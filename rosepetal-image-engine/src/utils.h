@@ -107,7 +107,11 @@ inline cv::Mat ConvertToMat(const Napi::Value& input) {
     if (img.empty()) {
       throw Napi::Error::New(env, "Failed to decode image buffer.");
     }
-    return img;  // BGR/BGRA/GRAY according to file format
+
+    // imdecode returns BGR/BGRA regardless of file format, assume input is RGB/RGBA
+    if (img.channels() == 3)      cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+    else if (img.channels() == 4) cv::cvtColor(img, img, cv::COLOR_BGRA2RGBA);
+    return img;  // RGB/RGBA/GRAY, matching the colorSpace labels nodes assign
   }
 
   throw Napi::Error::New(env,

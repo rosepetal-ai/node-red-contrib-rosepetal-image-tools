@@ -298,6 +298,14 @@ jobs:
             cp -r artifacts/$platform/* npm/$platform/
           done
 
+      - name: Sync version across all packages (from tag)
+        # Stamps the tag version (refs/tags/vX.Y.Z) into the root package.json
+        # (version + optionalDependencies pins) and every npm/<arch>/package.json,
+        # so releases never need a manual bump. Runs AFTER artifact copy so it is
+        # not overwritten. On manual workflow_dispatch (no tag) it re-stamps the
+        # version already in the root package.json.
+        run: node scripts/sync-version.js
+
       - name: Verify all addons exist
         run: |
           for platform in linux-x64 linux-arm64 linuxmusl-x64 darwin-arm64; do

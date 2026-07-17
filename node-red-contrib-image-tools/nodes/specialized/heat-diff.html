@@ -211,8 +211,8 @@
   </dl>
 
   <h3>Inputs</h3>
-  <p>Two images in the standard format (raw image object or encoded buffer). Images of different sizes are resized to match the larger one.</p>
+  <p>Two images in the standard format (raw image object or encoded buffer), or two arrays of images of the same length — images are paired by index and one heat map is produced per pair. Mixing a single image with an array, or arrays of different lengths, raises an error. Images of different sizes are resized to match the larger one.</p>
 
   <h3>Outputs</h3>
-  <p>A 3-channel BGR heat map image in the selected output format.</p>
+  <p>A 3-channel BGR heat map image in the selected output format. If the inputs were arrays, the output is an array of heat maps in the same order.</p>
 </script>

@@ -2,6 +2,7 @@
  * Node-RED logic for *rosepetal-heat-diff* (C++ backend).
  * Computes absolute difference between two images and applies a colormap
  * to produce a heat map visualization of the differences.
+ * Accepts two single images or two same-length arrays (paired by index).
  *
  * Timing fields returned by C++:
  *   timing.convertMs . timing.taskMs . timing.encodeMs
@@ -67,35 +68,64 @@ module.exports = function (RED) {
               details: { image1Path, image2Path, outputPath }
             },
             msg, send, done,
-            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'preserve' }
           );
         }
 
-        const img1 = NodeUtils.validateImageStructure(image1, node);
-        if (!img1) {
+        // Both inputs must have the same shape: two singles, or two same-length arrays
+        const isArray = Array.isArray(image1);
+        if (isArray !== Array.isArray(image2)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node,
             {
-              message: 'First image is invalid or missing',
-              hint: `Check that "${image1Path}" contains a valid image.`,
+              message: 'image1 and image2 must both be single images or both be arrays',
+              hint: `"${image1Path}" is ${isArray ? 'an array' : 'a single image'} but "${image2Path}" is not.`,
               details: { image1Path, image2Path, outputPath }
             },
             msg, send, done,
-            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'preserve' }
+          );
+        }
+        if (isArray && (image1.length === 0 || image1.length !== image2.length)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Image arrays must be non-empty and of equal length (got ${image1.length} and ${image2.length})`,
+              hint: 'Images are paired by index; both arrays must contain the same number of images.',
+              details: { image1Path, image2Path, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'preserve' }
           );
         }
 
-        const img2 = NodeUtils.validateImageStructure(image2, node);
-        if (!img2) {
+        const list1 = (isArray ? image1 : [image1])
+          .map(img => NodeUtils.validateImageStructure(img, node));
+        if (list1.some(img => !img)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node,
             {
-              message: 'Second image is invalid or missing',
-              hint: `Check that "${image2Path}" contains a valid image.`,
+              message: 'First image input is invalid or missing',
+              hint: `Check that "${image1Path}" contains valid image(s).`,
               details: { image1Path, image2Path, outputPath }
             },
             msg, send, done,
-            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'single' }
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'preserve' }
+          );
+        }
+
+        const list2 = (isArray ? image2 : [image2])
+          .map(img => NodeUtils.validateImageStructure(img, node));
+        if (list2.some(img => !img)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: 'Second image input is invalid or missing',
+              hint: `Check that "${image2Path}" contains valid image(s).`,
+              details: { image1Path, image2Path, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: baseImageForPassthrough, outputPath, outputType: 'preserve' }
           );
         }
 
@@ -110,17 +140,33 @@ module.exports = function (RED) {
         const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
         const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
-        /* Single call to the C++ addon */
-        let { image, timing = {} } =
-          await Cpp.heatDiff(img1, img2, colormapType, blurSize, threshold,
-                             cppFormat, outputQuality, pngOptimize);
+        /* One C++ call per pair (index-matched) */
+        const results = await Promise.all(
+          list1.map((img1, i) =>
+            Cpp.heatDiff(img1, list2[i], colormapType, blurSize, threshold,
+                         cppFormat, outputQuality, pngOptimize))
+        );
+
+        // Aggregate timings across pairs
+        const timing = results.reduce(
+          (acc, { timing: t }) => {
+            acc.convertMs += t?.convertMs ?? 0;
+            acc.taskMs    += t?.taskMs    ?? 0;
+            acc.encodeMs  += t?.encodeMs  ?? 0;
+            return acc;
+          },
+          { convertMs: 0, taskMs: 0, encodeMs: 0 }
+        );
+        const images = results.map(r => r.image);
 
         if (useSharpWebp) {
-          image = await NodeUtils.encodeWebpAdvanced(image, config);
+          for (let i = 0; i < images.length; i++) {
+            images[i] = await NodeUtils.encodeWebpAdvanced(images[i], config);
+          }
         }
 
-        /* Write result */
-        RED.util.setMessageProperty(msg, outputPath, image);
+        /* Write result — array in, array out */
+        RED.util.setMessageProperty(msg, outputPath, isArray ? images : images[0]);
 
         /* Status */
         const total = performance.now() - t0;
@@ -137,14 +183,16 @@ module.exports = function (RED) {
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200);
 
+            // For arrays, show the first heat map as representative
             const debugResult = await NodeUtils.debugImageDisplay(
-              image, outputFormat, outputQuality,
+              images[0], outputFormat, outputQuality,
               node, debugEnabled, debugWidth
             );
 
             if (debugResult) {
               debugFormat = debugResult.formatMessage;
-              NodeUtils.setSuccessStatusWithDebug(node, 1, total, timing, debugFormat);
+              NodeUtils.setSuccessStatusWithDebug(node, results.length, total, timing,
+                debugFormat + (isArray ? ' (first)' : ''));
             }
           } catch (debugError) {
             node.warn(`Debug display error: ${debugError.message}`);
@@ -152,10 +200,10 @@ module.exports = function (RED) {
         }
 
         if (!debugFormat) {
-          NodeUtils.setSuccessStatus(node, 1, total, timing);
+          NodeUtils.setSuccessStatus(node, results.length, total, timing);
         }
 
-        NodeUtils.recordPerformanceMetrics(node, msg, timing || {}, total);
+        NodeUtils.recordPerformanceMetrics(node, msg, timing, total);
 
         send(msg);
         done && done();
@@ -165,7 +213,7 @@ module.exports = function (RED) {
           {
             originalPayload: baseImageForPassthrough,
             outputPath,
-            outputType: 'single',
+            outputType: 'preserve',
             context: { image1Path, image2Path, outputPath }
           }
         );

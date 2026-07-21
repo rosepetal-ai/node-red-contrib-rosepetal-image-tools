@@ -20,8 +20,10 @@
         debugWidth:{value:200},
         debugWidthType:{value:"num"},
         colormap:{value:"JET"},
-        blurSize:{value:0},
-        threshold:{value:0}
+        blurSize:{value:0}, blurSizeType:{value:"num"},
+        threshold:{value:0}, thresholdType:{value:"num"},
+        statsEnabled:{value:true},
+        statsPath:{value:"diffStats"}, statsPathType:{value:"msg"}
       },
       inputs:1,outputs:1,
       label:function(){return this.name||"rp-heat-diff";},
@@ -35,15 +37,24 @@
         $("#node-input-outputPath").typedInput({
           default:'msg',types:['msg','flow','global'],
           typeField:"#node-input-outputPathType"});
+        $("#node-input-statsPath").typedInput({
+          default:'msg',types:['msg','flow','global'],
+          typeField:"#node-input-statsPathType"});
 
-        // Threshold slider
-        var $thresholdSlider = $("#node-input-threshold");
-        var $thresholdValue = $("#threshold-value");
-        function updateThresholdDisplay() {
-          $thresholdValue.text($thresholdSlider.val());
+        // Stats path only relevant when stats are enabled
+        var statsCheckbox = $('#node-input-statsEnabled');
+        function updateStatsPathVisibility(){
+          $("#stats-path-row").toggle(statsCheckbox.is(':checked'));
         }
-        $thresholdSlider.on("input", updateThresholdDisplay);
-        updateThresholdDisplay();
+        statsCheckbox.on('change', updateStatsPathVisibility);
+        updateStatsPathVisibility();
+
+        $("#node-input-blurSize").typedInput({
+          default:'num',types:['num','msg','flow','global'],
+          typeField:"#node-input-blurSizeType"});
+        $("#node-input-threshold").typedInput({
+          default:'num',types:['num','msg','flow','global'],
+          typeField:"#node-input-thresholdType"});
 
         // Output format visibility
         function updateQualityVisibility(){
@@ -109,6 +120,17 @@
     </select>
   </div>
 
+  <div class="form-row">
+    <label for="node-input-statsEnabled"><i class="fa fa-bar-chart"></i> Statistics</label>
+    <input type="checkbox" id="node-input-statsEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-statsEnabled" style="width:auto; margin-left:5px;">Compute diff statistics</label>
+  </div>
+  <div class="form-row" id="stats-path-row">
+    <label for="node-input-statsPath"><i class="fa fa-bar-chart"></i> Stats to</label>
+    <input type="text" id="node-input-statsPath" style="width:70%;">
+    <input type="hidden" id="node-input-statsPathType">
+  </div>
+
   <div class="form-row" id="quality-row">
     <label for="node-input-outputQuality"><i class="fa fa-sliders"></i> Quality</label>
     <input type="number" id="node-input-outputQuality" min="1" max="100" value="90" style="width: 70px;">
@@ -169,17 +191,16 @@
 
   <div class="form-row">
     <label for="node-input-blurSize"><i class="fa fa-circle-o"></i> Blur</label>
-    <input type="number" id="node-input-blurSize" min="0" max="99" value="0" style="width: 70px;">
+    <input type="text" id="node-input-blurSize" style="width: 160px;">
+    <input type="hidden" id="node-input-blurSizeType">
     <span style="margin-left: 10px; color: #666;">Gaussian blur kernel size (0 = off, odd values)</span>
   </div>
 
   <div class="form-row">
     <label for="node-input-threshold"><i class="fa fa-filter"></i> Threshold</label>
-    <input type="range" id="node-input-threshold" min="0" max="255" value="0" style="width: 200px;">
-    <span id="threshold-value" style="margin-left: 10px; font-weight: bold;">0</span>
-    <div style="margin-top: 5px; font-size: 10px; color: #999;">
-      Pixel differences below this value are suppressed (0 = show all)
-    </div>
+    <input type="text" id="node-input-threshold" style="width: 160px;">
+    <input type="hidden" id="node-input-thresholdType">
+    <span style="margin-left: 10px; color: #666;">0-255; differences below this are suppressed (0 = show all)</span>
   </div>
 </script>
 
@@ -203,11 +224,17 @@
     <dt>Colormap <span class="property-type">string</span></dt>
     <dd>Color mapping applied to the difference: JET, HOT, INFERNO, TURBO, BONE, COOL, RAINBOW, OCEAN, PINK, HSV.</dd>
 
-    <dt>Blur <span class="property-type">number</span></dt>
-    <dd>Gaussian blur kernel size applied to the difference before colormapping. Smooths noise. 0 to disable.</dd>
+    <dt>Blur <span class="property-type">number | msg | flow | global</span></dt>
+    <dd>Gaussian blur kernel size applied to the difference before colormapping. Smooths noise. 0 to disable. Can be a fixed number or resolved from a msg/flow/global property per message.</dd>
 
-    <dt>Threshold <span class="property-type">number</span></dt>
-    <dd>Pixel differences below this value (0-255) are set to zero before colormapping. Suppresses minor noise.</dd>
+    <dt>Threshold <span class="property-type">number | msg | flow | global</span></dt>
+    <dd>Pixel differences below this value (0-255) are set to zero before colormapping. Suppresses minor noise. Also defines which pixels count as "changed" for the statistics. Can be a fixed number or resolved from a msg/flow/global property per message.</dd>
+
+    <dt>Statistics <span class="property-type">boolean</span></dt>
+    <dd>When enabled (default), numeric diff statistics are computed.</dd>
+
+    <dt>Stats to <span class="property-type">string</span></dt>
+    <dd>Message property where the statistics object is stored. Default <code>msg.diffStats</code>.</dd>
   </dl>
 
   <h3>Inputs</h3>
@@ -215,4 +242,17 @@
 
   <h3>Outputs</h3>
   <p>A 3-channel BGR heat map image in the selected output format. If the inputs were arrays, the output is an array of heat maps in the same order.</p>
+  <p>When Statistics is enabled, the configured stats property (default <code>msg.diffStats</code>) holds an object (or array, matching the input shape) with:</p>
+  <dl class="message-properties">
+    <dt>validRatio <span class="property-type">number</span></dt>
+    <dd>Fraction of pixels used for statistics. Pixels that are pure black in either input (alignment borders, composite padding) are excluded from all stats.</dd>
+    <dt>changedRatio <span class="property-type">number</span></dt>
+    <dd>Fraction of valid pixels whose difference exceeds the threshold.</dd>
+    <dt>meanDiff / maxDiff / p50 / p95 / p99 <span class="property-type">number</span></dt>
+    <dd>Mean, maximum and percentiles of the difference values (0-255) over valid pixels.</dd>
+    <dt>rmse / psnr / ssim <span class="property-type">number</span></dt>
+    <dd>Root-mean-square error, peak signal-to-noise ratio (dB, 100 = identical) and structural similarity (0-1, 1 = identical).</dd>
+    <dt>blobCount / largestBlobArea / blobs <span class="property-type">number | array</span></dt>
+    <dd>Connected regions of changed pixels. <code>blobs</code> lists up to 50 regions, largest first, each with <code>x, y, w, h, area, cx, cy</code> in output-image coordinates.</dd>
+  </dl>
 </script>

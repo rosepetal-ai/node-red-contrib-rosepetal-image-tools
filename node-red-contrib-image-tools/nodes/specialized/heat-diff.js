@@ -132,11 +132,17 @@ module.exports = function (RED) {
         /* Options from the editor */
         const colormapName = config.colormap || 'JET';
         const colormapType = COLORMAP[colormapName] !== undefined ? COLORMAP[colormapName] : 2;
-        const blurSize = Math.max(0, parseInt(config.blurSize) || 0);
-        const threshold = Math.max(0, Math.min(255, parseInt(config.threshold) || 0));
+        const blurSize = Math.max(0, parseInt(NodeUtils.resolveDimension(
+          node, config.blurSizeType || 'num', config.blurSize, msg)) || 0);
+        const threshold = Math.max(0, Math.min(255, parseInt(NodeUtils.resolveDimension(
+          node, config.thresholdType || 'num', config.threshold, msg)) || 0));
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
+        // Stats on by default; existing flows without the property get them too
+        const statsEnabled = config.statsEnabled !== false && config.statsEnabled !== 'false';
+        const statsPath = config.statsPath || 'diffStats';
+        const statsPathType = config.statsPathType || 'msg';
         const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
         const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
@@ -144,7 +150,7 @@ module.exports = function (RED) {
         const results = await Promise.all(
           list1.map((img1, i) =>
             Cpp.heatDiff(img1, list2[i], colormapType, blurSize, threshold,
-                         cppFormat, outputQuality, pngOptimize))
+                         cppFormat, outputQuality, pngOptimize, statsEnabled))
         );
 
         // Aggregate timings across pairs
@@ -167,6 +173,12 @@ module.exports = function (RED) {
 
         /* Write result — array in, array out */
         RED.util.setMessageProperty(msg, outputPath, isArray ? images : images[0]);
+
+        /* Diff statistics, same shape as the image output */
+        if (statsEnabled) {
+          const stats = results.map(r => r.stats);
+          NodeUtils.setOutputValue(node, msg, statsPath, statsPathType, isArray ? stats : stats[0]);
+        }
 
         /* Status */
         const total = performance.now() - t0;

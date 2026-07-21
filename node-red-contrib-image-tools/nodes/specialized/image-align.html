@@ -43,6 +43,11 @@
             //   never  - never run ECC (equivalent to pipeline=features)
             // Default 'always' for back-compat. Existing saved flows use 'always'.
             eccRefine: { value: "always" },
+            // Feature detector for the seed stage (features / features+ecc):
+            //   orb  - binary descriptors, fastest (default)
+            //   sift - float descriptors, more robust on low-texture/blurry
+            //          images, ~2-4x slower
+            detector: { value: "orb" },
             returnMatrix: { value: false },
             transformPolygon: { value: false },
             polygonPath: { value: "payload.polygon" },
@@ -217,10 +222,31 @@
                 // ECC Refine policy is only meaningful when ECC actually runs
                 $('#ecc-refine-row').toggle(pipeline === 'features+ecc');
                 $('#ecc-refine-description').toggle(pipeline === 'features+ecc');
+                // Detector is only used by the feature-seed stage
+                $('#detector-row').toggle(pipeline !== 'ecc');
+                $('#detector-description').toggle(pipeline !== 'ecc');
             }
 
             $('#node-input-pipeline').on('change', updatePipelineDescription);
             updatePipelineDescription();
+
+            // Detector description
+            function updateDetectorDescription() {
+                const detector = $('#node-input-detector').val();
+                let description = '';
+                switch (detector) {
+                    case 'orb':
+                        description = 'ORB: binary descriptors, fastest. Good default for textured industrial images.';
+                        break;
+                    case 'sift':
+                        description = 'SIFT: float descriptors, more robust on low-texture, blurry, or scale-changed images. ~2-4x slower than ORB.';
+                        break;
+                }
+                $('#detector-description').text(description);
+            }
+
+            $('#node-input-detector').on('change', updateDetectorDescription);
+            updateDetectorDescription();
 
             // ECC Refine description
             function updateEccRefineDescription() {
@@ -489,6 +515,18 @@
         <div id="pipeline-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
     </div>
 
+    <div class="form-row" id="detector-row">
+        <label for="node-input-detector"><i class="fa fa-dot-circle-o"></i> Detector</label>
+        <select id="node-input-detector" style="width: 250px;">
+            <option value="orb">ORB (fast, default)</option>
+            <option value="sift">SIFT (robust, slower)</option>
+        </select>
+    </div>
+    <div class="form-row">
+        <label></label>
+        <div id="detector-description" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+    </div>
+
     <div class="form-row" id="ecc-refine-row">
         <label for="node-input-eccRefine"><i class="fa fa-rocket"></i> ECC Refine</label>
         <select id="node-input-eccRefine" style="width: 250px;">
@@ -587,6 +625,14 @@
       </ul>
       New nodes default to <code>features+ecc</code>; existing saved flows that lack this field fall back to <code>ecc</code> for full backward compatibility. If ECC diverges after a successful feature seed, the seed itself is returned (rather than failing the alignment).
     </dd>
+    <dt>Detector <span class="property-type">string</span></dt>
+    <dd>Feature detector used by the seed stage (pipelines <code>features</code> and <code>features+ecc</code>):
+      <ul>
+        <li><code>orb</code> &mdash; binary descriptors, fastest. Good default for textured industrial images. Legacy behavior.</li>
+        <li><code>sift</code> &mdash; float descriptors, more robust on low-texture, blurry, or scale-changed images; roughly 2-4x slower than ORB.</li>
+      </ul>
+      Ignored when Pipeline is <code>ecc</code>. Default <code>orb</code>.
+    </dd>
     <dt>ECC Refine <span class="property-type">string</span></dt>
     <dd>Only used when Pipeline is <code>features+ecc</code>. Controls whether ECC's slow iterative refinement actually runs after the ORB seed:
       <ul>
@@ -624,6 +670,7 @@
         <li><code>preset</code>: speed preset used</li>
         <li><code>pipeline</code>: pipeline used (<code>ecc</code>, <code>features</code>, or <code>features+ecc</code>)</li>
         <li><code>eccRefine</code>: ECC refinement policy used (<code>always</code>, <code>auto</code>, or <code>never</code>)</li>
+        <li><code>detector</code>: feature detector used (<code>orb</code> or <code>sift</code>)</li>
         <li><code>motionModel</code>: motion model used (<code>translation</code>, <code>euclidean</code>, <code>affine</code>, or <code>homography</code>)</li>
         <li><code>transformMatrix</code>: (optional) transformation matrix when enabled:
           <ul>

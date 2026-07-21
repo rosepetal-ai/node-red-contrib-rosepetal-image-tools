@@ -132,6 +132,24 @@ module.exports = function (RED) {
           );
         }
 
+        // Feature detector for the seed stage (pipelines features / features+ecc).
+        //   orb  - binary descriptors, fastest (default)
+        //   sift - float descriptors, more robust on low-texture/blurry images
+        const detector = config.detector || 'orb';
+        const VALID_DETECTORS = ['orb', 'sift'];
+        if (!VALID_DETECTORS.includes(detector)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Invalid detector "${detector}"`,
+              hint: `detector must be one of: ${VALID_DETECTORS.join(', ')}`,
+              details: { detector, referenceImagePath, targetImagePath, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          );
+        }
+
         /* ▸ Read images from message ------------------------------------ */
         // Validate input images
         const ref = NodeUtils.validateImageStructure(referenceImage, node);
@@ -322,7 +340,8 @@ module.exports = function (RED) {
           polygon,
           motionModel,
           pipeline,
-          eccRefine
+          eccRefine,
+          detector
         );
 
         if (useSharpWebp) {
@@ -382,7 +401,8 @@ module.exports = function (RED) {
           preset: preset,
           motionModel: motionModel,
           pipeline: pipeline,
-          eccRefine: eccRefine
+          eccRefine: eccRefine,
+          detector: detector
         };
         
         // Add transformation matrix if returned

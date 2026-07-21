@@ -185,6 +185,18 @@ static EccRefineMode ParseEccRefine(const std::string& name) {
         " (expected: always, auto, or never)");
 }
 
+// Feature detector for the feature-seed stage:
+//   ORB  - binary descriptors, fastest (default)
+//   SIFT - float descriptors, more robust on low-texture/blurry images, slower
+enum class FeatureDetectorKind { ORB, SIFT };
+
+static FeatureDetectorKind ParseDetector(const std::string& name) {
+    if (name == "orb")  return FeatureDetectorKind::ORB;
+    if (name == "sift") return FeatureDetectorKind::SIFT;
+    throw std::runtime_error("Unknown detector: " + name +
+        " (expected: orb or sift)");
+}
+
 class ImageAlignWorker : public Napi::AsyncWorker {
 public:
     ImageAlignWorker(Napi::Function& callback,
@@ -200,7 +212,8 @@ public:
                     const Napi::Value& polygonValue = Napi::Value(),
                     std::string motionModel = "translation",
                     std::string pipeline = "ecc",
-                    std::string eccRefine = "always")
+                    std::string eccRefine = "always",
+                    std::string detector = "orb")
         : Napi::AsyncWorker(callback),
           scale(scale),
           maxIterations(maxIterations),
@@ -216,6 +229,8 @@ public:
           pipelineMode(AlignPipeline::ECC),
           eccRefineName(std::move(eccRefine)),
           eccRefineMode(EccRefineMode::ALWAYS),
+          detectorName(std::move(detector)),
+          detectorKind(FeatureDetectorKind::ORB),
           alignmentSuccess(false),
           hasPolygon(false),
           isPolygonArray(false) {
@@ -233,6 +248,9 @@ public:
 
             // And the ECC refinement policy (always / auto / never).
             eccRefineMode = ParseEccRefine(eccRefineName);
+
+            // And the feature detector (orb / sift).
+            detectorKind = ParseDetector(detectorName);
 
             // Convert input images to OpenCV Mat
             referenceMat = ConvertToMat(referenceImage);
@@ -328,11 +346,19 @@ protected:
             int refHeight = referenceMat.rows;
             int refWidth = referenceMat.cols;
             
+            // Only ECC (pixel-for-pixel correlation) and the polygon round-trip
+            // (normalizes by reference dims) require equal sizes. The features
+            // pipeline works on keypoint coordinates, and forcing the resize
+            // there injects an anisotropic stretch the motion model can only
+            // "explain" as a spurious rotation.
+            const bool needsSameSize =
+                (pipelineMode != AlignPipeline::FEATURES) || hasPolygon;
+
             // Resize target image to match reference dimensions, with caching.
             // For the constant-golden / changing-scan production pattern, the
             // golden's resize result is constant per call. Hash + cache it.
             cv::Mat targetResized;
-            if (targetMat.size() != referenceMat.size()) {
+            if (needsSameSize && targetMat.size() != referenceMat.size()) {
                 const uint64_t key = FastImageFingerprint(targetMat)
                                      ^ (static_cast<uint64_t>(refWidth) << 16)
                                      ^ static_cast<uint64_t>(refHeight)
@@ -381,6 +407,10 @@ protected:
                 
                 // Apply transformation to the color target image
                 ApplyTransformation(targetResized, transformMatrix, cv::Size(refWidth, refHeight));
+            } else if (targetResized.size() != referenceMat.size()) {
+                // Alignment failed with the resize skipped: still emit a
+                // reference-sized image to keep the output-dimension contract.
+                cv::resize(targetResized, alignedImage, cv::Size(refWidth, refHeight));
             } else {
                 // If alignment fails, use the resized target as-is
                 alignedImage = targetResized;
@@ -545,6 +575,10 @@ private:
     std::string eccRefineName;    // raw string from JS ('always' | 'auto' | 'never')
     EccRefineMode eccRefineMode;  // resolved enum
 
+    // Feature detector for the seed stage ('orb' | 'sift')
+    std::string detectorName;
+    FeatureDetectorKind detectorKind;
+
     bool alignmentSuccess;
     
     // Polygon data
@@ -622,9 +656,13 @@ private:
         try {
             // First check the seed-matrix cache: if we've already solved this
             // exact (ref, target, motion) triple, return the saved matrix and
-            // skip everything (ORB detect/describe, BFMatcher, RANSAC).
-            const uint64_t refFp    = FastImageFingerprint(refGray);
-            const uint64_t targetFp = FastImageFingerprint(targetGray);
+            // skip everything (detect/describe, BFMatcher, RANSAC).
+            // Fingerprints are salted with the detector kind so ORB and SIFT
+            // entries (features and seed matrices) never collide.
+            const uint64_t detSalt = (detectorKind == FeatureDetectorKind::SIFT)
+                ? 0x51465400d5a7c3b1ULL : 0ULL;
+            const uint64_t refFp    = FastImageFingerprint(refGray) ^ detSalt;
+            const uint64_t targetFp = FastImageFingerprint(targetGray) ^ detSalt;
             // Composite key: mix the two fingerprints with the motion flag.
             uint64_t seedKey = refFp;
             seedKey ^= targetFp + 0x9e3779b97f4a7c15ULL + (seedKey << 6) + (seedKey >> 2);
@@ -643,15 +681,20 @@ private:
                 }
             }
 
-            cv::Ptr<cv::ORB> orb = cv::ORB::create(
-                /*nfeatures*/ 800,
-                /*scaleFactor*/ 1.2f,
-                /*nlevels*/ 5);
+            cv::Ptr<cv::Feature2D> det;
+            if (detectorKind == FeatureDetectorKind::SIFT) {
+                det = cv::SIFT::create(/*nfeatures*/ 800);
+            } else {
+                det = cv::ORB::create(
+                    /*nfeatures*/ 800,
+                    /*scaleFactor*/ 1.2f,
+                    /*nlevels*/ 5);
+            }
 
             // Detect-or-cache helper. Looks up by FastImageFingerprint and skips
-            // ORB entirely on cache hit. The big win is the "constant golden,
+            // detection entirely on cache hit. The big win is the "constant golden,
             // changing scan" pattern: golden hits the cache from call #2 onward.
-            auto detectOrCached = [&orb](const cv::Mat& img, uint64_t fp,
+            auto detectOrCached = [&det](const cv::Mat& img, uint64_t fp,
                                          std::vector<cv::KeyPoint>& kp,
                                          cv::Mat& des) {
                 OrbCacheEntry hit;
@@ -660,7 +703,7 @@ private:
                     des = hit.des;
                     return;
                 }
-                orb->detectAndCompute(img, cv::noArray(), kp, des);
+                det->detectAndCompute(img, cv::noArray(), kp, des);
                 OrbCacheEntry e;
                 e.kp = kp;
                 e.des = des.clone();  // detach storage
@@ -687,8 +730,11 @@ private:
                     return false;
                 }
 
-                // Brute-force Hamming + Lowe's ratio test (0.75) for robust matching.
-                cv::BFMatcher matcher(cv::NORM_HAMMING, /*crossCheck=*/false);
+                // Brute-force matching + Lowe's ratio test (0.75).
+                // Hamming for ORB's binary descriptors, L2 for SIFT's floats.
+                const int normType = (detectorKind == FeatureDetectorKind::SIFT)
+                    ? cv::NORM_L2 : cv::NORM_HAMMING;
+                cv::BFMatcher matcher(normType, /*crossCheck=*/false);
                 std::vector<std::vector<cv::DMatch>> knn;
                 matcher.knnMatch(des1, des2, knn, 2);
 
@@ -728,9 +774,12 @@ private:
 
                 // Translation and Euclidean both start from a partial-affine estimate
                 // (translation + rotation + uniform scale = 4 DoF), then post-process
-                // it to drop the unwanted DoFs.
+                // it to drop the unwanted DoFs. Classic RANSAC here, not USAC:
+                // estimateAffinePartial2D rejects every USAC_* method (throws
+                // StsBadArg on all OpenCV versions), which made these seeds
+                // silently fail forever.
                 cv::Mat P = cv::estimateAffinePartial2D(srcPts, dstPts, inlierMask,
-                                                        cv::USAC_MAGSAC, 5.0);
+                                                        cv::RANSAC, 5.0);
                 if (P.empty()) return false;
                 P.convertTo(P, CV_32F);
 
@@ -804,21 +853,21 @@ private:
     //                   instead of returning a wildly wrong identity warp.
     bool FindTransformation(const cv::Mat& refGray, const cv::Mat& targetGray, cv::Mat& transformMatrix) {
         try {
-            int height = refGray.rows;
-            int width = refGray.cols;
-
             // Downsample images for faster alignment.
-            // ORB and ECC both run on this same small grid so all intermediate
-            // matrix arithmetic stays in small-frame coords; we rescale once at
-            // the very end via RescaleSmallToFull().
-            int scaledWidth = std::max(1, static_cast<int>(std::round(width * scale)));
-            int scaledHeight = std::max(1, static_cast<int>(std::round(height * scale)));
-
+            // Each image is scaled by the same *factor* (not to the ref's dims:
+            // sizes can legitimately differ on the features pipeline, and forcing
+            // ref dims onto the target would stretch it anisotropically).
+            // RescaleSmallToFull divides translation by exactly `scale`, so both
+            // sides must use that factor. Equal-sized inputs get identical dims,
+            // keeping the common path bit-identical.
+            //
             // Cached resize: skips cv::resize when the input gray hasn't changed
             // (constant-golden, repeated-call pattern). Lookup is keyed by the
             // FULL-resolution input fingerprint AND the requested small dims.
-            auto resizeOrCached = [scaledWidth, scaledHeight](const cv::Mat& fullGray,
-                                                              cv::Mat& smallOut) {
+            auto resizeOrCached = [this](const cv::Mat& fullGray,
+                                         cv::Mat& smallOut) {
+                const int scaledWidth = std::max(1, static_cast<int>(std::round(fullGray.cols * scale)));
+                const int scaledHeight = std::max(1, static_cast<int>(std::round(fullGray.rows * scale)));
                 const uint64_t key = FastImageFingerprint(fullGray)
                                      ^ (static_cast<uint64_t>(scaledWidth) << 16)
                                      ^ static_cast<uint64_t>(scaledHeight);
@@ -1069,8 +1118,8 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     Napi::Env env = info.Env();
 
     // Validate arguments - expect callback as last argument
-    if (info.Length() < 3 || info.Length() > 14 || !info[info.Length() - 1].IsFunction()) {
-        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], [polygon], [motionModel], [pipeline], [eccRefine], callback)")
+    if (info.Length() < 3 || info.Length() > 15 || !info[info.Length() - 1].IsFunction()) {
+        Napi::TypeError::New(env, "imageAlign(referenceImage, targetImage, [scale], [maxIterations], [terminationEps], [outputFormat], [quality], [pngOptimize], [returnMatrix], [polygon], [motionModel], [pipeline], [eccRefine], [detector], callback)")
             .ThrowAsJavaScriptException();
         return env.Null();
     }
@@ -1096,6 +1145,8 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     std::string pipeline = "ecc";
     // Default eccRefine is "always" - never silently skips ECC.
     std::string eccRefine = "always";
+    // Default detector is ORB (fastest; pre-existing behavior).
+    std::string detector = "orb";
 
     // Parse optional parameters (before callback)
     if (info.Length() >= 4) {
@@ -1131,12 +1182,15 @@ Napi::Value ImageAlign(const Napi::CallbackInfo& info) {
     if (info.Length() >= 14) {
         eccRefine = info[12].As<Napi::String>().Utf8Value();
     }
+    if (info.Length() >= 15) {
+        detector = info[13].As<Napi::String>().Utf8Value();
+    }
 
     // Create and queue worker
     ImageAlignWorker* worker = new ImageAlignWorker(callback, referenceImage, targetImage,
                                                    scale, maxIterations, terminationEps,
                                                    outputFormat, quality, pngOptimize, returnMatrix, polygon,
-                                                   motionModel, pipeline, eccRefine);
+                                                   motionModel, pipeline, eccRefine, detector);
     worker->Queue();
 
     return env.Undefined();

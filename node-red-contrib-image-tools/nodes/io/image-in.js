@@ -11,6 +11,7 @@ try {
   sharp = null;
 }
 const fs = require('fs').promises;
+const BmpDecode = require('../../lib/bmp-decode.js');
 
 module.exports = function(RED) {
   const NodeUtils = require('../../lib/node-utils.js')(RED);
@@ -46,10 +47,16 @@ module.exports = function(RED) {
           return;
         }
 
-        // Use Sharp to decode image with full metadata
-        const { data, info } = await sharp(filePath)
-          .raw()
-          .toBuffer({ resolveWithObject: true });
+        // Decode: BMP natively (Sharp cannot read it), everything else via Sharp
+        const fileBuffer = await fs.readFile(filePath);
+        let data, info;
+        if (BmpDecode.isBmp(fileBuffer)) {
+          const decoded = BmpDecode.decodeBmp(fileBuffer);
+          data = decoded.data;
+          info = { width: decoded.width, height: decoded.height, channels: decoded.channels };
+        } else {
+          ({ data, info } = await sharp(fileBuffer).raw().toBuffer({ resolveWithObject: true }));
+        }
 
         // Determine colorSpace from Sharp info
         let colorSpace;

@@ -1,6 +1,7 @@
 /**
  * @file Node-RED logic for the image-align node (C++-driven ECC alignment).
  * Ultra-fast image alignment using OpenCV ECC algorithm.
+ * Accepts two single images or two same-length arrays (paired by index).
  * @author Rosepetal
  */
 const { performance } = require('perf_hooks');
@@ -151,17 +152,45 @@ module.exports = function (RED) {
         }
 
         /* ▸ Read images from message ------------------------------------ */
-        // Validate input images
-        const ref = NodeUtils.validateImageStructure(referenceImage, node);
-        if (!ref) {
+        // Both inputs must have the same shape: two singles, or two same-length arrays
+        const isArray = Array.isArray(referenceImage);
+        if (isArray !== Array.isArray(targetImage)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: 'Reference and target must both be single images or both be arrays',
+              hint: `"${referenceImagePath}" is ${isArray ? 'an array' : 'a single image'} but "${targetImagePath}" is not.`,
+              details: { referenceImagePath, targetImagePath, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          );
+        }
+        if (isArray && (referenceImage.length === 0 || referenceImage.length !== targetImage.length)) {
+          return NodeUtils.handleValidationErrorWithPassthrough(
+            node,
+            {
+              message: `Image arrays must be non-empty and of equal length (got ${referenceImage.length} and ${targetImage.length})`,
+              hint: 'Images are paired by index; both arrays must contain the same number of images.',
+              details: { referenceImagePath, targetImagePath, outputPath }
+            },
+            msg, send, done,
+            { originalPayload: passthroughImage, outputPath, outputType: 'single' }
+          );
+        }
+
+        const refList = (isArray ? referenceImage : [referenceImage])
+          .map(img => NodeUtils.validateImageStructure(img, node));
+        if (refList.some(img => !img)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node, 'Reference image is invalid or missing', msg, send, done,
             { originalPayload: passthroughImage, outputPath, outputType: 'single' }
           );
         }
 
-        const target = NodeUtils.validateImageStructure(targetImage, node);
-        if (!target) {
+        const targetList = (isArray ? targetImage : [targetImage])
+          .map(img => NodeUtils.validateImageStructure(img, node));
+        if (targetList.some(img => !img)) {
           return NodeUtils.handleValidationErrorWithPassthrough(
             node, 'Target image is invalid or missing', msg, send, done,
             { originalPayload: passthroughImage, outputPath, outputType: 'single' }
@@ -326,26 +355,43 @@ module.exports = function (RED) {
           }
         }
 
-        /* ▸ Single call to the C++ addon --------------------------------- */
-        const result = await CppProcessor.imageAlign(
-          ref,
-          target,
-          scale,
-          maxIterations,
-          terminationEps,
-          cppFormat,
-          outputQuality,
-          pngOptimize,
-          returnMatrix,
-          polygon,
-          motionModel,
-          pipeline,
-          eccRefine,
-          detector
+        /* ▸ One C++ call per pair (index-matched) ------------------------- */
+        const results = await Promise.all(
+          refList.map((refImg, i) =>
+            CppProcessor.imageAlign(
+              refImg,
+              targetList[i],
+              scale,
+              maxIterations,
+              terminationEps,
+              cppFormat,
+              outputQuality,
+              pngOptimize,
+              returnMatrix,
+              polygon,
+              motionModel,
+              pipeline,
+              eccRefine,
+              detector
+            ))
         );
 
+        // Aggregate timings across pairs
+        const timing = results.reduce(
+          (acc, { timing: t }) => {
+            acc.convertMs += t?.convertMs ?? 0;
+            acc.taskMs    += t?.taskMs    ?? 0;
+            acc.encodeMs  += t?.encodeMs  ?? 0;
+            return acc;
+          },
+          { convertMs: 0, taskMs: 0, encodeMs: 0 }
+        );
+        const images = results.map(r => r.image);
+
         if (useSharpWebp) {
-          result.image = await NodeUtils.encodeWebpAdvanced(result.image, config);
+          for (let i = 0; i < images.length; i++) {
+            images[i] = await NodeUtils.encodeWebpAdvanced(images[i], config);
+          }
         }
 
         /* ▸ Status: standardized success formatting ----------------------- */
@@ -364,65 +410,68 @@ module.exports = function (RED) {
               msg
             );
             debugWidth = Math.max(1, parseInt(debugWidth) || 200); // Ensure positive, default 200
-            
+
+            // For arrays, show the first aligned image as representative
             const debugResult = await NodeUtils.debugImageDisplay(
-              result.image, 
+              images[0],
               outputFormat,
               outputQuality,
               node,
               debugEnabled,
               debugWidth
             );
-            
+
             if (debugResult) {
               debugFormat = debugResult.formatMessage;
               // Update node status with debug info
-              NodeUtils.setSuccessStatusWithDebug(node, 1, total, result.timing, debugFormat);
+              NodeUtils.setSuccessStatusWithDebug(node, results.length, total, timing,
+                debugFormat + (isArray ? ' (first)' : ''));
             }
           } catch (debugError) {
             node.warn(`Debug display error: ${debugError.message}`);
           }
         }
-        
+
         // Set regular status if debug not enabled or failed
         if (!debugFormat) {
-          NodeUtils.setSuccessStatus(node, 1, total, result.timing);
+          NodeUtils.setSuccessStatus(node, results.length, total, timing);
         }
 
-        NodeUtils.recordPerformanceMetrics(node, msg, result.timing || {}, total);
+        NodeUtils.recordPerformanceMetrics(node, msg, timing, total);
 
-        /* ▸ Write the result back to msg ---------------------------------- */
-        RED.util.setMessageProperty(msg, outputPath, result.image);
+        /* ▸ Write the result back to msg (array in, array out) ------------ */
+        RED.util.setMessageProperty(msg, outputPath, isArray ? images : images[0]);
         
-        // Add alignment info to message
+        // Add alignment info to message; per-pair fields follow the output
+        // shape (single in -> single out, array in -> array out)
         msg.alignment = {
-          success: result.success,
-          timing: result.timing,
+          success: isArray ? results.every(r => r.success) : results[0].success,
+          timing: timing,
           preset: preset,
           motionModel: motionModel,
           pipeline: pipeline,
           eccRefine: eccRefine,
           detector: detector
         };
-        
+
         // Add transformation matrix if returned
-        if (result.transformMatrix) {
-          msg.alignment.transformMatrix = result.transformMatrix;
+        const matrices = results.map(r => r.transformMatrix);
+        if (matrices.some(Boolean)) {
+          msg.alignment.transformMatrix = isArray ? matrices : matrices[0];
         }
-        
+
         // Add polygon data if polygon transformation was requested
         if (transformPolygon && polygon) {
-          // Store original polygon(s)
+          // Store original polygon(s); the same polygon(s) are transformed
+          // per pair, each with that pair's matrix
           msg.alignment.originalPolygon = polygon;
-          
-          // Handle transformed polygon(s) based on input type
-          if (result.transformedPolygon) {
-            msg.alignment.transformedPolygon = result.transformedPolygon;
-          } else if (result.transformedPolygons) {
-            // For array of polygons
-            msg.alignment.transformedPolygons = result.transformedPolygons;
+
+          const transformed = results.map(r => r.transformedPolygon ?? r.transformedPolygons ?? null);
+          if (transformed.some(Boolean)) {
+            const key = isPolygonArray ? 'transformedPolygons' : 'transformedPolygon';
+            msg.alignment[key] = isArray ? transformed : transformed[0];
           }
-          
+
           // Store whether input was array for clarity
           msg.alignment.isPolygonArray = isPolygonArray;
         }

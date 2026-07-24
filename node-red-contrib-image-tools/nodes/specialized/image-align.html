@@ -604,14 +604,14 @@
   <p>Aligns images using ultra-fast ECC (Enhanced Correlation Coefficient) algorithm with OpenCV backend for maximum performance.</p>
 
   <h3>Details</h3>
-  <p>This node performs image alignment by finding the transformation needed to align a target image with a reference image. It uses OpenCV's ECC algorithm optimized for speed with configurable precision levels. The aligned target image is returned as output.</p>
+  <p>This node performs image alignment by finding the transformation needed to align a target image with a reference image. It uses OpenCV's ECC algorithm optimized for speed with configurable precision levels. The aligned target image is returned as output. Both inputs may also be same-length arrays: images are paired by index, each pair is aligned independently, and the output is an array of aligned images.</p>
 
   <h3>Properties</h3>
   <dl class="message-properties">
     <dt>Reference Image <span class="property-type">string</span></dt>
-    <dd>Path to reference image in message. Defaults to <code>msg.payload.reference</code>.</dd>
+    <dd>Path to reference image (or array of images) in message. Defaults to <code>msg.payload.reference</code>.</dd>
     <dt>Target Image <span class="property-type">string</span></dt>
-    <dd>Path to target image in message. Defaults to <code>msg.payload.target</code>.</dd>
+    <dd>Path to target image (or array of images) in message. Defaults to <code>msg.payload.target</code>.</dd>
     <dt>Output to <span class="property-type">string</span></dt>
     <dd>Location where aligned image will be stored. Defaults to <code>msg.payload</code>.</dd>
     <dt>Output Format <span class="property-type">string</span></dt>
@@ -654,14 +654,14 @@
 
   <h3>Inputs</h3>
   <dl class="message-properties">
-    <dt>Images <span class="property-type">object</span></dt>
-    <dd>Both images must be in standard format: <code>{data: Buffer, width: number, height: number, channels: number, colorSpace: string}</code>. Images can be located anywhere in the message using the configurable paths.</dd>
+    <dt>Images <span class="property-type">object | array</span></dt>
+    <dd>Both images must be in standard format: <code>{data: Buffer, width: number, height: number, channels: number, colorSpace: string}</code>. Images can be located anywhere in the message using the configurable paths. Reference and target must have the same shape: two single images, or two non-empty arrays of equal length (paired by index).</dd>
   </dl>
 
   <h3>Outputs</h3>
   <dl class="message-properties">
-    <dt>payload <span class="property-type">object|Buffer</span></dt>
-    <dd>Aligned target image in specified output format.</dd>
+    <dt>payload <span class="property-type">object | array | Buffer</span></dt>
+    <dd>Aligned target image in specified output format. Array in, array out: with array inputs this is an array of aligned images, and per-pair alignment fields (<code>success</code> aggregated with AND, <code>transformMatrix</code>, transformed polygons) become arrays in <code>msg.alignment</code>.</dd>
     <dt>alignment <span class="property-type">object</span></dt>
     <dd>Alignment information:
       <ul>

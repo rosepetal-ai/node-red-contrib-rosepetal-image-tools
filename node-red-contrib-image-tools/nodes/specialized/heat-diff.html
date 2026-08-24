@@ -22,7 +22,9 @@
         colormap:{value:"JET"},
         blurSize:{value:0}, blurSizeType:{value:"num"},
         threshold:{value:0}, thresholdType:{value:"num"},
+        imageEnabled:{value:true},
         statsEnabled:{value:true},
+        ssimEnabled:{value:true},
         statsPath:{value:"diffStats"}, statsPathType:{value:"msg"}
       },
       inputs:1,outputs:1,
@@ -41,13 +43,13 @@
           default:'msg',types:['msg','flow','global'],
           typeField:"#node-input-statsPathType"});
 
-        // Stats path only relevant when stats are enabled
+        // Stats path and SSIM option only relevant when stats are enabled
         var statsCheckbox = $('#node-input-statsEnabled');
-        function updateStatsPathVisibility(){
-          $("#stats-path-row").toggle(statsCheckbox.is(':checked'));
+        function updateStatsVisibility(){
+          $("#stats-path-row, #ssim-row").toggle(statsCheckbox.is(':checked'));
         }
-        statsCheckbox.on('change', updateStatsPathVisibility);
-        updateStatsPathVisibility();
+        statsCheckbox.on('change', updateStatsVisibility);
+        updateStatsVisibility();
 
         $("#node-input-blurSize").typedInput({
           default:'num',types:['num','msg','flow','global'],
@@ -58,10 +60,11 @@
 
         // Output format visibility
         function updateQualityVisibility(){
+          var withImage = $("#node-input-imageEnabled").is(':checked');
           var format = $("#node-input-outputFormat").val();
-          $("#quality-row").toggle(format === "jpg" || format === "webp");
-          $("#png-optimize-row").toggle(format === "png");
-          var isWebp = format === 'webp';
+          $("#quality-row").toggle(withImage && (format === "jpg" || format === "webp"));
+          $("#png-optimize-row").toggle(withImage && format === "png");
+          var isWebp = withImage && format === 'webp';
           $("#webp-lossless-row").toggle(isWebp);
           $("#webp-smartsubsample-row").toggle(isWebp);
           $("#webp-effort-row").toggle(isWebp);
@@ -78,10 +81,25 @@
             typeField: "#node-input-debugWidthType"
         });
         function updateDebugWidthVisibility() {
-            debugWidthRow.toggle(debugCheckbox.is(':checked'));
+            var withImage = $("#node-input-imageEnabled").is(':checked');
+            debugWidthRow.toggle(withImage && debugCheckbox.is(':checked'));
         }
-        updateDebugWidthVisibility();
         debugCheckbox.on('change', updateDebugWidthVisibility);
+
+        // Stats-only mode: every image-output option becomes irrelevant
+        var imageCheckbox = $('#node-input-imageEnabled');
+        function updateImageVisibility(){
+          var withImage = imageCheckbox.is(':checked');
+          $("#output-path-row, #output-format-row, #debug-row").toggle(withImage);
+          // Without an image, stats are the only output left
+          if (!withImage) statsCheckbox.prop('checked', true);
+          statsCheckbox.prop('disabled', !withImage);
+          updateStatsVisibility();
+          updateQualityVisibility();
+          updateDebugWidthVisibility();
+        }
+        imageCheckbox.on('change', updateImageVisibility);
+        updateImageVisibility();
       }
     });
 </script>
@@ -105,12 +123,18 @@
   </div>
 
   <div class="form-row">
+    <label for="node-input-imageEnabled"><i class="fa fa-fire"></i> Heat Image</label>
+    <input type="checkbox" id="node-input-imageEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-imageEnabled" style="width:auto; margin-left:5px;">Render the heat map (off = statistics only)</label>
+  </div>
+
+  <div class="form-row" id="output-path-row">
     <label><i class="fa fa-sign-out"></i> Output</label>
     <input type="text" id="node-input-outputPath" style="width:70%;">
     <input type="hidden" id="node-input-outputPathType">
   </div>
 
-  <div class="form-row">
+  <div class="form-row" id="output-format-row">
     <label for="node-input-outputFormat"><i class="fa fa-file-image-o"></i> Output Format</label>
     <select id="node-input-outputFormat" style="width: 200px;">
       <option value="raw">Raw (fastest)</option>
@@ -129,6 +153,11 @@
     <label for="node-input-statsPath"><i class="fa fa-bar-chart"></i> Stats to</label>
     <input type="text" id="node-input-statsPath" style="width:70%;">
     <input type="hidden" id="node-input-statsPathType">
+  </div>
+  <div class="form-row" id="ssim-row">
+    <label for="node-input-ssimEnabled"><i class="fa fa-clone"></i> SSIM</label>
+    <input type="checkbox" id="node-input-ssimEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
+    <label for="node-input-ssimEnabled" style="width:auto; margin-left:5px;">Compute SSIM (dominates the stats cost)</label>
   </div>
 
   <div class="form-row" id="quality-row">
@@ -159,7 +188,7 @@
   </div>
 
   <!-- Debug Configuration -->
-  <div class="form-row">
+  <div class="form-row" id="debug-row">
     <label for="node-input-debugEnabled"><i class="fa fa-bug"></i> Debug</label>
     <input type="checkbox" id="node-input-debugEnabled" style="display:inline-block; width:auto; vertical-align:baseline;">
     <label for="node-input-debugEnabled" style="width:auto; margin-left:5px;">Show processed image</label>
@@ -218,8 +247,11 @@
     <dt>Image 2 <span class="property-type">string</span></dt>
     <dd>Path to the second image (e.g. the golden/reference image).</dd>
 
+    <dt>Heat Image <span class="property-type">boolean</span></dt>
+    <dd>When enabled (default), the colormapped heat map is rendered and written to the output property. Disable it for a statistics-only pass: the colormap and the image encoding are skipped entirely and no image buffer is allocated. Statistics are then always computed, since they are the node's only output.</dd>
+
     <dt>Output to <span class="property-type">string</span></dt>
-    <dd>Message property where the heat map image will be stored.</dd>
+    <dd>Message property where the heat map image will be stored. Left untouched when Heat Image is disabled.</dd>
 
     <dt>Colormap <span class="property-type">string</span></dt>
     <dd>Color mapping applied to the difference: JET, HOT, INFERNO, TURBO, BONE, COOL, RAINBOW, OCEAN, PINK, HSV.</dd>
@@ -233,6 +265,9 @@
     <dt>Statistics <span class="property-type">boolean</span></dt>
     <dd>When enabled (default), numeric diff statistics are computed.</dd>
 
+    <dt>SSIM <span class="property-type">boolean</span></dt>
+    <dd>When enabled (default), structural similarity is included in the statistics. It is by far the most expensive statistic — six full-resolution floating-point blurs, typically more than the rest of the node put together — so disable it when the flow only uses the ratios and blobs. <code>ssim</code> is then reported as <code>null</code>.</dd>
+
     <dt>Stats to <span class="property-type">string</span></dt>
     <dd>Message property where the statistics object is stored. Default <code>msg.diffStats</code>.</dd>
   </dl>
@@ -241,7 +276,7 @@
   <p>Two images in the standard format (raw image object or encoded buffer), or two arrays of images of the same length — images are paired by index and one heat map is produced per pair. Mixing a single image with an array, or arrays of different lengths, raises an error. Images of different sizes are resized to match the larger one.</p>
 
   <h3>Outputs</h3>
-  <p>A 3-channel BGR heat map image in the selected output format. If the inputs were arrays, the output is an array of heat maps in the same order.</p>
+  <p>A 3-channel BGR heat map image in the selected output format. If the inputs were arrays, the output is an array of heat maps in the same order. With Heat Image disabled the output property is not written at all, so the message passes through unchanged apart from the statistics.</p>
   <p>When Statistics is enabled, the configured stats property (default <code>msg.diffStats</code>) holds an object (or array, matching the input shape) with:</p>
   <dl class="message-properties">
     <dt>validRatio <span class="property-type">number</span></dt>
@@ -251,7 +286,7 @@
     <dt>meanDiff / maxDiff / p50 / p95 / p99 <span class="property-type">number</span></dt>
     <dd>Mean, maximum and percentiles of the difference values (0-255) over valid pixels.</dd>
     <dt>rmse / psnr / ssim <span class="property-type">number</span></dt>
-    <dd>Root-mean-square error, peak signal-to-noise ratio (dB, 100 = identical) and structural similarity (0-1, 1 = identical).</dd>
+    <dd>Root-mean-square error, peak signal-to-noise ratio (dB, 100 = identical) and structural similarity (0-1, 1 = identical). <code>ssim</code> is <code>null</code> when the SSIM option is disabled.</dd>
     <dt>blobCount / largestBlobArea / blobs <span class="property-type">number | array</span></dt>
     <dd>Connected regions of changed pixels. <code>blobs</code> lists up to 50 regions, largest first, each with <code>x, y, w, h, area, cx, cy</code> in output-image coordinates.</dd>
   </dl>

@@ -37,7 +37,9 @@ public:
                  std::string outputFormat,
                  int quality = 90,
                  bool pngOptimize = false,
-                 bool computeStats = false)
+                 bool computeStats = false,
+                 bool emitImage = true,
+                 bool computeSsim = true)
     : Napi::AsyncWorker(cb),
       colormapType(colormapType),
       blurSize(blurSize),
@@ -45,7 +47,9 @@ public:
       outputFormat(std::move(outputFormat)),
       quality(quality),
       pngOptimize(pngOptimize),
-      computeStats(computeStats)
+      computeStats(computeStats),
+      emitImage(emitImage),
+      computeSsim(computeSsim)
   {
     const int64 t0 = cv::getTickCount();
     mat1 = ConvertToMat(jsImg1);
@@ -103,14 +107,16 @@ protected:
 
     if (computeStats) ComputeStats(diff, gray1, gray2);
 
-    // Apply colormap
-    cv::applyColorMap(diff, result, colormapType);
-    // applyColorMap outputs BGR
-    outputChannel = "BGR";
+    // Apply colormap (skipped in stats-only mode)
+    if (emitImage) {
+      cv::applyColorMap(diff, result, colormapType);
+      // applyColorMap outputs BGR
+      outputChannel = "BGR";
+    }
 
     taskMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 
-    if (outputFormat != "raw") {
+    if (emitImage && outputFormat != "raw") {
       cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
     }
@@ -118,9 +124,12 @@ protected:
 
   void OnOK() override {
     Napi::Env env = Env();
-    Napi::Value jsImg = (outputFormat != "raw")
-      ? VectorToBuffer(env, std::move(encodedBuf))
-      : MatToRawJS(env, result, outputChannel);
+    Napi::Value jsImg = env.Null();
+    if (emitImage) {
+      jsImg = (outputFormat != "raw")
+        ? VectorToBuffer(env, std::move(encodedBuf))
+        : MatToRawJS(env, result, outputChannel);
+    }
 
     Napi::Object out = Napi::Object::New(env);
     out.Set("image", jsImg);
@@ -137,7 +146,8 @@ protected:
       st.Set("p99",             statP99);
       st.Set("rmse",            statRmse);
       st.Set("psnr",            statPsnr);
-      st.Set("ssim",            statSsim);
+      if (computeSsim) st.Set("ssim", statSsim);
+      else             st.Set("ssim", env.Null());
       st.Set("threshold",       threshold);
       st.Set("blobCount",       statBlobCount);
       st.Set("largestBlobArea", statLargestBlobArea);
@@ -202,7 +212,8 @@ private:
     statRmse = std::sqrt(meanSq);
     statPsnr = meanSq > 0 ? 10.0 * std::log10(255.0 * 255.0 / meanSq) : 100.0;
 
-    statSsim = MaskedSSIM(gray1, gray2, valid);
+    // SSIM is by far the costliest stat (6 full-res float blurs); optional
+    if (computeSsim) statSsim = MaskedSSIM(gray1, gray2, valid);
 
     // Connected components on the changed mask -> blobs (largest first, capped)
     cv::Mat labels, ccStats, centroids;
@@ -235,6 +246,8 @@ private:
   int quality;
   bool pngOptimize;
   bool computeStats;
+  bool emitImage;
+  bool computeSsim;
   double convertMs = 0, taskMs = 0, encodeMs = 0;
   std::vector<uchar> encodedBuf;
 
@@ -249,7 +262,7 @@ Napi::Value HeatDiff(const Napi::CallbackInfo& info) {
 
   if (info.Length() < 3 || !info[info.Length() - 1].IsFunction()) {
     Napi::TypeError::New(env,
-      "heatDiff(image1, image2, colormapType, [blurSize], [threshold], [outputFormat], [quality], [pngOptimize], [computeStats], callback)")
+      "heatDiff(image1, image2, colormapType, [blurSize], [threshold], [outputFormat], [quality], [pngOptimize], [computeStats], [emitImage], [computeSsim], callback)")
       .ThrowAsJavaScriptException();
     return env.Null();
   }
@@ -264,6 +277,8 @@ Napi::Value HeatDiff(const Napi::CallbackInfo& info) {
   int quality = 90;
   bool pngOptimize = false;
   bool computeStats = false;
+  bool emitImage = true;
+  bool computeSsim = true;
   size_t cbIdx = 3;
 
   if (info.Length() >= 5)  { blurSize = info[3].As<Napi::Number>().Int32Value(); cbIdx = 4; }
@@ -272,9 +287,11 @@ Napi::Value HeatDiff(const Napi::CallbackInfo& info) {
   if (info.Length() >= 8)  { quality = info[6].As<Napi::Number>().Int32Value(); cbIdx = 7; }
   if (info.Length() >= 9)  { pngOptimize = info[7].As<Napi::Boolean>().Value(); cbIdx = 8; }
   if (info.Length() >= 10) { computeStats = info[8].As<Napi::Boolean>().Value(); cbIdx = 9; }
+  if (info.Length() >= 11) { emitImage = info[9].As<Napi::Boolean>().Value(); cbIdx = 10; }
+  if (info.Length() >= 12) { computeSsim = info[10].As<Napi::Boolean>().Value(); cbIdx = 11; }
 
   (new HeatDiffWorker(info[cbIdx].As<Napi::Function>(),
     jsImg1, jsImg2, colormapType, blurSize, threshold, outputFormat, quality, pngOptimize,
-    computeStats))->Queue();
+    computeStats, emitImage, computeSsim))->Queue();
   return env.Undefined();
 }

@@ -139,18 +139,26 @@ module.exports = function (RED) {
         const outputFormat = config.outputFormat || 'raw';
         const outputQuality = parseInt(config.outputQuality) || 90;
         const pngOptimize = config.pngOptimize || false;
-        // Stats on by default; existing flows without the property get them too
-        const statsEnabled = config.statsEnabled !== false && config.statsEnabled !== 'false';
+        // Heat image on by default; off = stats-only (no colormap, no encode, no buffer)
+        const imageEnabled = config.imageEnabled !== false && config.imageEnabled !== 'false';
+        // Stats on by default; existing flows without the property get them too.
+        // Stats-only mode forces them on, otherwise the node would produce nothing.
+        const statsEnabled = !imageEnabled ||
+          (config.statsEnabled !== false && config.statsEnabled !== 'false');
+        // SSIM is by far the costliest stat; flows that ignore it can opt out
+        const ssimEnabled = config.ssimEnabled !== false && config.ssimEnabled !== 'false';
         const statsPath = config.statsPath || 'diffStats';
         const statsPathType = config.statsPathType || 'msg';
-        const useSharpWebp = outputFormat === 'webp' && NodeUtils.hasAdvancedWebpOptions(config);
+        const useSharpWebp = imageEnabled && outputFormat === 'webp' &&
+          NodeUtils.hasAdvancedWebpOptions(config);
         const cppFormat = useSharpWebp ? 'raw' : outputFormat;
 
         /* One C++ call per pair (index-matched) */
         const results = await Promise.all(
           list1.map((img1, i) =>
             Cpp.heatDiff(img1, list2[i], colormapType, blurSize, threshold,
-                         cppFormat, outputQuality, pngOptimize, statsEnabled))
+                         cppFormat, outputQuality, pngOptimize, statsEnabled,
+                         imageEnabled, ssimEnabled))
         );
 
         // Aggregate timings across pairs
@@ -163,7 +171,7 @@ module.exports = function (RED) {
           },
           { convertMs: 0, taskMs: 0, encodeMs: 0 }
         );
-        const images = results.map(r => r.image);
+        const images = imageEnabled ? results.map(r => r.image) : [];
 
         if (useSharpWebp) {
           for (let i = 0; i < images.length; i++) {
@@ -171,8 +179,10 @@ module.exports = function (RED) {
           }
         }
 
-        /* Write result — array in, array out */
-        RED.util.setMessageProperty(msg, outputPath, isArray ? images : images[0]);
+        /* Write result — array in, array out; stats-only leaves the output path untouched */
+        if (imageEnabled) {
+          RED.util.setMessageProperty(msg, outputPath, isArray ? images : images[0]);
+        }
 
         /* Diff statistics, same shape as the image output */
         if (statsEnabled) {
@@ -184,7 +194,8 @@ module.exports = function (RED) {
         const total = performance.now() - t0;
 
         let debugFormat = null;
-        const debugEnabled = config.debugEnabled === true || config.debugEnabled === 'true';
+        const debugEnabled = imageEnabled &&
+          (config.debugEnabled === true || config.debugEnabled === 'true');
         if (debugEnabled) {
           try {
             let debugWidth = NodeUtils.resolveDimension(

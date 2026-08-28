@@ -333,8 +333,9 @@
                 
                 const debugWidth = data.debugWidth || 200;
                 const debugHeight = data.debugHeight || 200;
-                const maxDisplayWidth = Math.min(debugWidth, 500);
-                const displayHeight = debugHeight * (maxDisplayWidth / debugWidth);
+                // Display at the server-resized debug dimensions (no display cap)
+                const maxDisplayWidth = debugWidth;
+                const displayHeight = debugHeight;
                 
                 let debugContainer = document.getElementById('debug-img-container-' + nodeId);
                 

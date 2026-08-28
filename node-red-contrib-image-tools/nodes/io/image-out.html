@@ -286,6 +286,10 @@
                 var nodeElement = document.getElementById(nodeId);
                 if (!nodeElement) return;
 
+                // Size to the server-resized debug image (no display cap)
+                var debugWidth = data.debugWidth || 200;
+                var debugHeight = data.debugHeight || 200;
+
                 var debugContainer = document.getElementById('debug-img-container-' + nodeId);
 
                 if (!debugContainer) {
@@ -293,8 +297,8 @@
                     debugContainer.id = 'debug-img-container-' + nodeId;
                     debugContainer.setAttribute('x', '70');
                     debugContainer.setAttribute('y', '5');
-                    debugContainer.setAttribute('width', '120');
-                    debugContainer.setAttribute('height', '120');
+                    debugContainer.setAttribute('width', debugWidth.toString());
+                    debugContainer.setAttribute('height', debugHeight.toString());
                     debugContainer.style.overflow = 'visible';
 
                     var img = document.createElement('img');
@@ -303,8 +307,8 @@
                     img.style.height = 'auto';
                     img.style.display = 'block';
                     img.style.cursor = 'pointer';
-                    img.style.maxHeight = '100px';
-                    img.style.maxWidth = '100px';
+                    img.style.maxHeight = 'none';
+                    img.style.maxWidth = 'none';
 
                     img.onclick = function() {
                         removeDebugImage(nodeId);
@@ -312,6 +316,9 @@
 
                     debugContainer.appendChild(img);
                     nodeElement.appendChild(debugContainer);
+                } else {
+                    debugContainer.setAttribute('width', debugWidth.toString());
+                    debugContainer.setAttribute('height', debugHeight.toString());
                 }
 
                 var imgEl = document.getElementById('debug-img-' + nodeId);

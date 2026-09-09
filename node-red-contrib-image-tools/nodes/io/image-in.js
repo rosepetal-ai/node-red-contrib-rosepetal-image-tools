@@ -51,7 +51,7 @@ module.exports = function(RED) {
         const fileBuffer = await fs.readFile(filePath);
         let data, info;
         if (BmpDecode.isBmp(fileBuffer)) {
-          const decoded = BmpDecode.decodeBmp(fileBuffer);
+          const decoded = await BmpDecode.decodeBmp(fileBuffer);
           data = decoded.data;
           info = { width: decoded.width, height: decoded.height, channels: decoded.channels };
         } else {
@@ -91,7 +91,7 @@ module.exports = function(RED) {
             
             // Since we already have the image loaded, reuse it for debug display
             // Convert to JPEG buffer for debug display using the Sharp instance
-            const debugBuffer = await sharp(data, {
+            const { data: debugBuffer, info: debugMetadata } = await sharp(data, {
               raw: { width: info.width, height: info.height, channels: info.channels }
             })
             .resize(debugWidth, null, {
@@ -99,11 +99,10 @@ module.exports = function(RED) {
               fit: 'inside'
             })
             .jpeg({ quality: 90 })
-            .toBuffer();
+            .toBuffer({ resolveWithObject: true });   // dimensions come from the same pass
             
             // Create debug result manually since we're using Sharp directly
             const base64 = debugBuffer.toString('base64');
-            const debugMetadata = await sharp(debugBuffer).metadata();
             
             // Send image to frontend via WebSocket for inline display
             try {

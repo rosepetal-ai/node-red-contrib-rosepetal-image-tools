@@ -80,6 +80,7 @@ cd ~/.node-red && npm install /path/to/node-red-contrib-image-tools
 - **Parallel processing** for array operations
 - **Memory efficient** with optimized algorithms
 - **Async operations** with real-time performance timing
+- **Never blocks the event loop**: decoding, processing and encoding (including BMP and colour-space swaps) all run on the libuv thread pool; the JavaScript layer only validates and routes messages
 
 ### Image Data Format
 ```javascript
@@ -133,6 +134,7 @@ rosepetal-image-engine/  # C++ processing engine
 - Process **arrays when possible** for parallel execution
 - Choose **appropriate output formats** for your destination
 - Monitor **node status displays** for timing information
+- Under heavy concurrency, raise the libuv thread pool (default 4 threads, shared with `sharp` and file I/O) before starting Node-RED, e.g. `UV_THREADPOOL_SIZE=8 node-red`
 
 ## 🤝 Contributing
 

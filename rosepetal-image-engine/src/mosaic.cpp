@@ -46,42 +46,18 @@ public:
       normalized_(normalized), outputFormat_(std::move(outputFormat)),
       quality_(quality), pngOptimize_(pngOptimize)
   {
-    /* ─ SUPER FAST image conversion with timing ─ */
-    const int64 t0 = cv::getTickCount();
-    
-    // Pre-allocate vectors for maximum performance
-    images_.reserve(imagesArray.Length());
-    imageChannels_.reserve(imagesArray.Length());
-    positions_.reserve(positionsArray.Length());
-    
-    // Convert images with zero-copy operations and extract channel formats
-    for (uint32_t i = 0; i < imagesArray.Length(); i++) {
-      images_.emplace_back(ConvertToMat(imagesArray[i]));
-      
-      // Extract and store channel format for each image (like other nodes do)
-      std::string channel;
-      if (imagesArray[i].IsObject() && !imagesArray[i].IsBuffer()) {
-        Napi::Object obj = imagesArray[i].As<Napi::Object>();
-        
-        // Check for new colorSpace field first
-        if (obj.Has("colorSpace")) {
-          channel = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-        }
-        // Default based on channel count
-        else {
-          channel = (images_[i].channels() == 4) ? "RGBA"
-                  : (images_[i].channels() == 3) ? "RGB"
-                  : "GRAY";
-        }
-      } else {
-        // Buffer input - determine from OpenCV Mat
-        channel = (images_[i].channels() == 4) ? "RGBA"
-                : (images_[i].channels() == 3) ? "RGB"
-                : "GRAY";
+    // JS thread: metadata + persistent references only (no decode, no pixels)
+    try {
+      sources_.reserve(imagesArray.Length());
+      for (uint32_t i = 0; i < imagesArray.Length(); i++) {
+        sources_.emplace_back(CaptureImage(imagesArray[i]));
       }
-      
-      imageChannels_.emplace_back(channel);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
+    positions_.reserve(positionsArray.Length());
     
     // Parse positions - ultra-fast integer operations
     for (uint32_t i = 0; i < positionsArray.Length(); i++) {
@@ -92,17 +68,28 @@ public:
       p.y = pos.Get("y").As<Napi::Number>().DoubleValue();
       positions_.emplace_back(p);
     }
-    
-    // Determine the best canvas format from all input images (priority: RGBA > BGRA > RGB > BGR > GRAY)
-    canvasChannel_ = DetermineBestCanvasFormat(imageChannels_);
-    
-    convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
   }
 
 protected:
   void Execute() override {
+    if (captureFailed_) return;
+
+    /* ─ Decode (encoded inputs only) + channel detection, worker thread ─ */
+    int64 t0 = cv::getTickCount();
+    images_.clear(); imageChannels_.clear();
+    images_.reserve(sources_.size());
+    imageChannels_.reserve(sources_.size());
+    for (auto& s : sources_) {
+      s.Materialize();
+      images_.push_back(s.mat);
+      imageChannels_.push_back(s.colorSpace);
+    }
+    // Determine the best canvas format from all input images (priority: RGBA > BGRA > RGB > BGR > GRAY)
+    canvasChannel_ = DetermineBestCanvasFormat(imageChannels_);
+    convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+
     /* ─ SUPER FAST mosaic composition ─ */
-    const int64 t0 = cv::getTickCount();
+    t0 = cv::getTickCount();
     
     // Parse background color - optimized hex parsing (returns BGR format)
     cv::Scalar bgColor = ParseColor(backgroundColor_, cv::Scalar(0, 0, 0));
@@ -148,6 +135,8 @@ protected:
       const cv::Mat srcForEncoding =
             PrepareForEncoding(canvas_, canvasChannel_, outputFormat_);
       encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
+    } else {
+      FinalizeForOutput(canvas_);
     }
   }
   
@@ -303,6 +292,8 @@ private:
   }
   
   // Member variables
+  std::vector<ImageSource> sources_;        // JS inputs (decoded in Execute)
+  bool captureFailed_ = false;
   std::vector<cv::Mat> images_;
   std::vector<std::string> imageChannels_;  // Channel format for each image
   std::vector<Position> positions_;

@@ -12,30 +12,84 @@ try {
 }
 const fs = require('fs').promises;
 const path = require('path');
+const Cpp = require('../../lib/cpp-bridge.js');
 
 module.exports = function(RED) {
   const NodeUtils = require('../../lib/node-utils.js')(RED);
 
+  // Per-folder cache: file name → mtimeMs. Our own writes and unlinks keep it
+  // exact; a full readdir is only repeated every DIR_RESYNC_MS to pick up
+  // changes made by other processes.
   const dirCache = new Map();
+  const dirSyncedAt = new Map();
+  const dirScanInFlight = new Map();
+  const DIR_RESYNC_MS = 5000;
+  const STAT_CONCURRENCY = 32;   // keep the libuv thread pool free for image work
+
+  // Concurrency-limited async map (results keep input order).
+  async function mapLimit(items, limit, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    async function worker() {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await fn(items[i], i);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+    return results;
+  }
+
+  async function statNames(folderPath, names) {
+    const stats = await mapLimit(names, STAT_CONCURRENCY, async (name) => {
+      try {
+        const st = await fs.stat(path.join(folderPath, name));
+        return { name, mtimeMs: st.mtimeMs };
+      } catch {
+        return null;   // vanished between readdir and stat
+      }
+    });
+    return stats.filter(Boolean);
+  }
+
+  // Reconciles the cache with the directory listing (adds unknown files with
+  // their mtime, drops files that no longer exist).
+  async function syncDirCache(folderPath, map) {
+    const entries = await fs.readdir(folderPath, { withFileTypes: true });
+    const diskFiles = new Set();
+    for (const e of entries) {
+      if (e.isFile()) diskFiles.add(e.name);
+    }
+    for (const name of map.keys()) {
+      if (!diskFiles.has(name)) map.delete(name);
+    }
+    const unknown = [];
+    for (const name of diskFiles) {
+      if (!map.has(name)) unknown.push(name);
+    }
+    if (unknown.length > 0) {
+      for (const { name, mtimeMs } of await statNames(folderPath, unknown)) map.set(name, mtimeMs);
+    }
+    dirSyncedAt.set(folderPath, Date.now());
+  }
 
   async function getCachedDir(folderPath) {
     if (dirCache.has(folderPath)) return dirCache.get(folderPath);
-    const map = new Map();
-    try {
-      const entries = await fs.readdir(folderPath, { withFileTypes: true });
-      const files = entries.filter(e => e.isFile());
-      const stats = await Promise.all(
-        files.map(async (f) => {
-          const st = await fs.stat(path.join(folderPath, f.name));
-          return { name: f.name, mtimeMs: st.mtimeMs };
-        })
-      );
-      for (const { name, mtimeMs } of stats) map.set(name, mtimeMs);
-    } catch {
-      // folder doesn't exist yet — empty cache is fine
-    }
-    dirCache.set(folderPath, map);
-    return map;
+    if (dirScanInFlight.has(folderPath)) return dirScanInFlight.get(folderPath);
+    const scan = (async () => {
+      const map = new Map();
+      try {
+        await syncDirCache(folderPath, map);
+      } catch {
+        // folder doesn't exist yet — empty cache is fine
+        dirSyncedAt.set(folderPath, Date.now());
+      }
+      dirCache.set(folderPath, map);
+      dirScanInFlight.delete(folderPath);
+      return map;
+    })();
+    dirScanInFlight.set(folderPath, scan);
+    return scan;
   }
 
   function ImageOutNode(config) {
@@ -100,32 +154,18 @@ module.exports = function(RED) {
       if (!validated) throw new Error("Invalid image structure");
 
       const colorSpace = validated.colorSpace;
-      const channels = validated.channels;
-      let data = validated.data;
 
-      // BMP: encode raw pixels directly (no Sharp)
+      // BMP: encoded by the native engine on the thread pool (Sharp cannot write BMP)
       if (format === 'bmp') {
-        let nativeData = data;
-        if (colorSpace === 'RGB' || colorSpace === 'RGBA') {
-          nativeData = Buffer.from(data);
-          for (let i = 0; i < nativeData.length; i += channels) {
-            const t = nativeData[i]; nativeData[i] = nativeData[i + 2]; nativeData[i + 2] = t;
-          }
-        }
-        const buf = Buffer.isBuffer(nativeData) ? nativeData : Buffer.from(nativeData);
-        return encodeBmpRaw(buf, validated.width, validated.height, channels);
+        const { image: bmp } = await Cpp.encode(validated, 'bmp');
+        return bmp;
       }
 
-      // BGR/BGRA → RGB/RGBA for Sharp
-      if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
-        data = Buffer.from(data);
-        for (let i = 0; i < data.length; i += channels) {
-          const t = data[i]; data[i] = data[i + 2]; data[i + 2] = t;
-        }
-      }
+      // BGR/BGRA → RGB/RGBA for Sharp (native, off the event loop)
+      const rgb = await NodeUtils.toSharpRaw(validated);
 
-      const inst = sharp(data, {
-        raw: { width: validated.width, height: validated.height, channels }
+      const inst = sharp(rgb.data, {
+        raw: { width: rgb.width, height: rgb.height, channels: rgb.channels }
       });
       if (colorSpace === 'GRAY') inst.toColourspace('b-w');
 
@@ -343,7 +383,7 @@ module.exports = function(RED) {
 
               if (maxImages > 0) {
                 try {
-                  await enforceMaxImages(folderPath, maxImages, dirCache.get(folderPath));
+                  await enforceMaxImages(folderPath, maxImages);
                 } catch (policyErr) {
                   node.warn(`Max images enforcement failed: ${policyErr.message}`);
                 }
@@ -508,7 +548,7 @@ module.exports = function(RED) {
 
         if (maxImages > 0) {
           try {
-            await enforceMaxImages(folderPath, maxImages, dirCache.get(folderPath));
+            await enforceMaxImages(folderPath, maxImages);
           } catch (policyErr) {
             node.warn(`Max images enforcement failed: ${policyErr.message}`);
           }
@@ -587,124 +627,31 @@ module.exports = function(RED) {
       }
     }
 
-    async function enforceMaxImages(folderPath, maxCount, cachedMap) {
+    async function enforceMaxImages(folderPath, maxCount) {
       if (maxCount <= 0) return;
 
-      const entries = await fs.readdir(folderPath, { withFileTypes: true });
-      const diskFiles = new Set();
-      for (const e of entries) {
-        if (e.isFile()) diskFiles.add(e.name);
-      }
-      if (diskFiles.size <= maxCount) {
-        if (cachedMap) {
-          for (const name of cachedMap.keys()) {
-            if (!diskFiles.has(name)) cachedMap.delete(name);
-          }
-        }
-        return;
+      // The cache is authoritative for our own writes; re-list the directory
+      // only every DIR_RESYNC_MS (instead of on every message) to catch files
+      // added or removed by other processes.
+      const cachedMap = await getCachedDir(folderPath);
+      if (Date.now() - (dirSyncedAt.get(folderPath) || 0) >= DIR_RESYNC_MS) {
+        await syncDirCache(folderPath, cachedMap);
       }
 
-      if (cachedMap) {
-        for (const name of cachedMap.keys()) {
-          if (!diskFiles.has(name)) cachedMap.delete(name);
-        }
-        const unknown = [];
-        for (const name of diskFiles) {
-          if (!cachedMap.has(name)) unknown.push(name);
-        }
-        if (unknown.length > 0) {
-          const stats = await Promise.all(
-            unknown.map(async (name) => {
-              const st = await fs.stat(path.join(folderPath, name));
-              return { name, mtimeMs: st.mtimeMs };
-            })
-          );
-          for (const { name, mtimeMs } of stats) cachedMap.set(name, mtimeMs);
-        }
-      }
+      if (cachedMap.size <= maxCount) return;
 
-      let sorted;
-      if (cachedMap && cachedMap.size > 0) {
-        sorted = Array.from(cachedMap.entries()).map(([name, mtimeMs]) => ({ name, mtimeMs }));
-      } else {
-        sorted = await Promise.all(
-          Array.from(diskFiles).map(async (name) => {
-            const st = await fs.stat(path.join(folderPath, name));
-            return { name, mtimeMs: st.mtimeMs };
-          })
-        );
-      }
+      const sorted = Array.from(cachedMap, ([name, mtimeMs]) => ({ name, mtimeMs }));
       sorted.sort((a, b) => a.mtimeMs - b.mtimeMs);
 
-      const toRemove = sorted.length - maxCount;
-      for (let i = 0; i < toRemove; i++) {
+      const toRemove = sorted.slice(0, sorted.length - maxCount);
+      await mapLimit(toRemove, STAT_CONCURRENCY, async ({ name }) => {
         try {
-          await fs.unlink(path.join(folderPath, sorted[i].name));
+          await fs.unlink(path.join(folderPath, name));
         } catch (err) {
           if (err.code !== 'ENOENT') throw err;
         }
-        cachedMap?.delete(sorted[i].name);
-      }
-    }
-
-    function encodeBmpRaw(pixelData, width, height, channels) {
-      const bitsPerPixel = channels * 8;
-      const rowBytes = width * channels;
-      const rowPadding = (4 - (rowBytes % 4)) % 4;
-      const paddedRowSize = rowBytes + rowPadding;
-
-      const hasPalette = channels === 1;
-      const paletteSize = hasPalette ? 256 * 4 : 0;
-      const headerSize = 14;
-      const infoHeaderSize = 40;
-      const pixelDataOffset = headerSize + infoHeaderSize + paletteSize;
-      const pixelDataSize = paddedRowSize * height;
-      const fileSize = pixelDataOffset + pixelDataSize;
-
-      const buf = Buffer.alloc(fileSize);
-
-      // File header
-      buf.write('BM', 0);
-      buf.writeUInt32LE(fileSize, 2);
-      buf.writeUInt32LE(0, 6); // reserved
-      buf.writeUInt32LE(pixelDataOffset, 10);
-
-      // Info header (BITMAPINFOHEADER)
-      buf.writeUInt32LE(infoHeaderSize, 14);
-      buf.writeInt32LE(width, 18);
-      buf.writeInt32LE(height, 22); // positive = bottom-up
-      buf.writeUInt16LE(1, 26); // planes
-      buf.writeUInt16LE(bitsPerPixel, 28);
-      buf.writeUInt32LE(0, 30); // compression (BI_RGB)
-      buf.writeUInt32LE(pixelDataSize, 34);
-      buf.writeInt32LE(2835, 38); // X pixels per meter (~72 DPI)
-      buf.writeInt32LE(2835, 42); // Y pixels per meter
-      buf.writeUInt32LE(hasPalette ? 256 : 0, 46);
-      buf.writeUInt32LE(0, 50); // important colors
-
-      // Grayscale palette
-      if (hasPalette) {
-        let offset = headerSize + infoHeaderSize;
-        for (let i = 0; i < 256; i++) {
-          buf[offset++] = i; // B
-          buf[offset++] = i; // G
-          buf[offset++] = i; // R
-          buf[offset++] = 0; // reserved
-        }
-      }
-
-      // Pixel data (bottom-up row order)
-      const padBytes = Buffer.alloc(rowPadding);
-      for (let y = height - 1; y >= 0; y--) {
-        const srcOffset = y * rowBytes;
-        const dstOffset = pixelDataOffset + (height - 1 - y) * paddedRowSize;
-        pixelData.copy(buf, dstOffset, srcOffset, srcOffset + rowBytes);
-        if (rowPadding > 0) {
-          padBytes.copy(buf, dstOffset + rowBytes);
-        }
-      }
-
-      return buf;
+        cachedMap.delete(name);
+      });
     }
 
     // Handle cleanup

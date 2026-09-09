@@ -2,9 +2,6 @@
 #include <opencv2/opencv.hpp>
 #include "utils.h"
 
-
-
-
 /*------------------------------------------------------------------------*/
 class BlendWorker final : public Napi::AsyncWorker {
 public:
@@ -28,30 +25,39 @@ public:
       backgroundColor(std::move(backgroundColor)),
       colorTolerance(colorTolerance)
   {
-    // Timing and conversion
-    const int64 t0 = cv::getTickCount();
-    
-    // Convert JavaScript inputs to OpenCV Mats
-    mat1 = ConvertToMat(jsImg1);
-    mat2 = ConvertToMat(jsImg2);
-    
-    // Detect channel formats
-    format1 = DetectChannelFormatShared(jsImg1, mat1);
-    format2 = DetectChannelFormatShared(jsImg2, mat2);
-    
+    // JS thread: metadata + persistent references only (no decode, no pixels)
+    try {
+      src1_ = CaptureImage(jsImg1);
+      src2_ = CaptureImage(jsImg2);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
+  }
+
+protected:
+  void Execute() override {
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) on the worker thread
+    int64 t0 = cv::getTickCount();
+    src1_.Materialize();
+    src2_.Materialize();
+    const cv::Mat& mat1 = src1_.mat;
+    const cv::Mat& mat2 = src2_.mat;
+    format1 = src1_.colorSpace;
+    format2 = src2_.colorSpace;
+
     // Determine output channel format - force BGRA for alpha compositing
     if (alphaCompositing) {
       outputChannel = "BGRA";
     } else {
       outputChannel = DetermineOutputFormat(format1, format2);
     }
-    
     convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
-  }
 
-protected:
-  void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    t0 = cv::getTickCount();
     
     // Convert both images to the same target format
     cv::Mat img1 = ConvertToTargetFormatShared(mat1, format1, outputChannel);
@@ -98,6 +104,8 @@ protected:
     if (outputFormat != "raw") {
       cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
+    } else {
+      FinalizeForOutput(result);
     }
   }
 
@@ -112,8 +120,13 @@ protected:
     Callback().Call({env.Null(), out});
   }
 
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
+  }
+
 private:
-  cv::Mat mat1, mat2, result;
+  ImageSource src1_, src2_;
+  cv::Mat result;
   std::string format1, format2, outputChannel;
   double opacity;
   std::string outputFormat;
@@ -123,6 +136,7 @@ private:
   bool removeBackground;
   std::string backgroundColor;
   double colorTolerance;
+  bool captureFailed_ = false;
   double convertMs = 0, taskMs = 0, encodeMs = 0;
   std::vector<uchar> encodedBuf;
 };

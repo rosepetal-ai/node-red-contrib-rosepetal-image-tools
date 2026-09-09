@@ -389,9 +389,9 @@ module.exports = function (RED) {
         const images = results.map(r => r.image);
 
         if (useSharpWebp) {
-          for (let i = 0; i < images.length; i++) {
-            images[i] = await NodeUtils.encodeWebpAdvanced(images[i], config);
-          }
+          // Encode all images concurrently (Sharp runs on the libuv thread pool)
+          const webps = await Promise.all(images.map((img) => NodeUtils.encodeWebpAdvanced(img, config)));
+          webps.forEach((webp, i) => { images[i] = webp; });
         }
 
         /* ▸ Status: standardized success formatting ----------------------- */

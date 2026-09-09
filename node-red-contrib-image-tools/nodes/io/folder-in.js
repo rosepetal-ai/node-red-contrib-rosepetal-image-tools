@@ -25,10 +25,25 @@ module.exports = function(RED) {
 
     // Node state
     let running = false;
-    let intervalTimer = null;
+    let starting = false;
+    let sleepTimer = null;     // pending setTimeout of the emission loop
+    let sleepResolve = null;   // resolver of the pending sleep (so stop() can wake the loop)
     let imageFiles = [];
     let currentIndex = 0;
     let folderPath = null;
+
+    /**
+     * Detects the container format from the file header so the debug preview
+     * can be produced straight from the encoded file (Sharp shrink-on-load)
+     * instead of re-encoding the decoded raw pixels.
+     */
+    function sniffEncodedFormat(buf) {
+      if (!Buffer.isBuffer(buf) || buf.length < 12) return null;
+      if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'jpg';
+      if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'png';
+      if (buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'webp';
+      return null;
+    }
 
     // Supported image extensions
     const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif', '.tiff'];
@@ -108,7 +123,7 @@ module.exports = function(RED) {
         const decodeStart = performance.now();
         let data, info;
         if (BmpDecode.isBmp(fileBuffer)) {
-          const decoded = BmpDecode.decodeBmp(fileBuffer);
+          const decoded = await BmpDecode.decodeBmp(fileBuffer);
           data = decoded.data;
           info = { width: decoded.width, height: decoded.height, channels: decoded.channels };
         } else {
@@ -177,22 +192,14 @@ module.exports = function(RED) {
 
             const debugWidth = Math.max(1, parseInt(debugWidthRaw, 10) || 200);
 
-            // Prefer sending the original encoded buffer when format is supported
+            // Prefer the original encoded file when its format is supported by
+            // the editor preview: Sharp then decodes at reduced size directly.
             let debugSource = outputImageObject;
             let debugFormatHint = 'raw';
-
-            if (info && info.format) {
-              const normalizedFormat = info.format.toLowerCase();
-              if (normalizedFormat === 'jpeg' || normalizedFormat === 'jpg') {
-                debugSource = fileBuffer;
-                debugFormatHint = 'jpg';
-              } else if (normalizedFormat === 'png') {
-                debugSource = fileBuffer;
-                debugFormatHint = 'png';
-              } else if (normalizedFormat === 'webp') {
-                debugSource = fileBuffer;
-                debugFormatHint = 'webp';
-              }
+            const encodedFormat = sniffEncodedFormat(fileBuffer);
+            if (encodedFormat) {
+              debugSource = fileBuffer;
+              debugFormatHint = encodedFormat;
             }
 
             const debugResult = await NodeUtils.debugImageDisplay(
@@ -227,6 +234,9 @@ module.exports = function(RED) {
           taskMs: taskMs
         }, totalTime);
 
+        // Stopped while this image was being decoded: discard it
+        if (!running) return;
+
         // Send message
         node.send(msg);
 
@@ -251,56 +261,98 @@ module.exports = function(RED) {
       }
     }
 
-    /**
-     * Starts the interval-based emission
-     */
-    async function startEmission() {
-      if (running) return;
+    /** Async sleep that stopEmission() can interrupt. */
+    function sleep(ms) {
+      return new Promise((resolve) => {
+        sleepResolve = resolve;
+        sleepTimer = setTimeout(() => {
+          sleepTimer = null;
+          sleepResolve = null;
+          resolve();
+        }, ms);
+      });
+    }
 
-      node.status({ fill: "yellow", shape: "dot", text: "Scanning folder..." });
-
-      // Scan folder for images
-      imageFiles = await scanFolder();
-
-      if (imageFiles.length === 0) {
-        node.status({ fill: "red", shape: "ring", text: "No images found" });
-        return;
+    function wakeLoop() {
+      if (sleepTimer) {
+        clearTimeout(sleepTimer);
+        sleepTimer = null;
       }
-
-      // Reset index
-      currentIndex = 0;
-      running = true;
-
-      // Get interval value
-      let intervalMs = config.interval || 1000;
-      if (config.intervalType === 'msg' || config.intervalType === 'flow' || config.intervalType === 'global') {
-        // For dynamic intervals, use default for now - can be enhanced with message input
-        intervalMs = config.interval || 1000;
-      }
-      intervalMs = parseInt(intervalMs);
-
-      node.status({ fill: "green", shape: "dot", text: `Started (${imageFiles.length} images, ${intervalMs}ms)` });
-
-      // Emit first image immediately
-      await emitNextImage();
-
-      // Start interval timer for subsequent images
-      if (running) { // Check if still running after first emit
-        intervalTimer = setInterval(emitNextImage, intervalMs);
+      if (sleepResolve) {
+        const resolve = sleepResolve;
+        sleepResolve = null;
+        resolve();
       }
     }
 
     /**
-     * Stops the interval-based emission
+     * Emission loop. Unlike setInterval, the next emission is scheduled only
+     * after the previous one has finished, so a slow decode can never overlap
+     * with the next tick; the cadence is kept whenever decoding is faster than
+     * the interval.
+     */
+    async function runEmissionLoop(intervalMs) {
+      while (running) {
+        const started = performance.now();
+        await emitNextImage();
+        if (!running) break;
+        const delay = Math.max(0, intervalMs - (performance.now() - started));
+        await sleep(delay);
+      }
+    }
+
+    /**
+     * Starts the interval-based emission
+     */
+    async function startEmission() {
+      if (running || starting) return;
+      starting = true;
+
+      let intervalMs;
+      try {
+        node.status({ fill: "yellow", shape: "dot", text: "Scanning folder..." });
+
+        // Scan folder for images
+        imageFiles = await scanFolder();
+
+        if (imageFiles.length === 0) {
+          node.status({ fill: "red", shape: "ring", text: "No images found" });
+          return;
+        }
+
+        // Reset index
+        currentIndex = 0;
+        running = true;
+
+        // Get interval value
+        intervalMs = config.interval || 1000;
+        if (config.intervalType === 'msg' || config.intervalType === 'flow' || config.intervalType === 'global') {
+          // For dynamic intervals, use default for now - can be enhanced with message input
+          intervalMs = config.interval || 1000;
+        }
+        intervalMs = parseInt(intervalMs);
+        if (!Number.isFinite(intervalMs) || intervalMs < 0) intervalMs = 1000;
+
+        node.status({ fill: "green", shape: "dot", text: `Started (${imageFiles.length} images, ${intervalMs}ms)` });
+      } finally {
+        starting = false;
+      }
+
+      // Emits the first image immediately, then one every intervalMs
+      runEmissionLoop(intervalMs).catch((err) => {
+        node.error(`Emission loop failed: ${err.message}`);
+        stopEmission();
+      });
+    }
+
+    /**
+     * Stops the emission loop
      */
     function stopEmission() {
       if (!running) return;
 
       running = false;
-      if (intervalTimer) {
-        clearInterval(intervalTimer);
-        intervalTimer = null;
-      }
+      wakeLoop();
 
       node.status({ fill: "grey", shape: "ring", text: "Stopped" });
     }

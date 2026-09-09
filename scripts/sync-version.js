@@ -25,7 +25,7 @@
  * Usage: node scripts/sync-version.js [version] [--dry-run]
  */
 
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -38,14 +38,15 @@ function escapeRegex(str) {
 }
 
 // Resolve the target version from CLI arg, the git tag, or the current root value.
-function resolveVersion() {
+async function resolveVersion() {
   const arg = process.argv.slice(2).find((a) => !a.startsWith('-'));
   if (arg) return arg.replace(/^v/, '');
 
   const tag = (process.env.GITHUB_REF || '').match(/^refs\/tags\/v?(.+)$/);
   if (tag) return tag[1];
 
-  return require(path.join(ROOT, 'package.json')).version;
+  const rootPkg = JSON.parse(await fs.readFile(path.join(ROOT, 'package.json'), 'utf8'));
+  return rootPkg.version;
 }
 
 // Replace the FIRST top-level "version": "<digit...>". The leading-digit guard
@@ -64,46 +65,62 @@ function setDepVersion(content, dep, version) {
 // Main
 // ─────────────────────────────────────────────────────────────
 
-const version = resolveVersion();
-if (!SEMVER.test(version)) {
-  console.error(`✗ "${version}" is not a valid semver version`);
+async function fileExists(file) {
+  try {
+    await fs.access(file);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function main() {
+  const version = await resolveVersion();
+  if (!SEMVER.test(version)) {
+    console.error(`✗ "${version}" is not a valid semver version`);
+    process.exit(1);
+  }
+
+  console.log(`=== Sync version → ${version} ===`);
+  if (DRY_RUN) console.log('(dry run — no files written)\n');
+  else console.log('');
+
+  let count = 0;
+
+  async function applyEdit(absFile, label, transform) {
+    const before = await fs.readFile(absFile, 'utf8');
+    const after = transform(before);
+    if (!DRY_RUN) await fs.writeFile(absFile, after);
+    const changed = after !== before;
+    console.log(`  ${changed ? '✓' : '·'} ${label}${changed ? '' : ' (already current)'}`);
+    count++;
+  }
+
+  // 1. root package.json: version + every platform pin in optionalDependencies
+  const rootFile = path.join(ROOT, 'package.json');
+  const rootPkg = JSON.parse(await fs.readFile(rootFile, 'utf8'));
+  const pins = Object.keys(rootPkg.optionalDependencies || {}).filter((d) =>
+    d.startsWith(PLATFORM_PREFIX),
+  );
+  await applyEdit(rootFile, `package.json  (version + ${pins.length} optionalDependencies)`, (content) => {
+    content = setTopLevelVersion(content, version);
+    for (const dep of pins) content = setDepVersion(content, dep, version);
+    return content;
+  });
+
+  // 2. every npm/<arch>/package.json
+  const npmDir = path.join(ROOT, 'npm');
+  for (const arch of (await fs.readdir(npmDir)).sort()) {
+    const file = path.join(npmDir, arch, 'package.json');
+    if (!(await fileExists(file))) continue;
+    await applyEdit(file, `npm/${arch}/package.json`, (content) => setTopLevelVersion(content, version));
+  }
+
+  console.log(`\nDone — ${count} package.json file(s) at ${version}.`);
+  if (DRY_RUN) console.log('(dry run — re-run without --dry-run to apply.)');
+}
+
+main().catch((err) => {
+  console.error(`✗ ${err.message}`);
   process.exit(1);
-}
-
-console.log(`=== Sync version → ${version} ===`);
-if (DRY_RUN) console.log('(dry run — no files written)\n');
-else console.log('');
-
-let count = 0;
-
-function applyEdit(absFile, label, transform) {
-  const before = fs.readFileSync(absFile, 'utf8');
-  const after = transform(before);
-  if (!DRY_RUN) fs.writeFileSync(absFile, after);
-  const changed = after !== before;
-  console.log(`  ${changed ? '✓' : '·'} ${label}${changed ? '' : ' (already current)'}`);
-  count++;
-}
-
-// 1. root package.json: version + every platform pin in optionalDependencies
-const rootFile = path.join(ROOT, 'package.json');
-const rootPkg = JSON.parse(fs.readFileSync(rootFile, 'utf8'));
-const pins = Object.keys(rootPkg.optionalDependencies || {}).filter((d) =>
-  d.startsWith(PLATFORM_PREFIX),
-);
-applyEdit(rootFile, `package.json  (version + ${pins.length} optionalDependencies)`, (content) => {
-  content = setTopLevelVersion(content, version);
-  for (const dep of pins) content = setDepVersion(content, dep, version);
-  return content;
 });
-
-// 2. every npm/<arch>/package.json
-const npmDir = path.join(ROOT, 'npm');
-for (const arch of fs.readdirSync(npmDir).sort()) {
-  const file = path.join(npmDir, arch, 'package.json');
-  if (!fs.existsSync(file)) continue;
-  applyEdit(file, `npm/${arch}/package.json`, (content) => setTopLevelVersion(content, version));
-}
-
-console.log(`\nDone — ${count} package.json file(s) at ${version}.`);
-if (DRY_RUN) console.log('(dry run — re-run without --dry-run to apply.)');

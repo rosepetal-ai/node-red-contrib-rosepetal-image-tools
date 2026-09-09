@@ -44,29 +44,8 @@ inline cv::Vec3f GenerateMaximallyDifferentColor(
     return firstColor;
   }
 
-  // Generate candidate colors evenly distributed in HSV space
-  std::vector<cv::Vec3f> candidates;
-  const int numHues = 24; // Every 15 degrees
-  const int numSaturations = 3; // 60%, 80%, 100%
-  const int numValues = 3; // 60%, 80%, 100%
-
-  for (int h = 0; h < numHues; h++) {
-    for (int s = 0; s < numSaturations; s++) {
-      for (int v = 0; v < numValues; v++) {
-        float hue = (h * 360.0f / numHues);
-        float saturation = 0.6f + s * 0.2f;
-        float value = 0.6f + v * 0.2f;
-
-        // Convert HSV to BGR
-        cv::Mat hsv(1, 1, CV_32FC3, cv::Scalar(hue / 360.0f, saturation, value));
-        cv::Mat bgr;
-        cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
-
-        cv::Vec3f color = bgr.at<cv::Vec3f>(0, 0);
-        candidates.push_back(color);
-      }
-    }
-  }
+  // Candidate colors evenly distributed in HSV space (precomputed once)
+  const std::vector<cv::Vec3f>& candidates = CandidateColorPalette();
 
   // Find candidate with maximum minimum distance to existing colors
   float maxMinDistance = 0;
@@ -95,6 +74,14 @@ inline cv::Vec3f GenerateMaximallyDifferentColor(
 }
 
 /*------------------------------------------------------------------------*/
+// Box as parsed from JS (normalized coordinates). Geometry that depends on
+// the image size is resolved in Execute(), after the image is decoded.
+struct ParsedBox {
+  std::vector<cv::Point2f> corners;   // 4 normalized corners (TL, TR, BR, BL)
+  std::string className;
+  float confidence;
+};
+
 class AddBBsWorker final : public Napi::AsyncWorker {
 public:
   AddBBsWorker(Napi::Function cb,
@@ -123,13 +110,16 @@ public:
       quality(quality),
       pngOptimize(pngOptimize)
   {
-    const int64 t0 = cv::getTickCount();
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(jsImg);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
 
-    // Convert JavaScript image to OpenCV Mat
-    imageMat = ConvertToMat(jsImg);
-
-    // Parse class color map
-    std::unordered_map<std::string, cv::Vec3f> userColorMap;
+    // Parse class color map (JS → plain map)
     Napi::Array colorMapKeys = classColorMap.GetPropertyNames();
     for (size_t i = 0; i < colorMapKeys.Length(); i++) {
       std::string className = colorMapKeys.Get(i).As<Napi::String>().Utf8Value();
@@ -140,15 +130,11 @@ public:
         float g = std::stoi(hexColor.substr(3, 2), nullptr, 16) / 255.0f;
         float b = std::stoi(hexColor.substr(5, 2), nullptr, 16) / 255.0f;
         userColorMap[className] = cv::Vec3f(b, g, r); // BGR for OpenCV
-        // Debug: Print parsed color
-        // printf("Class %s: hex=%s -> BGR=(%.2f,%.2f,%.2f)\n", className.c_str(), hexColor.c_str(), b, g, r);
       }
     }
 
-    // Reserve capacity for better performance
-    bboxInfos.reserve(32); // Reserve for typical number of boxes
-
-    // Parse boxes array structure - direct array format
+    // Parse boxes array structure (JS → plain structs, normalized coords)
+    parsedBoxes.reserve(boxesArray.Length());
     for (size_t boxIndex = 0; boxIndex < boxesArray.Length(); boxIndex++) {
       Napi::Object boxObj = boxesArray.Get(boxIndex).As<Napi::Object>();
 
@@ -158,108 +144,113 @@ public:
         if (box.Length() != 4) continue;
 
         // Parse 4 corners: [[x1,y1], [x2,y1], [x2,y2], [x1,y2]]
-        std::vector<cv::Point2f> corners;
+        ParsedBox pb;
+        pb.corners.reserve(4);
         for (size_t i = 0; i < 4; i++) {
           Napi::Array corner = box.Get(i).As<Napi::Array>();
           if (corner.Length() >= 2) {
             float x = corner.Get(0u).As<Napi::Number>().FloatValue();
             float y = corner.Get(1u).As<Napi::Number>().FloatValue();
-            corners.emplace_back(x, y);
+            pb.corners.emplace_back(x, y);
           }
         }
-
-        if (corners.size() != 4) continue;
+        if (pb.corners.size() != 4) continue;
 
         // Extract tag (class name) and confidence
-        std::string className = boxObj.Get("tag").As<Napi::String>().Utf8Value();
-        float confidence = boxObj.Has("confidence") ?
-                          boxObj.Get("confidence").As<Napi::Number>().FloatValue() : 1.0f;
+        pb.className = boxObj.Get("tag").As<Napi::String>().Utf8Value();
+        pb.confidence = boxObj.Has("confidence") ?
+                        boxObj.Get("confidence").As<Napi::Number>().FloatValue() : 1.0f;
 
-        // Skip unmapped classes if onlyMapped is true
-        if (onlyMapped) {
-          if (userColorMap.find(className) == userColorMap.end()) {
-            continue; // Skip this box
-          }
-        }
-
-        // Get color for this class and pre-compute BGR scalar
-        cv::Vec3f color;
-        auto colorIt = userColorMap.find(className);
-        if (colorIt != userColorMap.end()) {
-          color = colorIt->second;
-        } else {
-          color = GenerateMaximallyDifferentColor(className, userColorMap, colorCache);
-        }
-
-        // Pre-compute BGR color as Scalar for faster drawing
-        cv::Scalar bgrColor(
-          color[0] * 255.0f,  // B
-          color[1] * 255.0f,  // G
-          color[2] * 255.0f   // R
-        );
-
-        // Convert normalized corners to pixel coordinates
-        std::vector<cv::Point> pixelCorners;
-        pixelCorners.reserve(4);
-        float minX = corners[0].x, maxX = corners[0].x;
-        float minY = corners[0].y, maxY = corners[0].y;
-        for (int i = 0; i < 4; i++) {
-          int px = static_cast<int>(corners[i].x * imageMat.cols);
-          int py = static_cast<int>(corners[i].y * imageMat.rows);
-          px = std::max(0, std::min(imageMat.cols - 1, px));
-          py = std::max(0, std::min(imageMat.rows - 1, py));
-          pixelCorners.emplace_back(px, py);
-          minX = std::min(minX, corners[i].x);
-          maxX = std::max(maxX, corners[i].x);
-          minY = std::min(minY, corners[i].y);
-          maxY = std::max(maxY, corners[i].y);
-        }
-
-        // Axis-aligned bounding rect (for label positioning)
-        cv::Rect bbox;
-        bbox.x = static_cast<int>(minX * imageMat.cols);
-        bbox.y = static_cast<int>(minY * imageMat.rows);
-        bbox.width = static_cast<int>((maxX - minX) * imageMat.cols);
-        bbox.height = static_cast<int>((maxY - minY) * imageMat.rows);
-        bbox.x = std::max(0, std::min(imageMat.cols - 1, bbox.x));
-        bbox.y = std::max(0, std::min(imageMat.rows - 1, bbox.y));
-        bbox.width = std::min(bbox.width, imageMat.cols - bbox.x);
-        bbox.height = std::min(bbox.height, imageMat.rows - bbox.y);
-
-        // Pre-generate label text with optimized string handling
-        char labelBuffer[256];
-        if (showClassName && showConfidence) {
-          snprintf(labelBuffer, sizeof(labelBuffer), "%s (%.1f%%)", className.c_str(), confidence * 100.0f);
-        } else if (showClassName) {
-          snprintf(labelBuffer, sizeof(labelBuffer), "%s", className.c_str());
-        } else if (showConfidence) {
-          snprintf(labelBuffer, sizeof(labelBuffer), "%.1f%%", confidence * 100.0f);
-        } else {
-          labelBuffer[0] = '\0';
-        }
-        std::string labelText(labelBuffer);
-
-        // Store bbox info with pre-computed values
-        BBoxInfo info;
-        info.boundingRect = bbox;
-        info.cornersPx = pixelCorners;
-        info.className = className;
-        info.confidence = confidence;
-        info.bgrColor = bgrColor;
-        info.labelText = labelText;
-        bboxInfos.push_back(info);
+        parsedBoxes.push_back(std::move(pb));
       }
     }
-
-    imageFormat = DetectChannelFormatShared(jsImg, imageMat);
-    outputChannel = imageFormat;
-
-    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
   }
 
 protected:
   void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) on the worker thread
+    int64 t0 = cv::getTickCount();
+    src_.Materialize();
+    const cv::Mat& imageMat = src_.mat;
+    imageFormat = src_.colorSpace;
+    outputChannel = imageFormat;
+
+    // Resolve colors, labels and pixel geometry now that the image size is known
+    bboxInfos.clear();
+    bboxInfos.reserve(parsedBoxes.size());
+    for (const auto& pb : parsedBoxes) {
+      // Skip unmapped classes if onlyMapped is true
+      if (onlyMapped && userColorMap.find(pb.className) == userColorMap.end()) {
+        continue;
+      }
+
+      // Get color for this class and pre-compute BGR scalar
+      cv::Vec3f color;
+      auto colorIt = userColorMap.find(pb.className);
+      if (colorIt != userColorMap.end()) {
+        color = colorIt->second;
+      } else {
+        auto cachedIt = colorCache.find(pb.className);
+        color = (cachedIt != colorCache.end())
+              ? cachedIt->second
+              : GenerateMaximallyDifferentColor(pb.className, userColorMap, colorCache);
+      }
+      cv::Scalar bgrColor(color[0] * 255.0f, color[1] * 255.0f, color[2] * 255.0f);
+
+      // Convert normalized corners to pixel coordinates
+      std::vector<cv::Point> pixelCorners;
+      pixelCorners.reserve(4);
+      float minX = pb.corners[0].x, maxX = pb.corners[0].x;
+      float minY = pb.corners[0].y, maxY = pb.corners[0].y;
+      for (int i = 0; i < 4; i++) {
+        int px = static_cast<int>(pb.corners[i].x * imageMat.cols);
+        int py = static_cast<int>(pb.corners[i].y * imageMat.rows);
+        px = std::max(0, std::min(imageMat.cols - 1, px));
+        py = std::max(0, std::min(imageMat.rows - 1, py));
+        pixelCorners.emplace_back(px, py);
+        minX = std::min(minX, pb.corners[i].x);
+        maxX = std::max(maxX, pb.corners[i].x);
+        minY = std::min(minY, pb.corners[i].y);
+        maxY = std::max(maxY, pb.corners[i].y);
+      }
+
+      // Axis-aligned bounding rect (for label positioning)
+      cv::Rect bbox;
+      bbox.x = static_cast<int>(minX * imageMat.cols);
+      bbox.y = static_cast<int>(minY * imageMat.rows);
+      bbox.width = static_cast<int>((maxX - minX) * imageMat.cols);
+      bbox.height = static_cast<int>((maxY - minY) * imageMat.rows);
+      bbox.x = std::max(0, std::min(imageMat.cols - 1, bbox.x));
+      bbox.y = std::max(0, std::min(imageMat.rows - 1, bbox.y));
+      bbox.width = std::min(bbox.width, imageMat.cols - bbox.x);
+      bbox.height = std::min(bbox.height, imageMat.rows - bbox.y);
+
+      // Pre-generate label text with optimized string handling
+      char labelBuffer[256];
+      if (showClassName && showConfidence) {
+        snprintf(labelBuffer, sizeof(labelBuffer), "%s (%.1f%%)", pb.className.c_str(), pb.confidence * 100.0f);
+      } else if (showClassName) {
+        snprintf(labelBuffer, sizeof(labelBuffer), "%s", pb.className.c_str());
+      } else if (showConfidence) {
+        snprintf(labelBuffer, sizeof(labelBuffer), "%.1f%%", pb.confidence * 100.0f);
+      } else {
+        labelBuffer[0] = '\0';
+      }
+
+      BBoxInfo info;
+      info.boundingRect = bbox;
+      info.cornersPx = std::move(pixelCorners);
+      info.className = pb.className;
+      info.confidence = pb.confidence;
+      info.bgrColor = bgrColor;
+      info.labelText = labelBuffer;
+      bboxInfos.push_back(std::move(info));
+    }
+
+    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+    t0 = cv::getTickCount();
 
     // Work directly on the image if possible, avoid clone
     bool needsConversion = (imageFormat == "RGB" || imageFormat == "RGBA" || imageFormat == "GRAY");
@@ -274,7 +265,7 @@ protected:
         cv::cvtColor(imageMat, result, cv::COLOR_GRAY2BGR);
       }
     } else {
-      // Already BGR/BGRA - clone only if needed
+      // Already BGR/BGRA - clone (never draw into JS-owned memory)
       result = imageMat.clone();
     }
 
@@ -368,6 +359,7 @@ protected:
         cv::cvtColor(result, result, cv::COLOR_BGR2GRAY);
       }
       // If already BGR/BGRA, no conversion needed
+      FinalizeForOutput(result);
     } else {
       // For encoded formats, keep as BGR
       cv::Mat tmp = result;
@@ -387,10 +379,18 @@ protected:
     Callback().Call({env.Null(), out});
   }
 
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
+  }
+
 private:
-  cv::Mat imageMat, result;
+  ImageSource src_;
+  bool captureFailed_ = false;
+  cv::Mat result;
   std::string imageFormat, outputChannel;
+  std::vector<ParsedBox> parsedBoxes;
   std::vector<BBoxInfo> bboxInfos;
+  std::unordered_map<std::string, cv::Vec3f> userColorMap;
   bool showClassName, showConfidence, onlyMapped, labelBackground;
   int boxThickness;
   double fontSize;

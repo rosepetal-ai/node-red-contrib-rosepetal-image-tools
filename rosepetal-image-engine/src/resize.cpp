@@ -26,39 +26,30 @@ ResizeWorker(Napi::Function& callback,
   heightMode(std::move(heightMode)), heightValue(heightValue),
   outputFormat(std::move(outputFormat)), quality(quality), pngOptimize(pngOptimize){
 
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
     try {
-      auto t0 = std::chrono::steady_clock::now();
-      inputMat = ConvertToMat(inputImage);
-      auto t1 = std::chrono::steady_clock::now();
-      convertMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
-
-      if (inputImage.IsObject() && !inputImage.IsBuffer()) {
-        Napi::Object obj = inputImage.As<Napi::Object>();
-        
-        // Check for colorSpace field
-        if (obj.Has("colorSpace")) {
-          channelOrder = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-        }
-        // Default based on channel count
-        else {
-          channelOrder = (inputMat.channels() == 4) ? "RGBA"
-                       : (inputMat.channels() == 3) ? "RGB"
-                       : "GRAY";
-        }
-      } else {
-        // Buffer input - determine from OpenCV Mat
-        channelOrder = (inputMat.channels() == 4) ? "RGBA"
-                     : (inputMat.channels() == 3) ? "RGB"
-                     : "GRAY";
-      }
+      src_ = CaptureImage(inputImage);
     } catch (const Napi::Error& e) {
-      SetError(e.Message());
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
   }
 
 protected:
   void Execute() override {
+    if (captureFailed_) return;
     try {
+        // --- 4.0 Decode (encoded inputs only) on the worker thread ---
+        {
+          auto tc0 = std::chrono::steady_clock::now();
+          src_.Materialize();
+          inputMat = src_.mat;
+          channelOrder = src_.colorSpace;
+          auto tc1 = std::chrono::steady_clock::now();
+          convertMs = std::chrono::duration<double, std::milli>(tc1 - tc0).count();
+        }
+
         // --- 4.1 Calcular ancho/alto objetivo --------------------------
         auto safeRoundToInt = [](double value) -> int {
           if (!std::isfinite(value)) {
@@ -179,6 +170,8 @@ protected:
           const cv::Mat srcForEncoding =
                 PrepareForEncoding(resultMat, channelOrder, outputFormat);
           encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality, pngOptimize);
+        } else {
+          FinalizeForOutput(resultMat);
         }
     } catch (const std::exception& e) {
         SetError(e.what());
@@ -219,6 +212,8 @@ protected:
   }
 
 private:
+  ImageSource src_;
+  bool captureFailed_ = false;
   cv::Mat inputMat, resultMat;
   int targetWidth = 0;
   int targetHeight = 0;

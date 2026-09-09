@@ -51,17 +51,32 @@ public:
       emitImage(emitImage),
       computeSsim(computeSsim)
   {
-    const int64 t0 = cv::getTickCount();
-    mat1 = ConvertToMat(jsImg1);
-    mat2 = ConvertToMat(jsImg2);
-    format1 = DetectChannelFormatShared(jsImg1, mat1);
-    format2 = DetectChannelFormatShared(jsImg2, mat2);
-    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+    // JS thread: metadata + persistent references only (no decode, no pixels)
+    try {
+      src1_ = CaptureImage(jsImg1);
+      src2_ = CaptureImage(jsImg2);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
   }
 
 protected:
   void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) on the worker thread
+    int64 t0 = cv::getTickCount();
+    src1_.Materialize();
+    src2_.Materialize();
+    const cv::Mat& mat1 = src1_.mat;
+    const cv::Mat& mat2 = src2_.mat;
+    format1 = src1_.colorSpace;
+    format2 = src2_.colorSpace;
+    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+
+    t0 = cv::getTickCount();
 
     // Convert both to grayscale for diff computation
     cv::Mat gray1, gray2;
@@ -119,6 +134,8 @@ protected:
     if (emitImage && outputFormat != "raw") {
       cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
+    } else if (emitImage) {
+      FinalizeForOutput(result);
     }
   }
 
@@ -165,6 +182,10 @@ protected:
     }
 
     Callback().Call({env.Null(), out});
+  }
+
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
   }
 
 private:
@@ -237,7 +258,9 @@ private:
     statBlobs = std::move(blobs);
   }
 
-  cv::Mat mat1, mat2, result;
+  ImageSource src1_, src2_;
+  bool captureFailed_ = false;
+  cv::Mat result;
   std::string format1, format2, outputChannel;
   int colormapType;
   int blurSize;

@@ -14,7 +14,7 @@
  * Usage: node scripts/dual-register.js [--dry-run]
  */
 
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -110,9 +110,9 @@ function findMatchingBrace(content, openPos) {
 // JS: Find registerType('rp-TYPE', C) → add registerType('TYPE', C)
 // ─────────────────────────────────────────────────────────────
 
-function addLegacyJs(filePath, oldType) {
+async function addLegacyJs(filePath, oldType) {
   const rpType = 'rp-' + oldType;
-  let content = fs.readFileSync(filePath, 'utf8');
+  let content = await fs.readFile(filePath, 'utf8');
 
   // Find: RED.nodes.registerType('rp-TYPE', Constructor);
   const regex = new RegExp(
@@ -132,7 +132,7 @@ function addLegacyJs(filePath, oldType) {
 
   content = content.replace(fullMatch, fullMatch + legacyLine);
 
-  if (!DRY_RUN) fs.writeFileSync(filePath, content);
+  if (!DRY_RUN) await fs.writeFile(filePath, content);
   console.log(`  JS:   ✓ Added legacy registerType('${oldType}', ${constructor})`);
   return true;
 }
@@ -217,8 +217,8 @@ function addLegacyScriptBlock(content, attrName, oldType) {
   return content.replace(fullBlock, fullBlock + '\n\n' + legacyBlock);
 }
 
-function addLegacyHtml(filePath, oldType) {
-  let content = fs.readFileSync(filePath, 'utf8');
+async function addLegacyHtml(filePath, oldType) {
+  let content = await fs.readFile(filePath, 'utf8');
 
   // 1. Add legacy JS registration
   const transformed = addLegacyHtmlRegistration(content, oldType);
@@ -231,7 +231,7 @@ function addLegacyHtml(filePath, oldType) {
   // 3. Duplicate help block for legacy type name
   content = addLegacyScriptBlock(content, 'data-help-name', oldType);
 
-  if (!DRY_RUN) fs.writeFileSync(filePath, content);
+  if (!DRY_RUN) await fs.writeFile(filePath, content);
   console.log(`  HTML: ✓ Added legacy registration + template + help for '${oldType}'`);
   return true;
 }
@@ -240,28 +240,35 @@ function addLegacyHtml(filePath, oldType) {
 // Main
 // ─────────────────────────────────────────────────────────────
 
-console.log('=== Add Legacy Compatibility (CI) ===');
-if (DRY_RUN) console.log('(DRY RUN — no files will be modified)\n');
-else console.log('');
+async function main() {
+  console.log('=== Add Legacy Compatibility (CI) ===');
+  if (DRY_RUN) console.log('(DRY RUN — no files will be modified)\n');
+  else console.log('');
 
-let jsOk = 0, htmlOk = 0, jsFail = 0, htmlFail = 0;
+  let jsOk = 0, htmlOk = 0, jsFail = 0, htmlFail = 0;
 
-for (const node of NODES) {
-  console.log(`[${node.oldType}]`);
-  const jsFile = path.join(BASE, node.path + '.js');
-  const htmlFile = path.join(BASE, node.path + '.html');
+  for (const node of NODES) {
+    console.log(`[${node.oldType}]`);
+    const jsFile = path.join(BASE, node.path + '.js');
+    const htmlFile = path.join(BASE, node.path + '.html');
 
-  if (addLegacyJs(jsFile, node.oldType)) jsOk++;
-  else jsFail++;
+    if (await addLegacyJs(jsFile, node.oldType)) jsOk++;
+    else jsFail++;
 
-  if (addLegacyHtml(htmlFile, node.oldType)) htmlOk++;
-  else htmlFail++;
+    if (await addLegacyHtml(htmlFile, node.oldType)) htmlOk++;
+    else htmlFail++;
 
-  console.log('');
+    console.log('');
+  }
+
+  console.log('\n=== Summary ===');
+  console.log(`  JS:   ${jsOk} ok, ${jsFail} failed`);
+  console.log(`  HTML: ${htmlOk} ok, ${htmlFail} failed`);
+  if (DRY_RUN) console.log('\n(Dry run — re-run without --dry-run to apply changes)');
+  else console.log('\nDone! Legacy compatibility added. Ready to publish.');
 }
 
-console.log('\n=== Summary ===');
-console.log(`  JS:   ${jsOk} ok, ${jsFail} failed`);
-console.log(`  HTML: ${htmlOk} ok, ${htmlFail} failed`);
-if (DRY_RUN) console.log('\n(Dry run — re-run without --dry-run to apply changes)');
-else console.log('\nDone! Legacy compatibility added. Ready to publish.');
+main().catch((err) => {
+  console.error(`✗ ${err.message}`);
+  process.exit(1);
+});

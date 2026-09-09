@@ -25,38 +25,30 @@ public:
       quality_(quality),
       pngOptimize_(pngOptimize)
   {
-    // Convert input image and measure timing
-    const int64 t0 = cv::getTickCount();
-    input_ = ConvertToMat(imgVal);
-    convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
-
-    // Determine channel format
-    if (imgVal.IsObject() && !imgVal.IsBuffer()) {
-      Napi::Object obj = imgVal.As<Napi::Object>();
-      
-      // Check for colorSpace field
-      if (obj.Has("colorSpace")) {
-        channel_ = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-      }
-      // Default based on channel count
-      else {
-        channel_ = (input_.channels() == 4) ? "RGBA"
-                 : (input_.channels() == 3) ? "RGB"
-                 : "GRAY";
-      }
-    } else {
-      // Buffer input - determine from OpenCV Mat
-      channel_ = (input_.channels() == 4) ? "RGBA"
-               : (input_.channels() == 3) ? "RGB"
-               : "GRAY";
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(imgVal);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
   }
 
 protected:
   void Execute() override {
-    const int64 t0 = cv::getTickCount();
-    
+    if (captureFailed_) return;
+
     try {
+      // Decode (encoded inputs only) on the worker thread
+      const int64 tc = cv::getTickCount();
+      src_.Materialize();
+      input_   = src_.mat;
+      channel_ = src_.colorSpace;
+      convertMs_ = (cv::getTickCount() - tc) / cv::getTickFrequency() * 1e3;
+
+      const int64 t0 = cv::getTickCount();
+
       // Apply filter based on type
       if (filterType_ == "blur") {
         ApplyBlurFilter();
@@ -85,6 +77,8 @@ protected:
         const cv::Mat srcForEncoding =
               PrepareForEncoding(result_, channel_, outputFormat_);
         encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
+      } else {
+        FinalizeForOutput(result_);
       }
     } catch (const std::exception& e) {
       SetError(e.what());
@@ -108,6 +102,8 @@ protected:
   }
 
 private:
+  ImageSource src_;
+  bool captureFailed_ = false;
   cv::Mat input_, result_;
   std::string filterType_;
   int kernelSize_;

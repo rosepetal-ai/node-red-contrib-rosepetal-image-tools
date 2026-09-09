@@ -7,27 +7,6 @@
 enum class Direction { RIGHT, LEFT, UP, DOWN };
 enum class Strategy { RESIZE, PAD_START, PAD_END, PAD_BOTH };
 
-// Helper function to detect channel format for individual images
-std::string DetectChannelFormat(const Napi::Value& jsImg, const cv::Mat& mat) {
-  if (jsImg.IsObject() && !jsImg.IsBuffer()) {
-    Napi::Object obj = jsImg.As<Napi::Object>();
-    
-    // Check for new colorSpace field first
-    if (obj.Has("colorSpace")) {
-      return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-    }
-    // Default based on channel count
-    else {
-      const int channels = mat.channels();
-      return (channels == 4) ? "RGBA" : (channels == 3) ? "RGB" : "GRAY";
-    }
-  } else {
-    // Buffer input - determine from OpenCV Mat
-    const int channels = mat.channels();
-    return (channels == 4) ? "RGBA" : (channels == 3) ? "RGB" : "GRAY";
-  }
-}
-
 // Helper function to determine the best output channel format from a list
 std::string DetermineOutputFormat(const std::vector<std::string>& channels) {
   bool hasRGBA = false, hasBGRA = false, hasRGB = false, hasBGR = false;
@@ -129,37 +108,45 @@ public:
     else if (strat == "pad-end") strategy = Strategy::PAD_END;
     else strategy = Strategy::PAD_BOTH;
 
-    // Timing and conversion
-    const int64 t0 = cv::getTickCount();
-    const size_t imgCount = jsImgs.size();
-    mats.reserve(imgCount);
-    channels.reserve(imgCount);
-    
-    // Process all images and detect their channel formats
-    for (size_t i = 0; i < imgCount; ++i) {
-      mats.emplace_back(ConvertToMat(jsImgs[i]));
-      channels.push_back(DetectChannelFormat(jsImgs[i], mats[i]));
+    // JS thread: metadata + persistent references only (no decode, no pixels)
+    try {
+      const size_t imgCount = jsImgs.size();
+      sources.reserve(imgCount);
+      for (size_t i = 0; i < imgCount; ++i) {
+        sources.emplace_back(CaptureImage(jsImgs[i]));
+      }
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
-    
-    // Determine output channel format
-    outputChannel = DetermineOutputFormat(channels);
-    
-    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
 
     // Store original pad color (channel-specific preparation will be done per image)
     padClrImg = padColorRGB;
-    
-    // Pre-calculate max dimensions after channel format detection
-    // (dimensions shouldn't change with channel conversion)
-    for (const auto& m : mats) {
-      maxW = std::max(maxW, m.cols);
-      maxH = std::max(maxH, m.rows);
-    }
   }
 
 protected:
   void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) + channel detection on the worker thread
+    int64 t0 = cv::getTickCount();
+    mats.clear(); channels.clear();
+    mats.reserve(sources.size());
+    channels.reserve(sources.size());
+    for (auto& s : sources) {
+      s.Materialize();
+      mats.push_back(s.mat);
+      channels.push_back(s.colorSpace);
+    }
+    outputChannel = DetermineOutputFormat(channels);
+    for (const auto& m : mats) {
+      maxW = std::max(maxW, m.cols);
+      maxH = std::max(maxH, m.rows);
+    }
+    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+
+    t0 = cv::getTickCount();
     
     const bool isHorizontal = (direction == Direction::RIGHT || direction == Direction::LEFT);
     const int baseSize = isHorizontal ? maxH : maxW;
@@ -245,6 +232,8 @@ protected:
     if (outputFormat != "raw") {
       cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
+    } else {
+      FinalizeForOutput(result);
     }
   }
 
@@ -259,7 +248,13 @@ protected:
     Callback().Call({env.Null(), out});
   }
 
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
+  }
+
 private:
+  std::vector<ImageSource> sources;
+  bool captureFailed_ = false;
   std::vector<cv::Mat> mats;
   std::vector<std::string> channels;
   cv::Mat result;

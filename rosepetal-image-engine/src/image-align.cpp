@@ -252,9 +252,10 @@ public:
             // And the feature detector (orb / sift).
             detectorKind = ParseDetector(detectorName);
 
-            // Convert input images to OpenCV Mat
-            referenceMat = ConvertToMat(referenceImage);
-            targetMat = ConvertToMat(targetImage);
+            // Capture input images (metadata + persistent reference only;
+            // decoding happens in Execute() on the worker thread)
+            refSrc_ = CaptureImage(referenceImage);
+            tgtSrc_ = CaptureImage(targetImage);
             
             // Parse polygon(s) if provided
             if (!polygonValue.IsNull() && !polygonValue.IsUndefined() && polygonValue.IsArray()) {
@@ -322,24 +323,34 @@ public:
                 }
             }
             
-            // Detect channel format for output
-            referenceChannelOrder = DetectChannelFormat(referenceImage, referenceMat);
-            targetChannelOrder = DetectChannelFormat(targetImage, targetMat);
-            
-            // Use reference image format for output
-            outputChannelOrder = referenceChannelOrder;
-            
             auto t1 = std::chrono::steady_clock::now();
             convertMs = std::chrono::duration<double, std::milli>(t1 - t0).count();
             
         } catch (const Napi::Error& e) {
+            captureFailed_ = true;
             SetError(e.Message());
+        } catch (const std::exception& e) {
+            captureFailed_ = true;
+            SetError(e.what());
         }
     }
 
 protected:
     void Execute() override {
+        if (captureFailed_) return;
         try {
+            // Decode (encoded inputs only) on the worker thread
+            auto decodeStart = std::chrono::steady_clock::now();
+            refSrc_.Materialize();
+            tgtSrc_.Materialize();
+            referenceMat = refSrc_.mat;
+            targetMat = tgtSrc_.mat;
+            referenceChannelOrder = refSrc_.colorSpace;
+            targetChannelOrder = tgtSrc_.colorSpace;
+            outputChannelOrder = referenceChannelOrder;   // reference format drives the output
+            convertMs += std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - decodeStart).count();
+
             auto taskStart = std::chrono::steady_clock::now();
             
             // Get reference dimensions
@@ -418,6 +429,16 @@ protected:
             
             auto taskEnd = std::chrono::steady_clock::now();
             taskMs = std::chrono::duration<double, std::milli>(taskEnd - taskStart).count();
+
+            // Encode on the worker thread (never on the JS thread)
+            auto encodeStart = std::chrono::steady_clock::now();
+            if (outputFormat == "raw") {
+                FinalizeForOutput(alignedImage);
+            } else {
+                EncodeToFormat(alignedImage, encodedBuf_, outputFormat, quality, pngOptimize);
+            }
+            encodeMs = std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - encodeStart).count();
             
         } catch (const std::exception& e) {
             SetError(std::string("Image alignment failed: ") + e.what());
@@ -428,21 +449,14 @@ protected:
         Napi::Env env = Env();
         
         try {
-            auto encodeStart = std::chrono::steady_clock::now();
             Napi::Value result;
             
             if (outputFormat == "raw") {
-                // Return raw image object
+                // Return raw image object (zero-copy: memory is already owned)
                 result = MatToRawJS(env, alignedImage, outputChannelOrder);
             } else {
-                // Encode to specified format
-                std::vector<uchar> encoded;
-                EncodeToFormat(alignedImage, encoded, outputFormat, quality, pngOptimize);
-                result = VectorToBuffer(env, std::move(encoded));
+                result = VectorToBuffer(env, std::move(encodedBuf_));
             }
-            
-            auto encodeEnd = std::chrono::steady_clock::now();
-            encodeMs = std::chrono::duration<double, std::milli>(encodeEnd - encodeStart).count();
             
             // Create response object
             Napi::Object response = Napi::Object::New(env);
@@ -558,6 +572,9 @@ private:
     bool returnMatrix;
     
     // Image data
+    ImageSource refSrc_, tgtSrc_;
+    bool captureFailed_ = false;
+    std::vector<uchar> encodedBuf_;
     cv::Mat referenceMat, targetMat, alignedImage;
     cv::Mat transformationMatrix;
     std::string referenceChannelOrder, targetChannelOrder, outputChannelOrder;
@@ -593,19 +610,6 @@ private:
     double convertMs = 0.0;
     double taskMs = 0.0;
     double encodeMs = 0.0;
-    
-    // Helper to detect channel format
-    std::string DetectChannelFormat(const Napi::Value& jsImg, const cv::Mat& mat) {
-        if (jsImg.IsObject() && !jsImg.IsBuffer()) {
-            Napi::Object obj = jsImg.As<Napi::Object>();
-            if (obj.Has("colorSpace")) {
-                return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-            }
-        }
-        // Default based on channel count
-        const int channels = mat.channels();
-        return (channels == 4) ? "RGBA" : (channels == 3) ? "RGB" : "GRAY";
-    }
     
     // Convert image to grayscale
     void ConvertToGray(const cv::Mat& src, cv::Mat& gray) {

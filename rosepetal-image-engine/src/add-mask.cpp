@@ -48,12 +48,15 @@ public:
       outputFormat(std::move(outputFormat)),
       quality(quality), pngOptimize(pngOptimize)
   {
-    // Timing and conversion
-    const int64 t0 = cv::getTickCount();
-    
-    // Convert JavaScript image to OpenCV Mat
-    imageMat = ConvertToMat(jsImg);
-    
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(jsImg);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
+
     // Parse polygon coordinates from JavaScript array
     polygon.reserve(polygonArray.Length());
     for (size_t i = 0; i < polygonArray.Length(); i++) {
@@ -65,18 +68,22 @@ public:
       }
     }
     
-    // Detect image channel format
-    imageFormat = DetectChannelFormatShared(jsImg, imageMat);
-    
-    // For polygon-based masking, output format matches image format
-    outputChannel = imageFormat;
-    
-    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
   }
 
 protected:
   void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) on the worker thread
+    int64 t0 = cv::getTickCount();
+    src_.Materialize();
+    const cv::Mat& imageMat = src_.mat;
+    imageFormat = src_.colorSpace;
+    // For polygon-based masking, output format matches image format
+    outputChannel = imageFormat;
+    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+
+    t0 = cv::getTickCount();
     
     // Convert image to target format
     cv::Mat img = ConvertToTargetFormatShared(imageMat, imageFormat, outputChannel);
@@ -155,6 +162,8 @@ protected:
     if (outputFormat != "raw") {
       cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
+    } else {
+      FinalizeForOutput(result);
     }
   }
 
@@ -169,8 +178,14 @@ protected:
     Callback().Call({env.Null(), out});
   }
 
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
+  }
+
 private:
-  cv::Mat imageMat, result;
+  ImageSource src_;
+  bool captureFailed_ = false;
+  cv::Mat result;
   std::string imageFormat, outputChannel;
   std::vector<cv::Point2f> polygon;
   double maskStrength;

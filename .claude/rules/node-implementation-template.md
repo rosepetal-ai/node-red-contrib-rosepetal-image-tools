@@ -122,4 +122,4 @@ These are the names doc-writer is allowed to reference in Examples:
 - `handleNodeErrorWithPassthrough`, `handleValidationErrorWithPassthrough` — error path
 - `recordPerformanceMetrics` — sets `msg.performance.rpimage.<key>`
 - `debugImageDisplay` — emits the editor preview via `RED.comms.publish('debug-image', …)`
-- `rawToJpeg`, `encodeWebpAdvanced` — Sharp-based encoders
+- `rawToJpeg`, `encodeWebpAdvanced` — Sharp-based encoders (BGR/BGRA inputs are converted natively via `toSharpRaw`)

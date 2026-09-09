@@ -119,18 +119,31 @@ public:
       quality(quality),
       pngOptimize(pngOptimize) {
 
-    const int64 t0 = cv::getTickCount();
-    baseImage = ConvertToMat(jsImage);
-    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(jsImage);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
 
-    imageChannelOrder = DetectChannelFormatShared(jsImage, baseImage);
     ParsePoints(jsPoints);
     ParseLines(jsLines);
   }
 
 protected:
   void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) on the worker thread
+    int64 t0 = cv::getTickCount();
+    src_.Materialize();
+    const cv::Mat& baseImage = src_.mat;
+    imageChannelOrder = src_.colorSpace;
+    convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+
+    t0 = cv::getTickCount();
 
     const int width = baseImage.cols;
     const int height = baseImage.rows;
@@ -188,22 +201,27 @@ protected:
     cv::min(canvas, 1.0, canvas);
     cv::max(canvas, 0.0, canvas);
 
-    // Convert back to uint8
-    canvas.convertTo(working,
+    // Convert back to uint8 into a fresh Mat: `working` may alias the caller's
+    // input buffer when no colour conversion was needed, and we must never
+    // write into JS-owned memory.
+    cv::Mat out8u;
+    canvas.convertTo(out8u,
                      (channels == 1) ? CV_8UC1 :
                      (channels == 3) ? CV_8UC3 :
                                        CV_8UC4,
                      255.0);
 
     if (processingOrder != imageChannelOrder) {
-      resultImage = ConvertToTargetFormatShared(working, processingOrder, imageChannelOrder);
+      resultImage = ConvertToTargetFormatShared(out8u, processingOrder, imageChannelOrder);
     } else {
-      resultImage = working;
+      resultImage = out8u;
     }
 
     if (outputFormat != "raw") {
       cv::Mat encodeSrc = PrepareForEncoding(resultImage, imageChannelOrder, outputFormat);
       encodeMs = EncodeToFormat(encodeSrc, encodedBuffer, outputFormat, quality, pngOptimize);
+    } else {
+      FinalizeForOutput(resultImage);
     }
 
     taskMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
@@ -220,6 +238,10 @@ protected:
     response.Set("image", outImage);
     response.Set("timing", MakeTimingJS(env, convertMs, taskMs, encodeMs));
     Callback().Call({ env.Null(), response });
+  }
+
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
   }
 
 private:
@@ -362,7 +384,8 @@ private:
   }
 
 private:
-  cv::Mat baseImage;
+  ImageSource src_;
+  bool captureFailed_ = false;
   cv::Mat resultImage;
   std::vector<uchar> encodedBuffer;
 

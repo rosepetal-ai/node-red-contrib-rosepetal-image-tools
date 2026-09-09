@@ -58,30 +58,28 @@ public:
       quality(quality),
       pngOptimize(pngOptimize)
   {
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
     try {
-      inputMat = ConvertToMat(imgVal);
-
-      // Detect source color space
-      if (imgVal.IsObject() && !imgVal.IsBuffer()) {
-        Napi::Object obj = imgVal.As<Napi::Object>();
-        if (obj.Has("colorSpace")) {
-          sourceCS = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-        } else {
-          sourceCS = (inputMat.channels() == 4) ? "RGBA"
-                   : (inputMat.channels() == 3) ? "RGB"
-                   : "GRAY";
-        }
-      } else {
-        sourceCS = (inputMat.channels() == 4) ? "RGBA"
-                 : (inputMat.channels() == 3) ? "RGB"
-                 : "GRAY";
-      }
-    } catch (const Napi::Error& e) { SetError(e.Message()); }
+      src_ = CaptureImage(imgVal);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
   }
 
 protected:
   void Execute() override {
+    if (captureFailed_) return;
     try {
+      // Decode (encoded inputs only) on the worker thread
+      auto tc = std::chrono::steady_clock::now();
+      src_.Materialize();
+      inputMat = src_.mat;
+      sourceCS = src_.colorSpace;
+      convertMs = std::chrono::duration<double, std::milli>(
+                    std::chrono::steady_clock::now() - tc).count();
+
       auto t0 = std::chrono::steady_clock::now();
 
       // Identity fast-path: same source and target
@@ -106,6 +104,8 @@ protected:
         const cv::Mat srcForEncoding =
               PrepareForEncoding(resultMat, targetCS, outputFormat);
         encodeMs = EncodeToFormat(srcForEncoding, encodedBuf, outputFormat, quality, pngOptimize);
+      } else {
+        FinalizeForOutput(resultMat);   // identity alias → owned copy (worker thread)
       }
     } catch (const std::exception& e) { SetError(e.what()); }
   }
@@ -118,7 +118,7 @@ protected:
 
     Napi::Object res = Napi::Object::New(env);
     res.Set("image",  jsImg);
-    res.Set("timing", MakeTimingJS(env, 0.0, taskMs, encodeMs));
+    res.Set("timing", MakeTimingJS(env, convertMs, taskMs, encodeMs));
     Callback().Call({ env.Null(), res });
   }
 
@@ -127,13 +127,16 @@ protected:
   }
 
 private:
+  ImageSource src_;
   cv::Mat inputMat, resultMat;
   std::string sourceCS;
   std::string targetCS;
   std::string outputFormat;
   int quality;
   bool pngOptimize;
+  bool captureFailed_ = false;
 
+  double convertMs = 0.0;
   double taskMs   = 0.0;
   double encodeMs = 0.0;
   std::vector<uchar> encodedBuf;

@@ -20,45 +20,40 @@ public:
       quality(quality),
       pngOptimize(pngOptimize)
   {
-    /* convertMs — zero‑copy → cv::Mat */
-    const int64 t0=cv::getTickCount();
-    src_=ConvertToMat(imgVal);
-    convertMs_=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
-
-    if (imgVal.IsObject() && !imgVal.IsBuffer()) {
-      Napi::Object obj = imgVal.As<Napi::Object>();
-      
-      // Check for new colorSpace field first
-      if (obj.Has("colorSpace")) {
-        channel_ = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-      }
-      // Default based on channel count
-      else {
-        channel_ = (src_.channels() == 4) ? "RGBA"
-                 : (src_.channels() == 3) ? "RGB"
-                 : "GRAY";
-      }
-    } else {
-      // Buffer input - determine from OpenCV Mat
-      channel_ = (src_.channels() == 4) ? "RGBA"
-               : (src_.channels() == 3) ? "RGB"
-               : "GRAY";
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(imgVal);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
-
-    padClrImg=padColorRGB;
-    if(channel_=="RGB"||channel_=="RGBA") std::swap(padClrImg[0],padClrImg[2]);
   }
 
 protected:
   void Execute() override {
-    const int64 t0=cv::getTickCount();
-    cv::copyMakeBorder(src_,dst_,t_,b_,l_,r_,cv::BORDER_CONSTANT,padClrImg);
+    if (captureFailed_) return;
+
+    /* convertMs — decode on the worker thread (raw input is zero‑copy) */
+    int64 t0=cv::getTickCount();
+    src_.Materialize();
+    const cv::Mat& srcMat = src_.mat;
+    channel_ = src_.colorSpace;
+    convertMs_=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
+
+    padClrImg=padColorRGB;
+    if(channel_=="RGB"||channel_=="RGBA") std::swap(padClrImg[0],padClrImg[2]);
+
+    t0=cv::getTickCount();
+    cv::copyMakeBorder(srcMat,dst_,t_,b_,l_,r_,cv::BORDER_CONSTANT,padClrImg);
     taskMs_=(cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
 
     if (outputFormat != "raw") {
       const cv::Mat srcForEncoding =
             PrepareForEncoding(dst_, channel_, outputFormat);
       encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat, quality, pngOptimize);
+    } else {
+      FinalizeForOutput(dst_);
     }
   }
 
@@ -73,14 +68,20 @@ protected:
     Callback().Call({env.Null(),res});
   }
 
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
+  }
+
 private:
-  cv::Mat src_,dst_;
+  ImageSource src_;
+  cv::Mat dst_;
   int t_,b_,l_,r_;
   cv::Scalar padColorRGB,padClrImg;
   std::string channel_;
   std::string outputFormat;
   int quality;
   bool pngOptimize;
+  bool captureFailed_ = false;
 
   double convertMs_{0},taskMs_{0},encodeMs_{0};
   std::vector<uchar> encodedBuf_;

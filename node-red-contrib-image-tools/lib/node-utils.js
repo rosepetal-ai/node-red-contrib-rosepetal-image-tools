@@ -10,6 +10,7 @@ try {
 } catch (err) {
   sharp = null;
 }
+const Cpp = require('./cpp-bridge.js');
 
 
 module.exports = function(RED) {
@@ -373,6 +374,20 @@ module.exports = function(RED) {
   }
 
   /**
+   * Returns a Sharp-compatible raw image (GRAY / RGB / RGBA) for a normalized
+   * raw image object. BGR/BGRA inputs are converted by the native engine on
+   * the libuv thread pool — never with a pixel loop on the event loop.
+   * @returns {Promise<{data: Buffer, width: number, height: number, channels: number, colorSpace: string}>}
+   */
+  utils.toSharpRaw = async function(normalized) {
+    const colorSpace = normalized.colorSpace;
+    if (colorSpace !== 'BGR' && colorSpace !== 'BGRA') return normalized;
+    const target = colorSpace === 'BGR' ? 'RGB' : 'RGBA';
+    const { image } = await Cpp.colorConvert(normalized, target, 'raw');
+    return image;
+  }
+
+  /**
    * Encodes a raw image object to WebP via Sharp with advanced options.
    * Modeled on rawToJpeg() — performs BGR→RGB swap and feeds Sharp.
    */
@@ -385,21 +400,10 @@ module.exports = function(RED) {
       throw new Error('Invalid raw image object supplied to encodeWebpAdvanced');
 
     const colorSpace = normalized.colorSpace;
-    const channels = normalized.channels;
-    let data = normalized.data;
+    const rgb = await utils.toSharpRaw(normalized);
 
-    // BGR/BGRA → RGB/RGBA for Sharp
-    if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
-      data = Buffer.from(data);
-      for (let i = 0; i < data.length; i += channels) {
-        const t = data[i];
-        data[i] = data[i + 2];
-        data[i + 2] = t;
-      }
-    }
-
-    const sh = sharp(data, {
-      raw: { width: normalized.width, height: normalized.height, channels }
+    const sh = sharp(rgb.data, {
+      raw: { width: rgb.width, height: rgb.height, channels: rgb.channels }
     });
 
     if (colorSpace === 'GRAY') sh.toColourspace('b-w');
@@ -417,21 +421,10 @@ module.exports = function(RED) {
       throw new Error('Invalid raw image object supplied to rawToJpeg');
 
     const colorSpace = normalized.colorSpace;
-    const channels = normalized.channels;
-    let data = normalized.data;
+    const rgb = await utils.toSharpRaw(normalized);
 
-    // BGR/BGRA → RGB/RGBA for Sharp
-    if (colorSpace === 'BGR' || colorSpace === 'BGRA') {
-      data = Buffer.from(data); // copy so we don't mutate shared memory
-      for (let i = 0; i < data.length; i += channels) {
-        const t = data[i];
-        data[i] = data[i + 2];
-        data[i + 2] = t;
-      }
-    }
-
-    const sh = sharp(data, {
-      raw: { width: normalized.width, height: normalized.height, channels }
+    const sh = sharp(rgb.data, {
+      raw: { width: rgb.width, height: rgb.height, channels: rgb.channels }
     });
 
     if (colorSpace === 'GRAY') sh.toColourspace('b-w');
@@ -616,62 +609,69 @@ module.exports = function(RED) {
     
     try {
       let imageBuffer, formatMessage;
-      
-      if (outputFormat === 'raw') {
-        // Convert raw image to JPG for display using existing utility
-        imageBuffer = await utils.rawToJpeg(image, quality || CONSTANTS.DEFAULT_JPEG_QUALITY);
-        formatMessage = 'jpg default';
-      } else {
-        // Reuse existing converted buffer
-        imageBuffer = Buffer.isBuffer(image) ? image : image.data;
-        formatMessage = outputFormat; // 'jpg', 'png', 'webp'
-      }
-      
-      if (!Buffer.isBuffer(imageBuffer)) {
-        node.warn('Debug display: Invalid image buffer format');
-        return null;
-      }
-      
-      // Resize image for debug display using Sharp
       let actualWidth = debugWidth;
       let actualHeight = debugWidth; // Default fallback
-      try {
-        let sharpInstance = sharp(imageBuffer)
-          .resize(debugWidth, null, {
-            withoutEnlargement: false,
-            fit: 'inside'
-          });
-        
-        // Only convert format if output is raw, otherwise preserve the existing format
-        if (outputFormat === 'raw') {
-          // For raw format, convert to JPEG for display
-          sharpInstance = sharpInstance.jpeg({ quality: quality || 90 });
-          formatMessage = 'jpg default';
-        } else {
-          // For other formats (jpg, png, webp), just resize without format conversion
-          // The C++ backend has already converted to the desired format
-          formatMessage = outputFormat + ' resized';
+      const resizeOpts = { withoutEnlargement: false, fit: 'inside' };
+
+      if (outputFormat === 'raw') {
+        // Raw pixels: resize + JPEG-encode in ONE Sharp pass (previously the
+        // full-size image was JPEG-encoded, decoded again and resized).
+        const normalized = utils.validateImageStructure(image, { warn: () => {} });
+        if (!normalized || Buffer.isBuffer(normalized)) {
+          node.warn('Debug display: Invalid image buffer format');
+          return null;
         }
-        
-        imageBuffer = await sharpInstance.toBuffer();
-        
-        // Get actual dimensions of resized image
-        const metadata = await sharp(imageBuffer).metadata();
-        actualWidth = metadata.width || debugWidth;
-        actualHeight = metadata.height || debugWidth;
-        
-      } catch (resizeError) {
-        node.warn(`Debug image resize error: ${resizeError.message}`);
-        // Continue with original image if resize fails
-        // Try to get original dimensions as fallback
+        formatMessage = 'jpg default';
+        const rgb = await utils.toSharpRaw(normalized);
         try {
-          const originalMetadata = await sharp(imageBuffer).metadata();
-          actualWidth = originalMetadata.width || debugWidth;
-          actualHeight = originalMetadata.height || debugWidth;
-        } catch (metadataError) {
-          // Use debug width as fallback
-          actualWidth = debugWidth;
-          actualHeight = debugWidth;
+          const sh = sharp(rgb.data, {
+            raw: { width: rgb.width, height: rgb.height, channels: rgb.channels }
+          });
+          if (normalized.colorSpace === 'GRAY') sh.toColourspace('b-w');
+          const { data, info } = await sh
+            .resize(debugWidth, null, resizeOpts)
+            .jpeg({ quality: quality || 90 })
+            .toBuffer({ resolveWithObject: true });
+          imageBuffer = data;
+          actualWidth = info.width || debugWidth;
+          actualHeight = info.height || debugWidth;
+        } catch (resizeError) {
+          node.warn(`Debug image resize error: ${resizeError.message}`);
+          // Fall back to the full-size JPEG (still encoded off the event loop)
+          imageBuffer = await utils.rawToJpeg(normalized, quality || CONSTANTS.DEFAULT_JPEG_QUALITY);
+          actualWidth = normalized.width;
+          actualHeight = normalized.height;
+        }
+      } else {
+        // Reuse existing encoded buffer ('jpg', 'png', 'webp')
+        imageBuffer = Buffer.isBuffer(image) ? image : image.data;
+        formatMessage = outputFormat;
+        if (!Buffer.isBuffer(imageBuffer)) {
+          node.warn('Debug display: Invalid image buffer format');
+          return null;
+        }
+        try {
+          // Decode → resize → re-encode (same format) in one pass. JPEG input
+          // uses libjpeg shrink-on-load; the output dimensions come from the
+          // same pass instead of a second decode via metadata().
+          const { data, info } = await sharp(imageBuffer)
+            .resize(debugWidth, null, resizeOpts)
+            .toBuffer({ resolveWithObject: true });
+          imageBuffer = data;
+          actualWidth = info.width || debugWidth;
+          actualHeight = info.height || debugWidth;
+          formatMessage = outputFormat + ' resized';
+        } catch (resizeError) {
+          node.warn(`Debug image resize error: ${resizeError.message}`);
+          // Continue with original image if resize fails; read its header for the size
+          try {
+            const originalMetadata = await sharp(imageBuffer).metadata();
+            actualWidth = originalMetadata.width || debugWidth;
+            actualHeight = originalMetadata.height || debugWidth;
+          } catch (metadataError) {
+            actualWidth = debugWidth;
+            actualHeight = debugWidth;
+          }
         }
       }
       

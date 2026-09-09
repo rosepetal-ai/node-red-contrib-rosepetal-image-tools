@@ -2,7 +2,7 @@
 #include <napi.h>
 #include <opencv2/opencv.hpp>
 #include <cmath>
-#include "utils.h"          // ConvertToMat, ToBgrForJpg, EncodeToJpgFast…
+#include "utils.h"          // CaptureImage, PrepareForEncoding, EncodeToFormat…
 
 /*────────────────────────── Worker ───────────────────────────────────*/
 class CropWorker : public Napi::AsyncWorker {
@@ -15,36 +15,29 @@ public:
       x_(x),y_(y),width_(width),height_(height),
       normalized_(normalized),outputFormat_(std::move(outputFormat)),quality_(quality),pngOptimize_(pngOptimize)
   {
-    /* ─ medir convertMs ─ */
-    const int64 t0 = cv::getTickCount();
-    input_ = ConvertToMat(imgVal);                    // zero-copy
-    convertMs_ = (cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
-
-    if (imgVal.IsObject() && !imgVal.IsBuffer()) {
-      Napi::Object obj = imgVal.As<Napi::Object>();
-      
-      // Check for colorSpace field
-      if (obj.Has("colorSpace")) {
-        channel_ = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-      }
-      // Default based on channel count
-      else {
-        channel_ = (input_.channels() == 4) ? "RGBA"
-                 : (input_.channels() == 3) ? "RGB"
-                 : "GRAY";
-      }
-    } else {
-      // Buffer input - determine from OpenCV Mat
-      channel_ = (input_.channels() == 4) ? "RGBA"
-               : (input_.channels() == 3) ? "RGB"
-               : "GRAY";
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(imgVal);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
   }
 
 protected:
   void Execute() override {
-    /* ─ medir taskMs (recorte) ─ */
-    const int64 t0 = cv::getTickCount();
+    if (captureFailed_) return;
+
+    /* ─ convertMs: decode (encoded inputs only), worker thread ─ */
+    int64 t0 = cv::getTickCount();
+    src_.Materialize();
+    input_   = src_.mat;
+    channel_ = src_.colorSpace;
+    convertMs_ = (cv::getTickCount()-t0)/cv::getTickFrequency()*1e3;
+
+    /* ─ taskMs (recorte) ─ */
+    t0 = cv::getTickCount();
 
     const int W=input_.cols, H=input_.rows;
     int x = normalized_? int(std::round(x_*W)) : int(std::lround(x_));
@@ -67,6 +60,8 @@ protected:
       const cv::Mat srcForEncoding =
             PrepareForEncoding(result_, channel_, outputFormat_);
       encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
+    } else {
+      FinalizeForOutput(result_);      // ROI → contiguous owned copy (worker thread)
     }
   }
 
@@ -87,6 +82,7 @@ protected:
   }
 
 private:
+  ImageSource src_;
   cv::Mat input_, result_;
   double x_, y_, width_, height_;
   bool   normalized_;
@@ -94,6 +90,7 @@ private:
   int quality_;
   bool pngOptimize_;
   std::string channel_;
+  bool captureFailed_ = false;
 
   double convertMs_{0.0}, taskMs_{0.0}, encodeMs_{0.0};
   std::vector<uchar> encodedBuf_;

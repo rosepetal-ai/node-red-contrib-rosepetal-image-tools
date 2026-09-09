@@ -52,32 +52,46 @@ static inline cv::Mat BuildMaskFrom2DArray(const Napi::Array& rows) {
   return mask;
 }
 
-static inline cv::Mat BuildMaskFromPolygons(const Napi::Array& polygons, const cv::Size& size) {
-  if (polygons.Length() == 0 || size.width <= 0 || size.height <= 0) return cv::Mat();
-  cv::Mat mask = cv::Mat::zeros(size, CV_8UC1);
-
+// JS thread: parse normalized polygons (no rasterisation)
+static inline std::vector<std::vector<cv::Point2d>> ParsePolygonsAdvanced(const Napi::Array& polygons) {
+  std::vector<std::vector<cv::Point2d>> out;
+  out.reserve(polygons.Length());
   for (uint32_t idx = 0; idx < polygons.Length(); idx++) {
     if (!polygons.Get(idx).IsArray()) continue;
     Napi::Array coords = polygons.Get(idx).As<Napi::Array>();
     if (coords.Length() == 0) continue;
 
-    std::vector<cv::Point> points;
+    std::vector<cv::Point2d> points;
     points.reserve(coords.Length());
-
     for (uint32_t i = 0; i < coords.Length(); i++) {
       if (!coords.Get(i).IsArray()) continue;
       Napi::Array point = coords.Get(i).As<Napi::Array>();
       if (point.Length() >= 2 && point.Get(0u).IsNumber() && point.Get(1u).IsNumber()) {
-        double x = point.Get(0u).As<Napi::Number>().DoubleValue();
-        double y = point.Get(1u).As<Napi::Number>().DoubleValue();
-        int px = static_cast<int>(std::round(x * size.width));
-        int py = static_cast<int>(std::round(y * size.height));
-        px = std::max(0, std::min(size.width - 1, px));
-        py = std::max(0, std::min(size.height - 1, py));
-        points.emplace_back(px, py);
+        points.emplace_back(point.Get(0u).As<Napi::Number>().DoubleValue(),
+                            point.Get(1u).As<Napi::Number>().DoubleValue());
       }
     }
+    if (!points.empty()) out.push_back(std::move(points));
+  }
+  return out;
+}
 
+// Worker thread: rasterise normalized polygons into a binary mask
+static inline cv::Mat RasterizePolygonsAdvanced(const std::vector<std::vector<cv::Point2d>>& polygons,
+                                                const cv::Size& size) {
+  if (polygons.empty() || size.width <= 0 || size.height <= 0) return cv::Mat();
+  cv::Mat mask = cv::Mat::zeros(size, CV_8UC1);
+
+  for (const auto& poly : polygons) {
+    std::vector<cv::Point> points;
+    points.reserve(poly.size());
+    for (const auto& p : poly) {
+      int px = static_cast<int>(std::round(p.x * size.width));
+      int py = static_cast<int>(std::round(p.y * size.height));
+      px = std::max(0, std::min(size.width - 1, px));
+      py = std::max(0, std::min(size.height - 1, py));
+      points.emplace_back(px, py);
+    }
     if (points.size() >= 3) {
       const cv::Point* pts = points.data();
       int npts = static_cast<int>(points.size());
@@ -129,92 +143,57 @@ public:
       quality_(quality), pngOptimize_(pngOptimize),
       hasMasks_(hasMasks)
   {
-    /* ─ SUPER FAST image conversion with timing ─ */
-    const int64 t0 = cv::getTickCount();
-    
-    // Pre-allocate vectors for maximum performance
-    images_.reserve(imagesArray.Length());
-    imageChannels_.reserve(imagesArray.Length());
-    imageConfigs_.reserve(imageConfigsArray.Length());
-    
-    // Convert images with zero-copy operations and extract channel formats
-    for (uint32_t i = 0; i < imagesArray.Length(); i++) {
-      images_.emplace_back(ConvertToMat(imagesArray[i]));
-      
-      // Extract and store channel format for each image
-      std::string channel;
-      if (imagesArray[i].IsObject() && !imagesArray[i].IsBuffer()) {
-        Napi::Object obj = imagesArray[i].As<Napi::Object>();
-        
-        // Check for new colorSpace field first
-        if (obj.Has("colorSpace")) {
-          channel = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-        }
-        // Default based on channel count
-        else {
-          channel = (images_[i].channels() == 4) ? "RGBA"
-                  : (images_[i].channels() == 3) ? "RGB"
-                  : "GRAY";
-        }
-      } else {
-        // Buffer input - determine from OpenCV Mat
-        channel = (images_[i].channels() == 4) ? "RGBA"
-                : (images_[i].channels() == 3) ? "RGB"
-                : "GRAY";
+    // JS thread: metadata + persistent references only (no decode, no pixels)
+    try {
+      sources_.reserve(imagesArray.Length());
+      for (uint32_t i = 0; i < imagesArray.Length(); i++) {
+        sources_.emplace_back(CaptureImage(imagesArray[i]));
       }
-      
-      imageChannels_.emplace_back(channel);
-    }
 
-    // Optional masks aligned with input images
-    if (hasMasks_) {
-      masks_.resize(images_.size());
-      maskTags_.resize(images_.size());
-      maskOutputs_.resize(images_.size());
+      // Optional masks aligned with input images (parsed, not rasterised)
+      if (hasMasks_) {
+        pendingMasks_.resize(sources_.size());
 
-      for (uint32_t i = 0; i < masksArray.Length() && i < images_.size(); i++) {
-        Napi::Value mv = masksArray.Get(i);
-        cv::Mat maskMat;
-        std::string tag;
+        for (uint32_t i = 0; i < masksArray.Length() && i < sources_.size(); i++) {
+          Napi::Value mv = masksArray.Get(i);
+          PendingMask& pm = pendingMasks_[i];
 
-        if (mv.IsObject() && !mv.IsArray()) {
-          Napi::Object mObj = mv.As<Napi::Object>();
-          tag = ExtractClassNameAdvanced(mObj);
+          if (mv.IsObject() && !mv.IsArray() && !mv.IsBuffer()) {
+            Napi::Object mObj = mv.As<Napi::Object>();
+            pm.tag = ExtractClassNameAdvanced(mObj);
 
-          if (mObj.Has("mask")) {
-            Napi::Value inner = mObj.Get("mask");
-            if (inner.IsArray()) {
-              maskMat = BuildMaskFrom2DArray(inner.As<Napi::Array>());
-            } else {
-              maskMat = ConvertToMat(inner);
+            if (mObj.Has("mask")) {
+              Napi::Value inner = mObj.Get("mask");
+              if (inner.IsArray()) {
+                pm.arrayMask = BuildMaskFrom2DArray(inner.As<Napi::Array>());
+                pm.kind = PendingMask::ARRAY;
+              } else {
+                pm.src = CaptureImage(inner);
+                pm.kind = PendingMask::IMAGE;
+              }
+            } else if (mObj.Has("polygons") && mObj.Get("polygons").IsArray()) {
+              pm.polygons = ParsePolygonsAdvanced(mObj.Get("polygons").As<Napi::Array>());
+              pm.kind = PendingMask::POLYGONS;
+            } else if (mObj.Has("data") && mObj.Has("width") && mObj.Has("height")) {
+              pm.src = CaptureImage(mv);
+              pm.kind = PendingMask::IMAGE;
             }
-          } else if (mObj.Has("polygons") && mObj.Get("polygons").IsArray()) {
-            maskMat = BuildMaskFromPolygons(mObj.Get("polygons").As<Napi::Array>(), images_[i].size());
-          } else if (mObj.Has("data") && mObj.Has("width") && mObj.Has("height")) {
-            maskMat = ConvertToMat(mv);
+          } else if (mv.IsArray()) {
+            pm.arrayMask = BuildMaskFrom2DArray(mv.As<Napi::Array>());
+            pm.kind = PendingMask::ARRAY;
+          } else if (mv.IsBuffer()) {
+            pm.src = CaptureImage(mv);
+            pm.kind = PendingMask::IMAGE;
           }
-        } else if (mv.IsArray()) {
-          maskMat = BuildMaskFrom2DArray(mv.As<Napi::Array>());
-        } else if (mv.IsBuffer()) {
-          maskMat = ConvertToMat(mv);
-        }
-
-        if (!maskMat.empty()) {
-          if (maskMat.channels() > 1) {
-            cv::cvtColor(maskMat, maskMat, cv::COLOR_BGR2GRAY);
-          }
-          if (maskMat.depth() != CV_8U) {
-            cv::Mat tmp;
-            maskMat.convertTo(tmp, CV_8U, 255.0);
-            maskMat = tmp;
-          }
-          cv::threshold(maskMat, maskMat, 0, 255, cv::THRESH_BINARY);
-          masks_[i] = maskMat;
-          maskTags_[i] = tag;
-          maskOutputs_[i] = cv::Mat::zeros(canvasHeight_, canvasWidth_, CV_8UC1);
         }
       }
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
     }
+
+    imageConfigs_.reserve(imageConfigsArray.Length());
     
     // Parse image configurations - ultra-fast operations
     for (uint32_t i = 0; i < imageConfigsArray.Length(); i++) {
@@ -258,20 +237,75 @@ public:
       }
     }
     
-    // Determine the best canvas format, preferring RGBA if rotation is detected
-    if (hasRotation) {
-      canvasChannel_ = "RGBA"; // Force RGBA for transparent rotation padding
-    } else {
-      canvasChannel_ = DetermineBestCanvasFormatAdvanced(imageChannels_);
-    }
-    
-    convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+    hasRotation_ = hasRotation;
   }
 
 protected:
   void Execute() override {
+    if (captureFailed_) return;
+
+    /* ─ Decode (encoded inputs only) + channel detection, worker thread ─ */
+    int64 t0 = cv::getTickCount();
+    images_.clear(); imageChannels_.clear();
+    images_.reserve(sources_.size());
+    imageChannels_.reserve(sources_.size());
+    for (auto& s : sources_) {
+      s.Materialize();
+      images_.push_back(s.mat);
+      imageChannels_.push_back(s.colorSpace);
+    }
+
+    // Determine the best canvas format, preferring RGBA if rotation is detected
+    if (hasRotation_) {
+      canvasChannel_ = "RGBA"; // Force RGBA for transparent rotation padding
+    } else {
+      canvasChannel_ = DetermineBestCanvasFormatAdvanced(imageChannels_);
+    }
+
+    // Optional masks: decode / rasterise / binarise (worker thread)
+    if (hasMasks_) {
+      masks_.assign(images_.size(), cv::Mat());
+      maskTags_.assign(images_.size(), std::string());
+      maskOutputs_.assign(images_.size(), cv::Mat());
+
+      for (size_t i = 0; i < pendingMasks_.size() && i < images_.size(); i++) {
+        PendingMask& pm = pendingMasks_[i];
+        cv::Mat maskMat;
+        switch (pm.kind) {
+          case PendingMask::ARRAY:
+            maskMat = pm.arrayMask;
+            break;
+          case PendingMask::POLYGONS:
+            maskMat = RasterizePolygonsAdvanced(pm.polygons, images_[i].size());
+            break;
+          case PendingMask::IMAGE:
+            pm.src.Materialize();
+            maskMat = pm.src.mat;
+            break;
+          default:
+            break;
+        }
+
+        if (!maskMat.empty()) {
+          if (maskMat.channels() > 1) {
+            cv::cvtColor(maskMat, maskMat, cv::COLOR_BGR2GRAY);
+          }
+          if (maskMat.depth() != CV_8U) {
+            cv::Mat tmp;
+            maskMat.convertTo(tmp, CV_8U, 255.0);
+            maskMat = tmp;
+          }
+          cv::threshold(maskMat, maskMat, 0, 255, cv::THRESH_BINARY);
+          masks_[i] = maskMat;
+          maskTags_[i] = pm.tag;
+          maskOutputs_[i] = cv::Mat::zeros(canvasHeight_, canvasWidth_, CV_8UC1);
+        }
+      }
+    }
+    convertMs_ = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
+
     /* ─ SUPER FAST advanced mosaic composition ─ */
-    const int64 t0 = cv::getTickCount();
+    t0 = cv::getTickCount();
     
     // Parse background color - optimized hex parsing (returns BGR format)
     cv::Scalar bgColor = ParseColor(backgroundColor_, cv::Scalar(0, 0, 0));
@@ -306,7 +340,10 @@ protected:
       const cv::Mat srcForEncoding =
             PrepareForEncoding(canvas_, canvasChannel_, outputFormat_);
       encodeMs_ = EncodeToFormat(srcForEncoding, encodedBuf_, outputFormat_, quality_, pngOptimize_);
+    } else {
+      FinalizeForOutput(canvas_);
     }
+    for (auto& m : maskOutputs_) FinalizeForOutput(m);
   }
   
   void OnOK() override {
@@ -351,6 +388,16 @@ private:
     int width, height;  // -1 means keep original
     int zIndex;
   };
+
+  // Mask input as parsed on the JS thread; materialised in Execute()
+  struct PendingMask {
+    enum Kind { NONE, ARRAY, POLYGONS, IMAGE };
+    Kind kind = NONE;
+    std::string tag;
+    cv::Mat arrayMask;                                  // from 2D JS array
+    std::vector<std::vector<cv::Point2d>> polygons;     // normalized
+    ImageSource src;                                    // raw / encoded image
+  };
   
   // ULTRA-FAST image processing with transformations
   void ProcessImageFast(const ImageConfig& config) {
@@ -362,8 +409,10 @@ private:
                                  config.arrayIndex < static_cast<int>(masks_.size()) &&
                                  !masks_[config.arrayIndex].empty();
 
-    cv::Mat img = images_[config.arrayIndex].clone(); // Work with copy for transformations
-    cv::Mat mask = hasMaskForImage ? masks_[config.arrayIndex].clone() : cv::Mat();
+    // Headers only: the source pixels are never written to. Every transform
+    // below writes into a fresh Mat, so no up-front full-image clone is needed.
+    cv::Mat img = images_[config.arrayIndex];
+    cv::Mat mask = hasMaskForImage ? masks_[config.arrayIndex] : cv::Mat();
     if (img.empty()) return;
     
     const std::string& imgChannel = imageChannels_[config.arrayIndex];
@@ -380,9 +429,13 @@ private:
         targetWidth = static_cast<int>(std::round(targetHeight * static_cast<double>(img.cols) / img.rows));
       }
       
-      cv::resize(img, img, cv::Size(targetWidth, targetHeight), 0, 0, cv::INTER_LINEAR);
+      cv::Mat resized;
+      cv::resize(img, resized, cv::Size(targetWidth, targetHeight), 0, 0, cv::INTER_LINEAR);
+      img = resized;
       if (hasMaskForImage && !mask.empty()) {
-        cv::resize(mask, mask, cv::Size(targetWidth, targetHeight), 0, 0, cv::INTER_NEAREST);
+        cv::Mat resizedMask;
+        cv::resize(mask, resizedMask, cv::Size(targetWidth, targetHeight), 0, 0, cv::INTER_NEAREST);
+        mask = resizedMask;
       }
     }
     
@@ -396,12 +449,12 @@ private:
         // 0 degrees - no rotation needed
       } else if (std::abs(normalizedAngle - 90.0) < eps) {
         // 90° counterclockwise (mathematical standard)
-        cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
+        cv::Mat rotated; cv::rotate(img, rotated, cv::ROTATE_90_COUNTERCLOCKWISE); img = rotated;
       } else if (std::abs(normalizedAngle - 180.0) < eps) {
-        cv::rotate(img, img, cv::ROTATE_180);
+        cv::Mat rotated; cv::rotate(img, rotated, cv::ROTATE_180); img = rotated;
       } else if (std::abs(normalizedAngle - 270.0) < eps) {
         // 270° counterclockwise = 90° clockwise
-        cv::rotate(img, img, cv::ROTATE_90_CLOCKWISE);
+        cv::Mat rotated; cv::rotate(img, rotated, cv::ROTATE_90_CLOCKWISE); img = rotated;
       } else {
         // Arbitrary angles - use affine transformation
         // Negate rotation to make positive angles counterclockwise (mathematical standard)
@@ -427,21 +480,29 @@ private:
         // Ensure the image has an alpha channel for transparent padding
         // Respect original colorSpace format to prevent channel inversion
         if (img.channels() == 3) {
+          cv::Mat withAlpha;
           if (imgChannel == "RGB") {
-            cv::cvtColor(img, img, cv::COLOR_RGB2RGBA);
+            cv::cvtColor(img, withAlpha, cv::COLOR_RGB2RGBA);
           } else { // BGR format
-            cv::cvtColor(img, img, cv::COLOR_BGR2BGRA);
+            cv::cvtColor(img, withAlpha, cv::COLOR_BGR2BGRA);
           }
+          img = withAlpha;
         } else if (img.channels() == 1) {
-          cv::cvtColor(img, img, cv::COLOR_GRAY2BGRA);
+          cv::Mat withAlpha;
+          cv::cvtColor(img, withAlpha, cv::COLOR_GRAY2BGRA);
+          img = withAlpha;
         }
         // 4-channel images (RGBA/BGRA) already have alpha - no conversion needed
         
-        cv::warpAffine(img, img, rotationMatrix, newSize, 
+        cv::Mat warped;
+        cv::warpAffine(img, warped, rotationMatrix, newSize, 
                       cv::INTER_LINEAR, cv::BORDER_CONSTANT, padColor);
+        img = warped;
         if (hasMaskForImage && !mask.empty()) {
-          cv::warpAffine(mask, mask, rotationMatrix, newSize,
+          cv::Mat warpedMask;
+          cv::warpAffine(mask, warpedMask, rotationMatrix, newSize,
                          cv::INTER_NEAREST, cv::BORDER_CONSTANT, cv::Scalar(0));
+          mask = warpedMask;
         }
       }
     }
@@ -589,28 +650,34 @@ private:
       // Both source and destination have alpha - use proper alpha blending
       cv::Mat canvasROI = canvas_(dstROI);
       
-      // Custom alpha blending for maximum control
-      for (int y = 0; y < imgToPlace.rows; ++y) {
-        for (int x = 0; x < imgToPlace.cols; ++x) {
-          cv::Vec4b& srcPixel = imgToPlace.at<cv::Vec4b>(y, x);
-          cv::Vec4b& dstPixel = canvasROI.at<cv::Vec4b>(y, x);
-          
-          float srcAlpha = srcPixel[3] / 255.0f;
-          float dstAlpha = dstPixel[3] / 255.0f;
-          
-          if (srcAlpha > 0.0f) {
-            // Alpha blending formula: dst = src * srcAlpha + dst * (1 - srcAlpha) * dstAlpha
-            float outAlpha = srcAlpha + dstAlpha * (1.0f - srcAlpha);
-            
-            if (outAlpha > 0.0f) {
-              dstPixel[0] = static_cast<uchar>((srcPixel[0] * srcAlpha + dstPixel[0] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
-              dstPixel[1] = static_cast<uchar>((srcPixel[1] * srcAlpha + dstPixel[1] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
-              dstPixel[2] = static_cast<uchar>((srcPixel[2] * srcAlpha + dstPixel[2] * dstAlpha * (1.0f - srcAlpha)) / outAlpha);
-              dstPixel[3] = static_cast<uchar>(outAlpha * 255.0f);
+      // Row-pointer alpha blending ("over" operator). Same arithmetic as the
+      // previous per-pixel .at<>() loop, but without per-element bounds/step
+      // computations; fully opaque source pixels are a plain copy.
+      const int rows = imgToPlace.rows, cols = imgToPlace.cols;
+      cv::parallel_for_(cv::Range(0, rows), [&](const cv::Range& range) {
+        for (int y = range.start; y < range.end; ++y) {
+          const uchar* s = imgToPlace.ptr<uchar>(y);
+          uchar* d = canvasROI.ptr<uchar>(y);
+          for (int x = 0; x < cols; ++x, s += 4, d += 4) {
+            const uchar sa = s[3];
+            if (sa == 0) continue;                       // fully transparent: keep canvas
+            if (sa == 255) {                             // fully opaque: overwrite
+              d[0] = s[0]; d[1] = s[1]; d[2] = s[2]; d[3] = 255;
+              continue;
             }
+            const float srcAlpha = sa / 255.0f;
+            const float dstAlpha = d[3] / 255.0f;
+            // dst = src * srcAlpha + dst * (1 - srcAlpha) * dstAlpha
+            const float outAlpha = srcAlpha + dstAlpha * (1.0f - srcAlpha);
+            if (outAlpha <= 0.0f) continue;
+            const float dstW = dstAlpha * (1.0f - srcAlpha);
+            d[0] = static_cast<uchar>((s[0] * srcAlpha + d[0] * dstW) / outAlpha);
+            d[1] = static_cast<uchar>((s[1] * srcAlpha + d[1] * dstW) / outAlpha);
+            d[2] = static_cast<uchar>((s[2] * srcAlpha + d[2] * dstW) / outAlpha);
+            d[3] = static_cast<uchar>(outAlpha * 255.0f);
           }
         }
-      }
+      });
     } else {
       // Standard copy operation for non-alpha images
       imgToPlace.copyTo(canvas_(dstROI));
@@ -653,6 +720,10 @@ private:
   }
   
   // Member variables
+  std::vector<ImageSource> sources_;        // JS inputs (decoded in Execute)
+  std::vector<PendingMask> pendingMasks_;   // JS mask inputs (materialised in Execute)
+  bool captureFailed_{false};
+  bool hasRotation_{false};
   std::vector<cv::Mat> images_;
   std::vector<std::string> imageChannels_;
   std::vector<ImageConfig> imageConfigs_;

@@ -137,39 +137,34 @@ inline cv::Mat ConvertMaskArrayToMat(const Napi::Array& arr) {
   return BuildMaskFrom2DArray(arr);
 }
 
-inline cv::Mat ConvertMaskImageToMat(const Napi::Value& maskVal, const cv::Size& targetSize) {
-  try {
-    cv::Mat maskMat = ConvertToMat(maskVal);
-    if (maskMat.empty()) return cv::Mat();
+// Worker-thread: turns a decoded mask image (1/3/4 channels) into a binary
+// single-channel mask of the target size.
+inline cv::Mat ConvertMaskMatToBinary(const cv::Mat& maskMat, const cv::Size& targetSize) {
+  if (maskMat.empty()) return cv::Mat();
 
-    cv::Mat singleChannel;
-    if (maskMat.channels() == 4) {
-      cv::extractChannel(maskMat, singleChannel, 3); // Prefer alpha channel
-    } else if (maskMat.channels() == 3) {
-      cv::cvtColor(maskMat, singleChannel, cv::COLOR_BGR2GRAY);
-    } else {
-      singleChannel = maskMat;
-    }
-
-    if (singleChannel.depth() != CV_8U) {
-      cv::Mat tmp;
-      singleChannel.convertTo(tmp, CV_8U, 255.0);
-      singleChannel = tmp;
-    }
-
-    cv::Mat binary;
-    cv::threshold(singleChannel, binary, 0, 255, cv::THRESH_BINARY);
-
-    if (binary.size() != targetSize) {
-      cv::resize(binary, binary, targetSize, 0, 0, cv::INTER_NEAREST);
-    }
-
-    return binary;
-  } catch (const Napi::Error&) {
-    return cv::Mat();
-  } catch (...) {
-    return cv::Mat();
+  cv::Mat singleChannel;
+  if (maskMat.channels() == 4) {
+    cv::extractChannel(maskMat, singleChannel, 3); // Prefer alpha channel
+  } else if (maskMat.channels() == 3) {
+    cv::cvtColor(maskMat, singleChannel, cv::COLOR_BGR2GRAY);
+  } else {
+    singleChannel = maskMat;
   }
+
+  if (singleChannel.depth() != CV_8U) {
+    cv::Mat tmp;
+    singleChannel.convertTo(tmp, CV_8U, 255.0);
+    singleChannel = tmp;
+  }
+
+  cv::Mat binary;
+  cv::threshold(singleChannel, binary, 0, 255, cv::THRESH_BINARY);
+
+  if (binary.size() != targetSize) {
+    cv::resize(binary, binary, targetSize, 0, 0, cv::INTER_NEAREST);
+  }
+
+  return binary;
 }
 
 inline cv::Mat NormalizeMaskBinary(cv::Mat mask, const cv::Size& targetSize) {
@@ -218,29 +213,8 @@ inline cv::Vec3f GenerateMaximallyDifferentColor(
     return firstColor;
   }
 
-  // Generate candidate colors evenly distributed in HSV space
-  std::vector<cv::Vec3f> candidates;
-  const int numHues = 24; // Every 15 degrees
-  const int numSaturations = 3; // 60%, 80%, 100%
-  const int numValues = 3; // 60%, 80%, 100%
-
-  for (int h = 0; h < numHues; h++) {
-    for (int s = 0; s < numSaturations; s++) {
-      for (int v = 0; v < numValues; v++) {
-        float hue = (h * 360.0f / numHues);
-        float saturation = 0.6f + s * 0.2f; // 60%, 80%, 100%
-        float value = 0.6f + v * 0.2f; // 60%, 80%, 100%
-
-        // Convert HSV to BGR
-        cv::Mat hsv(1, 1, CV_32FC3, cv::Scalar(hue / 360.0f, saturation, value));
-        cv::Mat bgr;
-        cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
-
-        cv::Vec3f color = bgr.at<cv::Vec3f>(0, 0);
-        candidates.push_back(color);
-      }
-    }
-  }
+  // Candidate colors evenly distributed in HSV space (precomputed once)
+  const std::vector<cv::Vec3f>& candidates = CandidateColorPalette();
 
   // Find candidate with maximum minimum distance to existing colors
   float maxMinDistance = 0;
@@ -284,6 +258,20 @@ inline cv::Vec3f GetCachedColor(const std::string& className) {
 }
 
 /*------------------------------------------------------------------------*/
+// Mask entry as parsed from JS on the JS thread. Everything that touches
+// pixels (rasterising polygons, decoding mask images, bounding boxes) is
+// deferred to Execute().
+struct PendingMask {
+  std::string className;
+  int originalIndex = 0;
+  int priority = 0;
+  cv::Vec3f color;
+  std::vector<std::vector<cv::Point2f>> polygons;  // normalized coords
+  cv::Mat arrayMask;          // built from a 2D JS array (JS-thread by nature)
+  ImageSource imageMask;      // raw / encoded mask image, decoded in Execute()
+  bool hasImageMask = false;
+};
+
 class AddMasksOptimizedWorker final : public Napi::AsyncWorker {
 public:
   AddMasksOptimizedWorker(Napi::Function cb,
@@ -302,10 +290,14 @@ public:
       outputFormat(std::move(outputFormat)),
       quality(quality), pngOptimize(pngOptimize)
   {
-    const int64 t0 = cv::getTickCount();
-
-    // Convert JavaScript image to OpenCV Mat
-    imageMat = ConvertToMat(jsImg);
+    // JS thread: metadata + persistent reference only (no decode, no pixels)
+    try {
+      src_ = CaptureImage(jsImg);
+    } catch (const Napi::Error& e) {
+      captureFailed_ = true; SetError(e.Message());
+    } catch (const std::exception& e) {
+      captureFailed_ = true; SetError(e.what());
+    }
 
     // Build priority map from ordered array (lower index = higher priority)
     std::unordered_map<std::string, int> priorityMap;
@@ -331,6 +323,8 @@ public:
       }
     }
 
+    // Colour resolution stays on the JS thread: the process-wide colorCache
+    // is not thread-safe and the work is tiny (no image pixels involved).
     auto resolveColor = [&](const std::string& className) -> cv::Vec3f {
       auto colorIt = userColorMap.find(className);
       if (colorIt != userColorMap.end()) {
@@ -359,7 +353,8 @@ public:
       return INT_MAX / 2 + originalIndex;
     };
 
-    // Pre-process all masks and create optimized structures
+    // Parse all masks (JS → plain structs). No rasterisation here.
+    pendingMasks.reserve(masksArray.Length());
     for (size_t maskIndex = 0; maskIndex < masksArray.Length(); maskIndex++) {
       if (!masksArray.Get(maskIndex).IsObject()) continue;
       Napi::Object maskObj = masksArray.Get(maskIndex).As<Napi::Object>();
@@ -367,8 +362,11 @@ public:
       std::string className = ExtractClassName(maskObj);
       if (className.empty()) continue;
 
-      cv::Vec3f resolvedColor = resolveColor(className);
-      bool addedPolygon = false;
+      PendingMask pm;
+      pm.className = className;
+      pm.originalIndex = static_cast<int>(maskIndex);
+      pm.priority = resolvePriority(className, static_cast<int>(maskIndex));
+      pm.color = resolveColor(className);
 
       // --- Polygons path (preferred when present) ---
       if (maskObj.Has("polygons") && maskObj.Get("polygons").IsArray()) {
@@ -380,7 +378,6 @@ public:
 
           Napi::Array coordinates = polygonsArray.Get(polyIdx).As<Napi::Array>();
 
-          // Parse polygon coordinates
           std::vector<cv::Point2f> polygon;
           polygon.reserve(coordinates.Length());
 
@@ -397,50 +394,94 @@ public:
           }
 
           if (!polygon.empty()) {
-            OptimizedMaskInfo maskInfo;
-            maskInfo.className = className;
-            maskInfo.normalizedColor = resolvedColor;
-            maskInfo.priority = resolvePriority(className, static_cast<int>(maskIndex));
-            maskInfo.originalIndex = static_cast<int>(maskIndex);
-
-            // Create optimized mask with bounding box
-            auto [mask, bbox] = CreateOptimizedPolygonMask(polygon, imageMat.size());
-            maskInfo.binaryMask = mask;
-            maskInfo.boundingBox = bbox;
-
-            optimizedMasks.push_back(std::move(maskInfo));
-            addedPolygon = true;
+            pm.polygons.push_back(std::move(polygon));
           }
         }
       }
 
       // --- Raw mask path (inferencer 'mask' output) ---
-      if (!addedPolygon && maskObj.Has("mask")) {
-        cv::Mat maskBinary;
+      if (pm.polygons.empty() && maskObj.Has("mask")) {
         Napi::Value maskVal = maskObj.Get("mask");
 
         if (maskVal.IsArray()) {
-          maskBinary = ConvertMaskArrayToMat(maskVal.As<Napi::Array>());
+          // A 2D JS array can only be read on the JS thread
+          pm.arrayMask = ConvertMaskArrayToMat(maskVal.As<Napi::Array>());
         } else if (maskVal.IsBuffer() || maskVal.IsObject()) {
-          maskBinary = ConvertMaskImageToMat(maskVal, imageMat.size());
-        }
-
-        maskBinary = NormalizeMaskBinary(maskBinary, imageMat.size());
-
-        if (!maskBinary.empty()) {
-          std::vector<cv::Point> nonZeroPts;
-          cv::findNonZero(maskBinary, nonZeroPts);
-          if (!nonZeroPts.empty()) {
-            cv::Rect bbox = cv::boundingRect(nonZeroPts);
-            OptimizedMaskInfo maskInfo;
-            maskInfo.className = className;
-            maskInfo.normalizedColor = resolvedColor;
-            maskInfo.priority = resolvePriority(className, static_cast<int>(maskIndex));
-            maskInfo.originalIndex = static_cast<int>(maskIndex);
-            maskInfo.boundingBox = bbox;
-            maskInfo.binaryMask = maskBinary(bbox).clone();
-            optimizedMasks.push_back(std::move(maskInfo));
+          try {
+            pm.imageMask = CaptureImage(maskVal);
+            pm.hasImageMask = true;
+          } catch (const Napi::Error&) {
+            // Invalid mask image: ignored (same behaviour as before)
+          } catch (const std::exception&) {
           }
+        }
+      }
+
+      pendingMasks.push_back(std::move(pm));
+    }
+  }
+
+protected:
+  void Execute() override {
+    if (captureFailed_) return;
+
+    // Decode (encoded inputs only) on the worker thread
+    int64 t0 = cv::getTickCount();
+    src_.Materialize();
+    const cv::Mat& imageMat = src_.mat;
+    imageFormat = src_.colorSpace;
+    outputChannel = imageFormat;
+
+    // Rasterise / decode / normalise all masks (worker thread)
+    optimizedMasks.clear();
+    for (auto& pm : pendingMasks) {
+      bool addedPolygon = false;
+
+      for (const auto& polygon : pm.polygons) {
+        OptimizedMaskInfo maskInfo;
+        maskInfo.className = pm.className;
+        maskInfo.normalizedColor = pm.color;
+        maskInfo.priority = pm.priority;
+        maskInfo.originalIndex = pm.originalIndex;
+
+        // Create optimized mask with bounding box
+        auto [mask, bbox] = CreateOptimizedPolygonMask(polygon, imageMat.size());
+        maskInfo.binaryMask = mask;
+        maskInfo.boundingBox = bbox;
+
+        optimizedMasks.push_back(std::move(maskInfo));
+        addedPolygon = true;
+      }
+
+      if (addedPolygon) continue;
+
+      cv::Mat maskBinary;
+      if (!pm.arrayMask.empty()) {
+        maskBinary = pm.arrayMask;
+      } else if (pm.hasImageMask) {
+        try {
+          pm.imageMask.Materialize();
+          maskBinary = ConvertMaskMatToBinary(pm.imageMask.mat, imageMat.size());
+        } catch (const std::exception&) {
+          maskBinary = cv::Mat();   // undecodable mask image: ignored
+        }
+      }
+
+      maskBinary = NormalizeMaskBinary(maskBinary, imageMat.size());
+
+      if (!maskBinary.empty()) {
+        std::vector<cv::Point> nonZeroPts;
+        cv::findNonZero(maskBinary, nonZeroPts);
+        if (!nonZeroPts.empty()) {
+          cv::Rect bbox = cv::boundingRect(nonZeroPts);
+          OptimizedMaskInfo maskInfo;
+          maskInfo.className = pm.className;
+          maskInfo.normalizedColor = pm.color;
+          maskInfo.priority = pm.priority;
+          maskInfo.originalIndex = pm.originalIndex;
+          maskInfo.boundingBox = bbox;
+          maskInfo.binaryMask = maskBinary(bbox).clone();
+          optimizedMasks.push_back(std::move(maskInfo));
         }
       }
     }
@@ -453,15 +494,8 @@ public:
         return a.originalIndex < b.originalIndex;  // Tie-breaker: input order
       });
 
-    imageFormat = DetectChannelFormatShared(jsImg, imageMat);
-    outputChannel = imageFormat;
-
     convertMs = (cv::getTickCount() - t0) / cv::getTickFrequency() * 1e3;
-  }
-
-protected:
-  void Execute() override {
-    const int64 t0 = cv::getTickCount();
+    t0 = cv::getTickCount();
 
     // Convert image to target format
     cv::Mat img = ConvertToTargetFormatShared(imageMat, imageFormat, outputChannel);
@@ -562,6 +596,8 @@ protected:
     if (outputFormat != "raw") {
       cv::Mat tmp = PrepareForEncoding(result, outputChannel, outputFormat);
       encodeMs = EncodeToFormat(tmp, encodedBuf, outputFormat, quality, pngOptimize);
+    } else {
+      FinalizeForOutput(result);
     }
   }
 
@@ -576,9 +612,16 @@ protected:
     Callback().Call({env.Null(), out});
   }
 
+  void OnError(const Napi::Error& e) override {
+    Callback().Call({ e.Value(), Env().Null() });
+  }
+
 private:
-  cv::Mat imageMat, result;
+  ImageSource src_;
+  bool captureFailed_ = false;
+  cv::Mat result;
   std::string imageFormat, outputChannel;
+  std::vector<PendingMask> pendingMasks;
   std::vector<OptimizedMaskInfo> optimizedMasks;
   float maskStrength;
   bool autoGenerateColors;

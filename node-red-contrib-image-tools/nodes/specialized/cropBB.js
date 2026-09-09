@@ -190,9 +190,9 @@ module.exports = function (RED) {
         });
 
         if (useSharpWebp) {
-          for (let i = 0; i < allCrops.length; i++) {
-            allCrops[i] = await NodeUtils.encodeWebpAdvanced(allCrops[i], config);
-          }
+          // Encode all images concurrently (Sharp runs on the libuv thread pool)
+          const webps = await Promise.all(allCrops.map((img) => NodeUtils.encodeWebpAdvanced(img, config)));
+          webps.forEach((webp, i) => { allCrops[i] = webp; });
         }
 
         /* Set output */

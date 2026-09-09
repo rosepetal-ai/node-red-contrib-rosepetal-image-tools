@@ -8,117 +8,208 @@
 #include <vector>
 #include <string>
 #include <chrono>
+#include <stdexcept>
 
 /**
- * Converts JS input to cv::Mat supporting:
- * - Image object: {data, width, height, channels, colorSpace, dtype}
- * - Buffer: Raw image file data (JPEG/PNG/WebP)
+ * ImageSource — a JS image input captured on the JS thread, decoded on the
+ * worker thread.
+ *
+ * Supported inputs:
+ *  - Raw image object {data, width, height, channels, colorSpace, dtype}:
+ *    the cv::Mat is a zero-copy view over the JS Buffer. `mat` and
+ *    `colorSpace` are valid immediately after CaptureImage().
+ *  - Encoded Buffer (JPEG/PNG/WebP/BMP...): only the pointer/length are
+ *    captured. Nothing is decoded until Materialize() is called, which MUST
+ *    happen inside AsyncWorker::Execute() so cv::imdecode never blocks the
+ *    Node.js event loop.
+ *
+ * A persistent reference to the JS Buffer keeps its memory alive for the
+ * whole lifetime of the worker (the reference is released on the JS thread
+ * when the worker is destroyed).
  */
-inline cv::Mat ConvertToMat(const Napi::Value& input) {
+struct ImageSource {
+  cv::Mat mat;                 // raw: zero-copy view; encoded: filled by Materialize()
+  std::string colorSpace;      // "GRAY" | "RGB" | "RGBA" | "BGR" | "BGRA"
+  bool encoded = false;
+  const uchar* encPtr = nullptr;
+  size_t encLen = 0;
+  Napi::ObjectReference ref;   // keeps the JS Buffer alive (move-only)
+
+  ImageSource() = default;
+  ImageSource(ImageSource&&) = default;
+  ImageSource& operator=(ImageSource&&) = default;
+  ImageSource(const ImageSource&) = delete;
+  ImageSource& operator=(const ImageSource&) = delete;
+
+  bool IsEncoded() const { return encoded; }
+  bool Ready() const { return !mat.empty(); }
+
+  // Worker-thread only. Decodes an encoded buffer (no-op for raw inputs).
+  // Throws std::runtime_error if the buffer cannot be decoded.
+  void Materialize() {
+    if (!encoded || !mat.empty()) return;
+    if (encPtr == nullptr || encLen == 0) {
+      throw std::runtime_error("Failed to decode image buffer: empty buffer.");
+    }
+    cv::Mat tmp(1, static_cast<int>(encLen), CV_8UC1, const_cast<uchar*>(encPtr));
+    cv::Mat img = cv::imdecode(tmp, cv::IMREAD_UNCHANGED);
+    if (img.empty()) {
+      throw std::runtime_error("Failed to decode image buffer.");
+    }
+    // imdecode returns BGR/BGRA regardless of file format; the toolkit
+    // labels decoded buffers as RGB/RGBA so we swap once here.
+    if (img.channels() == 3)      cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
+    else if (img.channels() == 4) cv::cvtColor(img, img, cv::COLOR_BGRA2RGBA);
+    mat = img;
+    colorSpace = (img.channels() == 4) ? "RGBA" : (img.channels() == 3) ? "RGB" : "GRAY";
+  }
+};
+
+// Resolves the pointer/length of a Buffer / TypedArray / ArrayBuffer value.
+inline bool ResolveBytes(const Napi::Value& v, const uchar*& ptr, size_t& len) {
+  if (v.IsBuffer()) {
+    auto b = v.As<Napi::Buffer<uint8_t>>();
+    ptr = b.Data(); len = b.Length();
+    return true;
+  }
+  if (v.IsTypedArray()) {
+    auto ta = v.As<Napi::TypedArray>();
+    auto ab = ta.ArrayBuffer();
+    ptr = static_cast<const uchar*>(ab.Data()) + ta.ByteOffset();
+    len = ta.ByteLength();
+    return true;
+  }
+  if (v.IsArrayBuffer()) {
+    auto ab = v.As<Napi::ArrayBuffer>();
+    ptr = static_cast<const uchar*>(ab.Data()); len = ab.ByteLength();
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Captures a JS image input on the JS thread. Performs NO decoding and NO
+ * pixel work — only reads metadata and takes a persistent reference.
+ * Throws Napi::Error on invalid input.
+ */
+inline ImageSource CaptureImage(const Napi::Value& input) {
   Napi::Env env = input.Env();
+  ImageSource src;
 
   // --- 1. Raw image object -------------------------
-  if (input.IsObject() && !input.IsBuffer()) {
+  if (input.IsObject() && !input.IsBuffer() && !input.IsTypedArray() && !input.IsArrayBuffer()) {
     Napi::Object obj = input.As<Napi::Object>();
     if (obj.Has("data") && obj.Has("width") && obj.Has("height")) {
+      Napi::Value dataVal = obj.Get("data");
+      const uchar* ptr = nullptr; size_t len = 0;
+      if (!ResolveBytes(dataVal, ptr, len)) {
+        throw Napi::Error::New(env, "Image data must be a Buffer or TypedArray");
+      }
 
-      auto dataBuf = obj.Get("data").As<Napi::Buffer<uint8_t>>();
-      
       int width = obj.Get("width").As<Napi::Number>().Int32Value();
       int height = obj.Get("height").As<Napi::Number>().Int32Value();
+      if (width <= 0 || height <= 0) {
+        throw Napi::Error::New(env, "Invalid image dimensions");
+      }
 
       // Determine channel count and color space
       int channels = 3;  // default
-      std::string colorSpace = "RGB";  // default
-      
+      std::string colorSpace;
+
       if (obj.Has("channels")) {
         auto channelsVal = obj.Get("channels");
-        
         if (channelsVal.IsNumber()) {
           channels = channelsVal.As<Napi::Number>().Int32Value();
-          
-          // Get colorSpace if available
-          if (obj.Has("colorSpace")) {
-            colorSpace = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-          } else {
-            // Default colorSpace based on channels
-            switch (channels) {
-              case 1: colorSpace = "GRAY"; break;
-              case 3: colorSpace = "RGB"; break;
-              case 4: colorSpace = "RGBA"; break;
-              default: 
-                throw Napi::Error::New(env, "Unsupported channel count: " + std::to_string(channels));
-            }
-          }
         } else {
           throw Napi::Error::New(env, "Channels must be a number");
+        }
+      }
+      if (obj.Has("colorSpace") && obj.Get("colorSpace").IsString()) {
+        colorSpace = obj.Get("colorSpace").As<Napi::String>().Utf8Value();
+      } else {
+        switch (channels) {
+          case 1: colorSpace = "GRAY"; break;
+          case 3: colorSpace = "RGB"; break;
+          case 4: colorSpace = "RGBA"; break;
+          default:
+            throw Napi::Error::New(env, "Unsupported channel count: " + std::to_string(channels));
         }
       }
 
       // Determine OpenCV type based on dtype and channels
       int cvType = CV_8UC3;  // default
-      
-      if (obj.Has("dtype")) {
-        std::string dtype = obj.Get("dtype").As<Napi::String>().Utf8Value();
-        if (dtype == "uint8") {
-          switch (channels) {
-            case 1: cvType = CV_8UC1; break;
-            case 3: cvType = CV_8UC3; break;
-            case 4: cvType = CV_8UC4; break;
-            default: throw Napi::Error::New(env, "Unsupported channel count for uint8: " + std::to_string(channels));
-          }
-        } else if (dtype == "uint16") {
-          switch (channels) {
-            case 1: cvType = CV_16UC1; break;
-            case 3: cvType = CV_16UC3; break;
-            case 4: cvType = CV_16UC4; break;
-            default: throw Napi::Error::New(env, "Unsupported channel count for uint16: " + std::to_string(channels));
-          }
-        } else if (dtype == "float32") {
-          switch (channels) {
-            case 1: cvType = CV_32FC1; break;
-            case 3: cvType = CV_32FC3; break;
-            case 4: cvType = CV_32FC4; break;
-            default: throw Napi::Error::New(env, "Unsupported channel count for float32: " + std::to_string(channels));
-          }
-        } else {
-          throw Napi::Error::New(env, "Unsupported dtype: " + dtype);
-        }
-      } else {
-        // Default uint8 handling
+      size_t elemBytes = 1;
+      std::string dtype = "uint8";
+      if (obj.Has("dtype") && obj.Get("dtype").IsString()) {
+        dtype = obj.Get("dtype").As<Napi::String>().Utf8Value();
+      }
+      if (dtype == "uint8") {
+        elemBytes = 1;
         switch (channels) {
           case 1: cvType = CV_8UC1; break;
           case 3: cvType = CV_8UC3; break;
           case 4: cvType = CV_8UC4; break;
-          default: throw Napi::Error::New(env, "Unsupported channel count: " + std::to_string(channels));
+          default: throw Napi::Error::New(env, "Unsupported channel count for uint8: " + std::to_string(channels));
         }
+      } else if (dtype == "uint16") {
+        elemBytes = 2;
+        switch (channels) {
+          case 1: cvType = CV_16UC1; break;
+          case 3: cvType = CV_16UC3; break;
+          case 4: cvType = CV_16UC4; break;
+          default: throw Napi::Error::New(env, "Unsupported channel count for uint16: " + std::to_string(channels));
+        }
+      } else if (dtype == "float32") {
+        elemBytes = 4;
+        switch (channels) {
+          case 1: cvType = CV_32FC1; break;
+          case 3: cvType = CV_32FC3; break;
+          case 4: cvType = CV_32FC4; break;
+          default: throw Napi::Error::New(env, "Unsupported channel count for float32: " + std::to_string(channels));
+        }
+      } else {
+        throw Napi::Error::New(env, "Unsupported dtype: " + dtype);
       }
 
-      return cv::Mat(height, width, cvType, dataBuf.Data());
+      const size_t expected = static_cast<size_t>(width) * static_cast<size_t>(height) *
+                              static_cast<size_t>(channels) * elemBytes;
+      if (len < expected) {
+        throw Napi::Error::New(env,
+          "Image data too small: expected " + std::to_string(expected) +
+          " bytes, got " + std::to_string(len));
+      }
+
+      src.mat = cv::Mat(height, width, cvType, const_cast<uchar*>(ptr));
+      src.colorSpace = colorSpace;
+      src.ref = Napi::Persistent(dataVal.As<Napi::Object>());
+      return src;
     }
   }
 
-  // --- 2. Direct Buffer (JPEG/PNG/WebP file data) -------------------------
-  if (input.IsBuffer()) {
-    auto buf = input.As<Napi::Buffer<uint8_t>>();
-    cv::Mat tmp(1, buf.Length(), CV_8UC1, buf.Data());
-    cv::Mat img = cv::imdecode(tmp, cv::IMREAD_UNCHANGED);
-
-    if (img.empty()) {
-      throw Napi::Error::New(env, "Failed to decode image buffer.");
+  // --- 2. Encoded bytes (JPEG/PNG/WebP/BMP file data) -------------------------
+  {
+    const uchar* ptr = nullptr; size_t len = 0;
+    if (ResolveBytes(input, ptr, len)) {
+      src.encoded = true;
+      src.encPtr = ptr;
+      src.encLen = len;
+      src.ref = Napi::Persistent(input.As<Napi::Object>());
+      return src;
     }
-
-    // imdecode returns BGR/BGRA regardless of file format, assume input is RGB/RGBA
-    if (img.channels() == 3)      cv::cvtColor(img, img, cv::COLOR_BGR2RGB);
-    else if (img.channels() == 4) cv::cvtColor(img, img, cv::COLOR_BGRA2RGBA);
-    return img;  // RGB/RGBA/GRAY, matching the colorSpace labels nodes assign
   }
 
   throw Napi::Error::New(env,
       "Invalid input: Expected Buffer or image object with {data, width, height}.");
 }
 
-
+// Worker-thread helper: makes sure a result Mat owns contiguous memory so
+// MatToRawJS() can hand it to JS with zero copies on the JS thread.
+inline void FinalizeForOutput(cv::Mat& m) {
+  if (m.empty()) return;
+  if (!m.isContinuous() || m.u == nullptr) {
+    m = m.clone();
+  }
+}
 
 // Convierte a BGR 3-canales para JPEG si hace falta
 inline cv::Mat ToBgrForJpg(const cv::Mat& src, const std::string& order) {
@@ -137,7 +228,8 @@ enum class ImageFormat {
   RAW = 0,
   JPG = 1,
   PNG = 2,
-  WEBP = 3
+  WEBP = 3,
+  BMP = 4
 };
 
 // Convert format string to enum
@@ -145,12 +237,13 @@ inline ImageFormat ParseImageFormat(const std::string& format) {
   if (format == "jpg" || format == "jpeg") return ImageFormat::JPG;
   if (format == "png") return ImageFormat::PNG;
   if (format == "webp") return ImageFormat::WEBP;
+  if (format == "bmp") return ImageFormat::BMP;
   return ImageFormat::RAW;
 }
 
 // Convert to the correct channel order for OpenCV's encoders.
 // - JPG: requires BGR (alpha is dropped)
-// - PNG/WebP: support BGR/BGRA (alpha preserved for *A variants)
+// - PNG/WebP/BMP: support BGR/BGRA (alpha preserved for *A variants)
 inline cv::Mat PrepareForEncoding(const cv::Mat& src,
   const std::string& order,
   const std::string& outputFormat)
@@ -160,7 +253,7 @@ inline cv::Mat PrepareForEncoding(const cv::Mat& src,
     return ToBgrForJpg(src, order);
   }
 
-  // PNG/WebP: keep alpha when present
+  // PNG/WebP/BMP: keep alpha when present
   if (src.channels() == 1 || order == "BGR" || order == "BGRA" || order == "GRAY") {
     return src;
   }
@@ -232,6 +325,12 @@ inline double EncodeToFormat(const cv::Mat& src,
         cv::IMWRITE_WEBP_QUALITY, quality
       };
       cv::imencode(".webp", src, out, params);
+      break;
+    }
+    case ImageFormat::BMP: {
+      // Uncompressed BI_RGB; 8-bit gray (palette), 24-bit BGR or 32-bit BGRA.
+      out.reserve(src.total() * src.elemSize() + 1078);
+      cv::imencode(".bmp", src, out);
       break;
     }
     default:
@@ -333,27 +432,6 @@ t.Set("encodeMs",  Napi::Number::New(env, encodeMs));
 return t;
 }
 
-// Helper function to detect channel format for individual images (shared between blend and concat)
-inline std::string DetectChannelFormatShared(const Napi::Value& jsImg, const cv::Mat& mat) {
-  if (jsImg.IsObject() && !jsImg.IsBuffer()) {
-    Napi::Object obj = jsImg.As<Napi::Object>();
-    
-    // Check for colorSpace field first
-    if (obj.Has("colorSpace")) {
-      return obj.Get("colorSpace").As<Napi::String>().Utf8Value();
-    }
-    // Default based on channel count
-    else {
-      const int channels = mat.channels();
-      return (channels == 4) ? "RGBA" : (channels == 3) ? "RGB" : "GRAY";
-    }
-  } else {
-    // Buffer input - determine from OpenCV Mat
-    const int channels = mat.channels();
-    return (channels == 4) ? "RGBA" : (channels == 3) ? "RGB" : "GRAY";
-  }
-}
-
 // Helper function to convert image to target channel format (shared between blend and concat)
 inline cv::Mat ConvertToTargetFormatShared(const cv::Mat& src, const std::string& srcFormat, const std::string& targetFormat) {
   if (srcFormat == targetFormat) {
@@ -443,32 +521,31 @@ inline cv::Mat removeColorBackground(const cv::Mat& src, const cv::Scalar& bgCol
   cv::cvtColor(bg_mat, hsv_bg, cv::COLOR_BGR2HSV);
   cv::Vec3b target_hsv = hsv_bg.at<cv::Vec3b>(0, 0);
   
-  // Create mask based on color distance in HSV space
-  cv::Mat mask = cv::Mat::zeros(hsv_src.size(), CV_8UC1);
-  
   // Calculate tolerance thresholds
   double h_tolerance = tolerance * 180; // Hue range: 0-180
   double s_tolerance = tolerance * 255; // Saturation range: 0-255
   double v_tolerance = tolerance * 255; // Value range: 0-255
-  
-  for (int y = 0; y < hsv_src.rows; y++) {
-    for (int x = 0; x < hsv_src.cols; x++) {
-      cv::Vec3b pixel_hsv = hsv_src.at<cv::Vec3b>(y, x);
-      
-      // Calculate distance in HSV space
-      double h_diff = std::abs(pixel_hsv[0] - target_hsv[0]);
-      double s_diff = std::abs(pixel_hsv[1] - target_hsv[1]);
-      double v_diff = std::abs(pixel_hsv[2] - target_hsv[2]);
-      
-      // Handle hue wraparound (0 and 180 are close)
-      if (h_diff > 90) h_diff = 180 - h_diff;
-      
-      // Check if pixel matches background color within tolerance
-      if (h_diff <= h_tolerance && s_diff <= s_tolerance && v_diff <= v_tolerance) {
-        mask.at<uchar>(y, x) = 255; // Mark for removal
-      }
-    }
-  }
+
+  // Mask of pixels within tolerance of the background colour, computed with
+  // whole-image OpenCV operations (identical result to the former per-pixel
+  // loop: |h-t| with wraparound, |s-t|, |v-t|, all <= tolerance).
+  std::vector<cv::Mat> hsvCh;
+  cv::split(hsv_src, hsvCh);
+  cv::Mat hDiff, sDiff, vDiff;
+  cv::absdiff(hsvCh[0], cv::Scalar(target_hsv[0]), hDiff);
+  cv::absdiff(hsvCh[1], cv::Scalar(target_hsv[1]), sDiff);
+  cv::absdiff(hsvCh[2], cv::Scalar(target_hsv[2]), vDiff);
+  // Hue wraparound (0 and 180 are close): h = min(h, 180 - h)
+  cv::Mat hWrap;
+  cv::subtract(cv::Scalar(180), hDiff, hWrap);
+  cv::min(hDiff, hWrap, hDiff);
+
+  cv::Mat mh, ms, mv, mask;
+  cv::compare(hDiff, h_tolerance, mh, cv::CMP_LE);
+  cv::compare(sDiff, s_tolerance, ms, cv::CMP_LE);
+  cv::compare(vDiff, v_tolerance, mv, cv::CMP_LE);
+  cv::bitwise_and(mh, ms, mask);
+  cv::bitwise_and(mask, mv, mask);   // 255 = mark for removal
   
   // Apply Gaussian blur to mask edges for smooth transitions
   if (tolerance > 0.01) {
@@ -551,39 +628,61 @@ inline cv::Mat alphaComposite(const cv::Mat& base, const cv::Mat& overlay, doubl
   
   result = cv::Mat::zeros(base_bgra.size(), CV_8UC4);
   
-  // Perform alpha compositing pixel by pixel
-  for (int y = 0; y < result.rows; y++) {
-    for (int x = 0; x < result.cols; x++) {
-      cv::Vec4b base_pixel = base_bgra.at<cv::Vec4b>(y, x);
-      cv::Vec4b overlay_pixel = overlay_bgra.at<cv::Vec4b>(y, x);
-      
-      // Normalize alpha values [0, 1]
-      double base_alpha = base_pixel[3] / 255.0;
-      double overlay_alpha = (overlay_pixel[3] / 255.0) * overlayOpacity;
-      
-      // Alpha compositing formula: result = overlay * overlay_alpha + base * (1 - overlay_alpha)
-      // But we need to handle the case where overlay is transparent
-      double result_alpha = overlay_alpha + base_alpha * (1.0 - overlay_alpha);
-      
-      cv::Vec4b result_pixel;
-      
-      if (result_alpha > 0.001) { // Avoid division by very small numbers
-        for (int c = 0; c < 3; c++) { // BGR channels
-          double result_color = (overlay_pixel[c] * overlay_alpha + 
-                               base_pixel[c] * base_alpha * (1.0 - overlay_alpha)) / result_alpha;
-          result_pixel[c] = cv::saturate_cast<uchar>(result_color);
-        }
-        result_pixel[3] = cv::saturate_cast<uchar>(result_alpha * 255);
-      } else {
-        // Fully transparent
-        result_pixel = cv::Vec4b(0, 0, 0, 0);
+  // Alpha compositing with row pointers (same arithmetic as the former
+  // per-pixel .at<>() loop). Fully transparent results stay at zero.
+  const int rows = result.rows, cols = result.cols;
+  cv::parallel_for_(cv::Range(0, rows), [&](const cv::Range& range) {
+    for (int y = range.start; y < range.end; y++) {
+      const uchar* b = base_bgra.ptr<uchar>(y);
+      const uchar* o = overlay_bgra.ptr<uchar>(y);
+      uchar* r = result.ptr<uchar>(y);
+      for (int x = 0; x < cols; x++, b += 4, o += 4, r += 4) {
+        // Normalize alpha values [0, 1]
+        const double base_alpha = b[3] / 255.0;
+        const double overlay_alpha = (o[3] / 255.0) * overlayOpacity;
+        
+        // result = overlay * overlay_alpha + base * base_alpha * (1 - overlay_alpha)
+        const double result_alpha = overlay_alpha + base_alpha * (1.0 - overlay_alpha);
+        if (result_alpha <= 0.001) continue;   // fully transparent → (0,0,0,0)
+        
+        const double base_w = base_alpha * (1.0 - overlay_alpha);
+        r[0] = cv::saturate_cast<uchar>((o[0] * overlay_alpha + b[0] * base_w) / result_alpha);
+        r[1] = cv::saturate_cast<uchar>((o[1] * overlay_alpha + b[1] * base_w) / result_alpha);
+        r[2] = cv::saturate_cast<uchar>((o[2] * overlay_alpha + b[2] * base_w) / result_alpha);
+        r[3] = cv::saturate_cast<uchar>(result_alpha * 255);
       }
-      
-      result.at<cv::Vec4b>(y, x) = result_pixel;
     }
-  }
+  });
   
   return result;
+}
+
+// 216 candidate colours evenly spread over HSV (24 hues × 3 saturations × 3
+// values), in BGR float [0,1]. Computed once per process instead of on every
+// call (it used to cost 216 tiny cvtColor invocations per unmapped class).
+inline const std::vector<cv::Vec3f>& CandidateColorPalette() {
+  static const std::vector<cv::Vec3f> palette = []() {
+    std::vector<cv::Vec3f> out;
+    const int numHues = 24;        // Every 15 degrees
+    const int numSaturations = 3;  // 60%, 80%, 100%
+    const int numValues = 3;       // 60%, 80%, 100%
+    out.reserve(numHues * numSaturations * numValues);
+    for (int h = 0; h < numHues; h++) {
+      for (int s = 0; s < numSaturations; s++) {
+        for (int v = 0; v < numValues; v++) {
+          float hue = (h * 360.0f / numHues);
+          float saturation = 0.6f + s * 0.2f;
+          float value = 0.6f + v * 0.2f;
+          cv::Mat hsv(1, 1, CV_32FC3, cv::Scalar(hue / 360.0f, saturation, value));
+          cv::Mat bgr;
+          cv::cvtColor(hsv, bgr, cv::COLOR_HSV2BGR);
+          out.push_back(bgr.at<cv::Vec3f>(0, 0));
+        }
+      }
+    }
+    return out;
+  }();
+  return palette;
 }
 
 // Parse color string to cv::Scalar, supporting hex colors
